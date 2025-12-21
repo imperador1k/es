@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "624341401792",
+    "project_id": "escolaa-30a2a",
+    "storage_bucket": "escolaa-30a2a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:624341401792:android:90fee794f110eeb05bed25",
+        "android_client_info": {
+          "package_name": "com.imperador1k.escolaa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhoNWY4wbGC02z5ZZd1KRrWXxK8BIIlZ8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

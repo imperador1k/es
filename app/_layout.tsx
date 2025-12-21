@@ -5,12 +5,17 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import "../global.css";
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { AuthProvider } from '@/providers/AuthProvider';
+import { ProfileProvider } from '@/providers/ProfileProvider';
+import { QueryProvider } from '@/providers/QueryProvider';
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
@@ -45,15 +50,39 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
+// Componente que inicializa push notifications (deve estar dentro dos providers)
+function PushNotificationsInitializer({ children }: { children: React.ReactNode }) {
+  const { expoPushToken, isRegistered } = usePushNotifications();
+
+  useEffect(() => {
+    if (expoPushToken) {
+      console.log('🔔 Push token pronto:', expoPushToken);
+      console.log('📝 Registado no Supabase:', isRegistered);
+    }
+  }, [expoPushToken, isRegistered]);
+
+  return <>{children}</>;
+}
+
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <QueryProvider>
+      <AuthProvider>
+        <ProfileProvider>
+          <PushNotificationsInitializer>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(auth)" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+              </Stack>
+            </ThemeProvider>
+          </PushNotificationsInitializer>
+        </ProfileProvider>
+      </AuthProvider>
+    </QueryProvider>
   );
 }
+
