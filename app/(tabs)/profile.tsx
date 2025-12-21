@@ -1,8 +1,10 @@
+import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, getTierStyle, shadows, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Tier } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -13,6 +15,7 @@ const TIER_EMOJI: Record<Tier, string> = {
     Ouro: '🥇',
     Platina: '💎',
     Diamante: '👑',
+    Elite: '🔥',
 };
 
 // Level calculation
@@ -29,6 +32,8 @@ export default function ProfileScreen() {
     const { user, signOut, isLoading: authLoading } = useAuthContext();
     const { profile, loading, refetchProfile } = useProfile();
 
+    const [deleting, setDeleting] = useState(false);
+
     const handleSignOut = () => {
         Alert.alert(
             'Terminar Sessão',
@@ -38,6 +43,67 @@ export default function ProfileScreen() {
                 { text: 'Sair', style: 'destructive', onPress: signOut },
             ]
         );
+    };
+
+    // Eliminar conta (DANGER)
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            '⚠️ Eliminar Conta',
+            'Esta ação é PERMANENTE e irá apagar todos os teus dados, incluindo:\n\n• Perfil e avatar\n• Mensagens\n• Tarefas\n• Amizades\n• XP e badges\n\nTens a certeza ABSOLUTA?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Sim, Eliminar',
+                    style: 'destructive',
+                    onPress: () => confirmDeleteAccount(),
+                },
+            ]
+        );
+    };
+
+    const confirmDeleteAccount = () => {
+        Alert.prompt(
+            'Confirmação Final',
+            'Escreve "CONFIRMAR" para confirmar:',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Confirmar',
+                    style: 'destructive',
+                    onPress: async (text: string | undefined) => {
+                        if (text?.toUpperCase() === 'CONFIRMAR') {
+                            await executeDelete();
+                        } else {
+                            Alert.alert('Erro', 'Texto incorreto. A conta não foi eliminada.');
+                        }
+                    },
+                },
+            ],
+            'plain-text'
+        );
+    };
+
+    const executeDelete = async () => {
+        if (!user?.id) return;
+
+        setDeleting(true);
+        try {
+            // Usar a função RPC que já existe no Supabase
+            // Esta função apaga o auth.users e o CASCADE apaga o resto
+            const { error } = await supabase.rpc('delete_user');
+
+            if (error) throw error;
+
+            // Fazer signOut para limpar a sessão local
+            await signOut();
+
+            Alert.alert('Conta Eliminada', 'A tua conta foi eliminada com sucesso.');
+        } catch (err: any) {
+            console.error('Erro ao eliminar conta:', err);
+            Alert.alert('Erro', 'Não foi possível eliminar a conta. Tenta novamente.');
+        } finally {
+            setDeleting(false);
+        }
     };
 
     if (loading || authLoading) {
@@ -153,6 +219,18 @@ export default function ProfileScreen() {
                     <Ionicons name="log-out-outline" size={18} color={colors.danger.primary} />
                     <Text style={styles.logoutText}>Terminar Sessão</Text>
                 </Pressable>
+
+                {/* Delete Account - DANGER ZONE */}
+                <View style={styles.dangerZone}>
+                    <Text style={styles.dangerTitle}>Zona Perigosa</Text>
+                    <Text style={styles.dangerSubtitle}>
+                        Esta ação é irreversível e apagará todos os teus dados.
+                    </Text>
+                    <Pressable style={styles.deleteButton} onPress={handleDeleteAccount}>
+                        <Ionicons name="trash-outline" size={18} color={colors.text.inverse} />
+                        <Text style={styles.deleteButtonText}>Eliminar Conta</Text>
+                    </Pressable>
+                </View>
 
                 {/* Version */}
                 <Text style={styles.version}>Escola+ v0.1.0</Text>
@@ -422,6 +500,42 @@ const styles = StyleSheet.create({
         fontSize: typography.size.base,
         fontWeight: typography.weight.semibold,
         color: colors.danger.primary,
+    },
+
+    // Danger Zone
+    dangerZone: {
+        backgroundColor: colors.surface,
+        borderRadius: borderRadius.xl,
+        padding: spacing.xl,
+        marginTop: spacing.lg,
+        marginBottom: spacing.lg,
+        borderWidth: 1,
+        borderColor: colors.danger.primary,
+    },
+    dangerTitle: {
+        fontSize: typography.size.base,
+        fontWeight: typography.weight.semibold,
+        color: colors.danger.primary,
+        marginBottom: spacing.xs,
+    },
+    dangerSubtitle: {
+        fontSize: typography.size.sm,
+        color: colors.text.tertiary,
+        marginBottom: spacing.lg,
+    },
+    deleteButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.danger.primary,
+        borderRadius: borderRadius.lg,
+        paddingVertical: spacing.md,
+        gap: spacing.sm,
+    },
+    deleteButtonText: {
+        fontSize: typography.size.base,
+        fontWeight: typography.weight.semibold,
+        color: colors.text.inverse,
     },
 
     // Version

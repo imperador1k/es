@@ -1,5 +1,6 @@
+import { CalendarEvent, useCalendar } from '@/hooks/useCalendar'; // <--- O Hook novo
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, getQuestStyle, shadows, spacing, typography } from '@/lib/theme';
+import { colors, getQuestStyle, shadows } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Task, TaskType } from '@/types/database.types';
@@ -8,20 +9,29 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    FlatList,
     KeyboardAvoidingView,
     Modal,
     Platform,
     Pressable,
-    ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    TouchableOpacity,
+    View
 } from 'react-native';
+import { Agenda, LocaleConfig } from 'react-native-calendars'; // <--- Biblioteca de Calendário
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Config por tipo
+// Configurar idioma PT para o Calendário
+LocaleConfig.locales['pt'] = {
+    monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
+    monthNamesShort: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+    dayNames: ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
+    dayNamesShort: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+    today: 'Hoje'
+};
+LocaleConfig.defaultLocale = 'pt';
+
 const QUEST_CONFIG: Record<TaskType, { icon: keyof typeof Ionicons.glyphMap; label: string; xp: number }> = {
     study: { icon: 'book-outline', label: 'Estudo', xp: 30 },
     assignment: { icon: 'document-text-outline', label: 'Trabalho', xp: 50 },
@@ -31,60 +41,87 @@ const QUEST_CONFIG: Record<TaskType, { icon: keyof typeof Ionicons.glyphMap; lab
 export default function CalendarScreen() {
     const { user } = useAuthContext();
     const { addXPWithSync } = useProfile();
+
+    // Hooks de Dados
+    const { events: calendarEvents, loading: calendarLoading, refresh: refreshCalendar } = useCalendar();
     const [tasks, setTasks] = useState<Task[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
+
+    // Estados de UI
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [items, setItems] = useState<any>({}); // Items misturados para a Agenda
     const [modalVisible, setModalVisible] = useState(false);
     const [creating, setCreating] = useState(false);
-    const [filter, setFilter] = useState<'all' | TaskType>('all');
 
-    // Form state
+    // Estados do Formulário
     const [newTitle, setNewTitle] = useState('');
     const [newDescription, setNewDescription] = useState('');
     const [newType, setNewType] = useState<TaskType>('study');
     const [newDueDate, setNewDueDate] = useState('');
 
-    // Load tasks
+    // 1. Carregar Tarefas do Supabase
     const loadTasks = useCallback(async () => {
         if (!user?.id) return;
-        try {
-            const { data, error } = await supabase
-                .from('tasks')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('due_date', { ascending: true, nullsFirst: false })
-                .order('created_at', { ascending: false });
-            if (error) throw error;
-            setTasks((data as Task[]) || []);
-        } catch (err) {
-            console.error('Erro:', err);
-        }
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('due_date', { ascending: true });
+
+        if (!error && data) setTasks(data as Task[]);
     }, [user?.id]);
 
     useEffect(() => {
-        const load = async () => {
-            setLoading(true);
-            await loadTasks();
-            setLoading(false);
-        };
-        load();
+        loadTasks();
     }, [loadTasks]);
 
-    const handleRefresh = async () => {
-        setRefreshing(true);
-        await loadTasks();
-        setRefreshing(false);
-    };
+    // 2. MISTURAR TUDO (Tasks + Google Calendar) sempre que os dados mudam
+    useEffect(() => {
+        const newItems: any = {};
 
-    // Create task
+        // A. Adicionar Eventos do Google/Sistema
+        calendarEvents.forEach(evt => {
+            const date = evt.startDate.split('T')[0];
+            if (!newItems[date]) newItems[date] = [];
+
+            newItems[date].push({
+                type: 'event', // Marcador para sabermos renderizar diferente
+                data: evt,
+                height: 50
+            });
+        });
+
+        // B. Adicionar Tarefas (Quests) da App
+        tasks.forEach(task => {
+            if (task.due_date) {
+                const date = task.due_date.split('T')[0];
+                if (!newItems[date]) newItems[date] = [];
+
+                newItems[date].push({
+                    type: 'task',
+                    data: task,
+                    height: 80
+                });
+            }
+        });
+
+        // Para a Agenda renderizar dias vazios corretamente
+        const today = new Date().toISOString().split('T')[0];
+        if (!newItems[today]) newItems[today] = [];
+
+        setItems(newItems);
+    }, [calendarEvents, tasks]);
+
+
+    // Ações de Tarefas
     const handleCreateTask = async () => {
-        if (!user?.id || !newTitle.trim()) {
-            Alert.alert('Erro', 'O título é obrigatório');
-            return;
-        }
+        if (!user?.id || !newTitle.trim()) return;
         try {
             setCreating(true);
             const xp = QUEST_CONFIG[newType].xp;
+
+            // Se não escolher data, assume hoje para aparecer na agenda
+            const finalDate = newDueDate || selectedDate;
+
             const { data, error } = await supabase
                 .from('tasks')
                 .insert({
@@ -92,20 +129,20 @@ export default function CalendarScreen() {
                     title: newTitle.trim(),
                     description: newDescription.trim() || null,
                     type: newType,
-                    due_date: newDueDate || null,
+                    due_date: finalDate, // Importante para o calendário
                     is_completed: false,
                     xp_reward: xp,
                 })
                 .select()
                 .single();
+
             if (error) throw error;
-            setTasks(prev => [data as Task, ...prev]);
+
+            setTasks(prev => [...prev, data as Task]);
             setModalVisible(false);
             setNewTitle('');
             setNewDescription('');
-            setNewType('study');
-            setNewDueDate('');
-            Alert.alert('🎯 Quest Criada!', `"${data.title}" adicionada!`);
+            Alert.alert('🎯 Quest Criada!', `Vai aparecer no dia ${finalDate}`);
         } catch (err) {
             Alert.alert('Erro', 'Não foi possível criar');
         } finally {
@@ -113,16 +150,15 @@ export default function CalendarScreen() {
         }
     };
 
-    // Complete task
     const handleCompleteTask = async (task: Task) => {
         if (!user?.id || task.is_completed) return;
         try {
-            const { error } = await supabase
-                .from('tasks')
-                .update({ is_completed: true })
-                .eq('id', task.id);
-            if (error) throw error;
+            // Optimistic Update
             setTasks(prev => prev.map(t => t.id === task.id ? { ...t, is_completed: true } : t));
+
+            const { error } = await supabase.from('tasks').update({ is_completed: true }).eq('id', task.id);
+            if (error) throw error;
+
             const xp = task.xp_reward || QUEST_CONFIG[task.type].xp;
             await addXPWithSync(xp);
             Alert.alert('🏆 Quest Completa!', `+${xp} XP ganhos!`);
@@ -131,150 +167,118 @@ export default function CalendarScreen() {
         }
     };
 
-    // Format date
-    const formatDueDate = (dateString: string | null) => {
-        if (!dateString) return null;
-        const date = new Date(dateString);
-        const today = new Date();
-        const diff = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        if (diff === 0) return 'Hoje';
-        if (diff === 1) return 'Amanhã';
-        if (diff < 0) return 'Atrasada';
-        if (diff < 7) return `Em ${diff} dias`;
-        return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+    // RENDERIZADORES
+    const renderItem = (item: any) => {
+        // Se for Evento do Google/Calendário
+        if (item.type === 'event') {
+            const evt = item.data as CalendarEvent;
+            return (
+                <TouchableOpacity style={[styles.itemEvent, { borderLeftColor: evt.type === 'google' ? '#9CA3AF' : colors.accent.primary }]}>
+                    <View style={styles.eventHeader}>
+                        <Text style={styles.eventTime}>
+                            {new Date(evt.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                        {evt.type === 'google' && <Ionicons name="logo-google" size={12} color="#9CA3AF" />}
+                    </View>
+                    <Text style={styles.eventTitle}>{evt.title}</Text>
+                </TouchableOpacity>
+            );
+        }
+
+        // Se for Tarefa (Quest) da App
+        const task = item.data as Task;
+        const config = QUEST_CONFIG[task.type];
+        const style = getQuestStyle(task.type);
+
+        return (
+            <Pressable style={[styles.itemTask, task.is_completed && styles.itemTaskCompleted]} onPress={() => handleCompleteTask(task)}>
+                <View style={[styles.checkbox, task.is_completed && styles.checkboxDone]}>
+                    {task.is_completed && <Ionicons name="checkmark" size={12} color="white" />}
+                </View>
+
+                <View style={{ flex: 1 }}>
+                    <Text style={[styles.taskTitle, task.is_completed && { textDecorationLine: 'line-through', color: colors.text.tertiary }]}>
+                        {task.title}
+                    </Text>
+                    <View style={styles.taskMeta}>
+                        <Ionicons name={config.icon} size={12} color={colors.text.tertiary} />
+                        <Text style={styles.taskType}>{config.label}</Text>
+                        <Text style={styles.taskXP}>+{task.xp_reward} XP</Text>
+                    </View>
+                </View>
+            </Pressable>
+        );
     };
 
-    // Filter tasks
-    const pendingTasks = tasks.filter(t => !t.is_completed && (filter === 'all' || t.type === filter));
-    const completedTasks = tasks.filter(t => t.is_completed && (filter === 'all' || t.type === filter));
-    const allFiltered = [...pendingTasks, ...completedTasks];
-
-    // Loading
-    if (loading) {
+    const renderEmptyDate = () => {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
-                </View>
-            </SafeAreaView>
+            <View style={styles.emptyDate}>
+                <Text style={styles.emptyText}>Nada agendado para esta hora.</Text>
+            </View>
         );
-    }
+    };
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.title}>Minhas Quests</Text>
-                    <Text style={styles.subtitle}>
-                        {pendingTasks.length} pendentes · {completedTasks.length} completas
-                    </Text>
-                </View>
-                <Pressable style={styles.addButton} onPress={() => setModalVisible(true)}>
-                    <Ionicons name="add" size={24} color={colors.text.inverse} />
-                </Pressable>
-            </View>
-
-            {/* Filter Pills */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContainer}>
-                <FilterPill label="Todas" active={filter === 'all'} onPress={() => setFilter('all')} />
-                <FilterPill label="Estudo" type="study" active={filter === 'study'} onPress={() => setFilter('study')} />
-                <FilterPill label="Trabalhos" type="assignment" active={filter === 'assignment'} onPress={() => setFilter('assignment')} />
-                <FilterPill label="Exames" type="exam" active={filter === 'exam'} onPress={() => setFilter('exam')} />
-            </ScrollView>
-
-            {/* List */}
-            <FlatList
-                data={allFiltered}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <QuestCard
-                        task={item}
-                        onComplete={() => handleCompleteTask(item)}
-                    />
-                )}
-                contentContainerStyle={styles.listContent}
-                ListEmptyComponent={<EmptyState onPress={() => setModalVisible(true)} />}
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                showsVerticalScrollIndicator={false}
+            <Agenda
+                items={items}
+                loadItemsForMonth={() => { }} // Já carregamos tudo no useEffect
+                selected={selectedDate}
+                renderItem={renderItem}
+                renderEmptyDate={renderEmptyDate}
+                onDayPress={(day: any) => setSelectedDate(day.dateString)}
+                showClosingKnob={true}
+                refreshing={calendarLoading}
+                onRefresh={() => { refreshCalendar(); loadTasks(); }}
+                theme={{
+                    agendaDayTextColor: colors.text.secondary,
+                    agendaDayNumColor: colors.text.secondary,
+                    agendaTodayColor: colors.accent.primary,
+                    agendaKnobColor: colors.accent.primary,
+                    selectedDayBackgroundColor: colors.accent.primary,
+                    dotColor: colors.accent.primary,
+                    backgroundColor: colors.background,
+                    calendarBackground: colors.surface,
+                }}
             />
 
-            {/* Create Modal */}
+            {/* FAB para Adicionar */}
+            <TouchableOpacity style={styles.fab} onPress={() => { setNewDueDate(selectedDate); setModalVisible(true); }}>
+                <Ionicons name="add" size={30} color="white" />
+            </TouchableOpacity>
+
+            {/* Modal de Criação (Mantido igual, mas simplificado para o exemplo) */}
             <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
                     <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
                     <View style={styles.modalContent}>
                         <View style={styles.modalHandle} />
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Nova Quest</Text>
-                            <Pressable onPress={() => setModalVisible(false)}>
-                                <Ionicons name="close" size={24} color={colors.text.tertiary} />
-                            </Pressable>
+                        <Text style={styles.modalTitle}>Nova Quest para {new Date(newDueDate).toLocaleDateString()}</Text>
+
+                        <TextInput
+                            style={styles.input}
+                            placeholder="O que tens para fazer?"
+                            value={newTitle}
+                            onChangeText={setNewTitle}
+                            placeholderTextColor={colors.text.tertiary}
+                        />
+
+                        <View style={styles.typeGrid}>
+                            {Object.entries(QUEST_CONFIG).map(([key, config]) => (
+                                <Pressable
+                                    key={key}
+                                    style={[styles.typeCard, newType === key && { borderColor: colors.accent.primary, backgroundColor: colors.accent.light + '20' }]}
+                                    onPress={() => setNewType(key as TaskType)}
+                                >
+                                    <Ionicons name={config.icon} size={20} color={newType === key ? colors.accent.primary : colors.text.tertiary} />
+                                    <Text style={{ fontSize: 12, marginTop: 4, color: newType === key ? colors.accent.primary : colors.text.secondary }}>{config.label}</Text>
+                                </Pressable>
+                            ))}
                         </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            {/* Title Input */}
-                            <Text style={styles.inputLabel}>Título</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Ex: Estudar Matemática"
-                                placeholderTextColor={colors.text.tertiary}
-                                value={newTitle}
-                                onChangeText={setNewTitle}
-                            />
-
-                            {/* Type Selector */}
-                            <Text style={styles.inputLabel}>Tipo de Quest</Text>
-                            <View style={styles.typeGrid}>
-                                {(['study', 'assignment', 'exam'] as TaskType[]).map((type) => {
-                                    const config = QUEST_CONFIG[type];
-                                    const style = getQuestStyle(type);
-                                    const isActive = newType === type;
-                                    return (
-                                        <Pressable
-                                            key={type}
-                                            style={[styles.typeCard, isActive && { borderColor: style.icon, backgroundColor: style.bg }]}
-                                            onPress={() => setNewType(type)}
-                                        >
-                                            <Ionicons name={config.icon} size={24} color={isActive ? style.icon : colors.text.tertiary} />
-                                            <Text style={[styles.typeLabel, isActive && { color: style.text }]}>{config.label}</Text>
-                                            <Text style={styles.typeXP}>+{config.xp} XP</Text>
-                                        </Pressable>
-                                    );
-                                })}
-                            </View>
-
-                            {/* Due Date */}
-                            <Text style={styles.inputLabel}>Data Limite (opcional)</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="AAAA-MM-DD"
-                                placeholderTextColor={colors.text.tertiary}
-                                value={newDueDate}
-                                onChangeText={setNewDueDate}
-                            />
-
-                            {/* Description */}
-                            <Text style={styles.inputLabel}>Notas (opcional)</Text>
-                            <TextInput
-                                style={[styles.input, styles.textArea]}
-                                placeholder="Detalhes..."
-                                placeholderTextColor={colors.text.tertiary}
-                                value={newDescription}
-                                onChangeText={setNewDescription}
-                                multiline
-                            />
-
-                            {/* Submit */}
-                            <Pressable style={styles.submitButton} onPress={handleCreateTask} disabled={creating}>
-                                {creating ? (
-                                    <ActivityIndicator color={colors.text.inverse} />
-                                ) : (
-                                    <Text style={styles.submitText}>🎯 Criar Quest</Text>
-                                )}
-                            </Pressable>
-                        </ScrollView>
+                        <Pressable style={styles.submitButton} onPress={handleCreateTask} disabled={creating}>
+                            {creating ? <ActivityIndicator color="white" /> : <Text style={styles.submitText}>Criar Quest</Text>}
+                        </Pressable>
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
@@ -282,390 +286,68 @@ export default function CalendarScreen() {
     );
 }
 
-// ============================================
-// SUB COMPONENTS
-// ============================================
-function FilterPill({ label, active, type, onPress }: { label: string; active: boolean; type?: TaskType; onPress: () => void }) {
-    const style = type ? getQuestStyle(type) : null;
-    return (
-        <Pressable
-            style={[
-                styles.pill,
-                active && (style ? { backgroundColor: style.bg } : styles.pillActive),
-            ]}
-            onPress={onPress}
-        >
-            <Text style={[styles.pillText, active && (style ? { color: style.text } : styles.pillTextActive)]}>
-                {label}
-            </Text>
-        </Pressable>
-    );
-}
-
-function QuestCard({ task, onComplete }: { task: Task; onComplete: () => void }) {
-    const config = QUEST_CONFIG[task.type];
-    const style = getQuestStyle(task.type);
-    const isOverdue = task.due_date && new Date(task.due_date) < new Date() && !task.is_completed;
-
-    const formatDate = (d: string | null) => {
-        if (!d) return null;
-        const date = new Date(d);
-        const diff = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        if (diff < 0) return 'Atrasada';
-        if (diff === 0) return 'Hoje';
-        if (diff === 1) return 'Amanhã';
-        return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
-    };
-
-    return (
-        <View style={[styles.questCard, task.is_completed && styles.questCardCompleted]}>
-            {/* Checkbox */}
-            <Pressable style={[styles.checkbox, task.is_completed && styles.checkboxDone]} onPress={onComplete} disabled={task.is_completed}>
-                {task.is_completed && <Ionicons name="checkmark" size={14} color={colors.text.inverse} />}
-            </Pressable>
-
-            {/* Icon */}
-            <View style={[styles.questIcon, { backgroundColor: style.bg }]}>
-                <Ionicons name={config.icon} size={18} color={style.icon} />
-            </View>
-
-            {/* Content */}
-            <View style={styles.questContent}>
-                <Text style={[styles.questTitle, task.is_completed && styles.questTitleDone]} numberOfLines={1}>
-                    {task.title}
-                </Text>
-                <View style={styles.questMeta}>
-                    <View style={[styles.questTypeBadge, { backgroundColor: style.bg }]}>
-                        <Text style={[styles.questTypeText, { color: style.text }]}>{config.label}</Text>
-                    </View>
-                    {task.due_date && (
-                        <Text style={[styles.questDate, isOverdue && styles.questDateOverdue]}>
-                            {formatDate(task.due_date)}
-                        </Text>
-                    )}
-                </View>
-            </View>
-
-            {/* XP */}
-            <View style={styles.questXP}>
-                <Text style={styles.questXPValue}>+{task.xp_reward || config.xp}</Text>
-                <Ionicons name="flash" size={12} color={colors.accent.primary} />
-            </View>
-        </View>
-    );
-}
-
-function EmptyState({ onPress }: { onPress: () => void }) {
-    return (
-        <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-                <Ionicons name="trophy-outline" size={48} color={colors.accent.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Sem quests</Text>
-            <Text style={styles.emptySubtitle}>Adiciona a tua primeira quest para começar a ganhar XP!</Text>
-            <Pressable style={styles.emptyButton} onPress={onPress}>
-                <Text style={styles.emptyButtonText}>Criar Quest</Text>
-            </Pressable>
-        </View>
-    );
-}
-
-// ============================================
-// STYLES
-// ============================================
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    container: { flex: 1, backgroundColor: colors.background },
 
-    // Header
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: spacing.xl,
-        paddingTop: spacing.lg,
-        paddingBottom: spacing.md,
+    // Agenda Items Styles
+    itemEvent: {
+        backgroundColor: 'white',
+        flex: 1,
+        borderRadius: 8,
+        padding: 12,
+        marginRight: 10,
+        marginTop: 17,
+        borderLeftWidth: 4,
+        ...shadows.sm
     },
-    title: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    subtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: 2,
-    },
-    addButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.accent.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...shadows.md,
-    },
+    eventHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+    eventTime: { fontSize: 12, color: colors.text.tertiary, fontWeight: '600' },
+    eventTitle: { fontSize: 16, color: colors.text.primary, fontWeight: '500' },
 
-    // Filters
-    filterScroll: {
-        maxHeight: 50,
-        marginBottom: spacing.md,
-    },
-    filterContainer: {
-        paddingHorizontal: spacing.xl,
-        gap: spacing.sm,
-    },
-    pill: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
+    itemTask: {
         backgroundColor: colors.surface,
-        ...shadows.sm,
-    },
-    pillActive: {
-        backgroundColor: colors.text.primary,
-    },
-    pillText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    pillTextActive: {
-        color: colors.text.inverse,
-    },
-
-    // List
-    listContent: {
-        paddingHorizontal: spacing.xl,
-        paddingBottom: 120,
-        flexGrow: 1,
-    },
-
-    // Quest Card
-    questCard: {
+        flex: 1,
+        borderRadius: 8,
+        padding: 12,
+        marginRight: 10,
+        marginTop: 17,
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.lg,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
+        borderLeftWidth: 4,
+        borderLeftColor: colors.accent.primary, // Diferenciar tasks de eventos
+        ...shadows.sm
     },
-    questCardCompleted: {
-        opacity: 0.6,
-    },
+    itemTaskCompleted: { opacity: 0.6 },
     checkbox: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: colors.border,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: spacing.md,
+        width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.border,
+        marginRight: 12, alignItems: 'center', justifyContent: 'center'
     },
-    checkboxDone: {
-        backgroundColor: colors.success.primary,
-        borderColor: colors.success.primary,
-    },
-    questIcon: {
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: spacing.md,
-    },
-    questContent: {
-        flex: 1,
-    },
-    questTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        marginBottom: 4,
-    },
-    questTitleDone: {
-        textDecorationLine: 'line-through',
-        color: colors.text.tertiary,
-    },
-    questMeta: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-    questTypeBadge: {
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 2,
-        borderRadius: borderRadius.full,
-    },
-    questTypeText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
-    },
-    questDate: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-    },
-    questDateOverdue: {
-        color: colors.danger.primary,
-    },
-    questXP: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 2,
-    },
-    questXPValue: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
+    checkboxDone: { backgroundColor: colors.success.primary, borderColor: colors.success.primary },
+    taskTitle: { fontSize: 16, color: colors.text.primary, fontWeight: '500' },
+    taskMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+    taskType: { fontSize: 12, color: colors.text.tertiary },
+    taskXP: { fontSize: 12, color: colors.accent.primary, fontWeight: 'bold' },
+
+    emptyDate: { height: 15, flex: 1, paddingTop: 30 },
+    emptyText: { color: colors.text.tertiary, fontSize: 12 },
+
+    // FAB
+    fab: {
+        position: 'absolute', bottom: 20, right: 20,
+        backgroundColor: colors.accent.primary, width: 56, height: 56,
+        borderRadius: 28, justifyContent: 'center', alignItems: 'center',
+        ...shadows.lg
     },
 
-    // Empty State
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: spacing['3xl'],
-    },
-    emptyIcon: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.lg,
-    },
-    emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
-    },
-    emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        textAlign: 'center',
-        marginBottom: spacing.xl,
-    },
-    emptyButton: {
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing['2xl'],
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
-    },
-    emptyButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
-
-    // Modal
-    modalWrapper: {
-        flex: 1,
-        justifyContent: 'flex-end',
-    },
-    modalBackdrop: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: colors.overlay,
-    },
-    modalContent: {
-        backgroundColor: colors.surface,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        padding: spacing.xl,
-        paddingBottom: spacing['4xl'],
-        maxHeight: '90%',
-    },
-    modalHandle: {
-        width: 40,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: colors.border,
-        alignSelf: 'center',
-        marginBottom: spacing.lg,
-    },
-    modalHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: spacing.xl,
-    },
-    modalTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-
-    // Inputs
-    inputLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
-        marginTop: spacing.lg,
-    },
-    input: {
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.md,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-    },
-    textArea: {
-        minHeight: 80,
-        textAlignVertical: 'top',
-    },
-
-    // Type Grid
-    typeGrid: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-    },
-    typeCard: {
-        flex: 1,
-        alignItems: 'center',
-        paddingVertical: spacing.lg,
-        borderRadius: borderRadius.lg,
-        backgroundColor: colors.surfaceSubtle,
-        borderWidth: 2,
-        borderColor: 'transparent',
-    },
-    typeLabel: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginTop: spacing.xs,
-    },
-    typeXP: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-        marginTop: 2,
-    },
-
-    // Submit
-    submitButton: {
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.lg,
-        alignItems: 'center',
-        marginTop: spacing.xl,
-        ...shadows.md,
-    },
-    submitText: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
+    // Modal Styles (Simplificados)
+    modalWrapper: { flex: 1, justifyContent: 'flex-end' },
+    modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
+    modalContent: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
+    modalHandle: { width: 40, height: 4, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20, borderRadius: 2 },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, color: colors.text.primary },
+    input: { backgroundColor: colors.surfaceSubtle, padding: 16, borderRadius: 12, fontSize: 16, color: colors.text.primary, marginBottom: 16 },
+    typeGrid: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+    typeCard: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 12, backgroundColor: colors.surfaceSubtle, borderWidth: 2, borderColor: 'transparent' },
+    submitButton: { backgroundColor: colors.accent.primary, padding: 16, borderRadius: 12, alignItems: 'center' },
+    submitText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 });

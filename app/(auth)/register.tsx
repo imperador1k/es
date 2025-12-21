@@ -1,8 +1,11 @@
 import { useAuth } from '@/hooks/useAuth';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import { useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -12,9 +15,13 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View
+    View,
+    Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// Necessário para o fluxo de browser
+WebBrowser.maybeCompleteAuthSession();
 
 export default function RegisterScreen() {
     const [email, setEmail] = useState('');
@@ -23,7 +30,72 @@ export default function RegisterScreen() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const { signUp, loading } = useAuth();
+    
+    // Estado para loading do Social Login
+    const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+
+    const { signUp, loading: authLoading } = useAuth();
+
+    const loading = authLoading || isOAuthLoading;
+
+    // Função auxiliar (podes copiar a mesma ou importar se tiveres utils)
+    const extractParamsFromUrl = (url: string) => {
+        const params = new URLSearchParams(url.split('#')[1]);
+        return {
+            access_token: params.get('access_token'),
+            refresh_token: params.get('refresh_token'),
+        };
+    };
+
+    const performOAuth = async (provider: 'google' | 'discord') => {
+        try {
+            setError('');
+            setIsOAuthLoading(true);
+
+            const redirectUrl = makeRedirectUri({
+                scheme: 'escolaa',
+                path: 'auth/callback',
+            });
+
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: provider,
+                options: {
+                    redirectTo: redirectUrl,
+                    skipBrowserRedirect: true,
+                },
+            });
+
+            if (error) throw error;
+            if (!data?.url) throw new Error('O Supabase não retornou um URL.');
+
+            const result = await WebBrowser.openAuthSessionAsync(
+                data.url,
+                redirectUrl
+            );
+
+            if (result.type === 'success' && result.url) {
+                // AQUI ESTÁ A CORREÇÃO: Forçar a sessão manualmente
+                const { access_token, refresh_token } = extractParamsFromUrl(result.url);
+
+                if (access_token && refresh_token) {
+                    const { error } = await supabase.auth.setSession({
+                        access_token,
+                        refresh_token,
+                    });
+                    if (error) throw error;
+                    // Sucesso! O AuthProvider vai redirecionar sozinho
+                } else {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) throw new Error('Sessão não encontrada.');
+                }
+            }
+        } catch (err: any) {
+            console.error("[OAuth Error]", err);
+            setError(err.message || 'Erro ao conectar com o provedor.');
+        } finally {
+            setIsOAuthLoading(false);
+        }
+    };
 
     const handleRegister = async () => {
         setError('');
@@ -161,6 +233,34 @@ export default function RegisterScreen() {
                                 <Text style={styles.submitText}>Criar Conta</Text>
                             )}
                         </Pressable>
+
+                        {/* Divider */}
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>ou regista-te com</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* Social Buttons */}
+                        <View style={styles.socialButtons}>
+                            <Pressable
+                                style={styles.socialButton}
+                                onPress={() => performOAuth('google')}
+                                disabled={loading}
+                            >
+                                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                                <Text style={styles.socialButtonText}>Google</Text>
+                            </Pressable>
+
+                            <Pressable
+                                style={styles.socialButton}
+                                onPress={() => performOAuth('discord')}
+                                disabled={loading}
+                            >
+                                <Ionicons name="logo-discord" size={20} color="#5865F2" />
+                                <Text style={styles.socialButtonText}>Discord</Text>
+                            </Pressable>
+                        </View>
                     </View>
 
                     {/* Login Link */}
@@ -277,6 +377,47 @@ const styles = StyleSheet.create({
         fontSize: typography.size.md,
         fontWeight: typography.weight.semibold,
         color: colors.text.inverse,
+    },
+
+    // Divider (Adicionei estes estilos que faltavam)
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: spacing.lg,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: colors.border,
+    },
+    dividerText: {
+        fontSize: typography.size.sm,
+        color: colors.text.tertiary,
+        marginHorizontal: spacing.md,
+    },
+
+    // Social Buttons (Adicionei estes estilos que faltavam)
+    socialButtons: {
+        flexDirection: 'row',
+        gap: spacing.md,
+    },
+    socialButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.surface,
+        borderRadius: borderRadius.lg,
+        borderWidth: 1,
+        borderColor: colors.border,
+        paddingVertical: spacing.md,
+        gap: spacing.sm,
+        ...shadows.sm,
+    },
+    socialButtonText: {
+        fontSize: typography.size.sm,
+        fontWeight: typography.weight.medium,
+        color: colors.text.primary,
     },
 
     // Login

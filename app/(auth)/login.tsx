@@ -1,8 +1,11 @@
 import { useAuth } from '@/hooks/useAuth';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { supabase } from '@/lib/supabase'; // Importação direta necessária para o OAuth customizado
 import { Ionicons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
-import { useState } from 'react';
+import { Link, useRouter } from 'expo-router';
+import { useState, useEffect } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -11,26 +14,110 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View
+    View,
+    Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// Necessário para o fluxo de browser funcionar corretamente no Android/iOS
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+    const [localError, setLocalError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const { signIn, loading } = useAuth();
+    
+    // Vamos usar o estado de loading local para o OAuth também
+    const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+    
+    const { signIn, loading: authLoading } = useAuth();
+    const router = useRouter();
+
+    const loading = authLoading || isOAuthLoading;
+
+    // Função auxiliar para tirar o token do URL
+    const extractParamsFromUrl = (url: string) => {
+        const params = new URLSearchParams(url.split('#')[1]);
+        return {
+            access_token: params.get('access_token'),
+            refresh_token: params.get('refresh_token'),
+        };
+    };
+
+    // Função "God Tier" para lidar com Google e Discord
+    const performOAuth = async (provider: 'google' | 'discord') => {
+        try {
+            setLocalError('');
+            setIsOAuthLoading(true);
+
+            // 1. Criar o URL de retorno (escolaa://auth/callback)
+            const redirectUrl = makeRedirectUri({
+                scheme: 'escolaa',
+                path: 'auth/callback',
+            });
+
+            console.log(`[OAuth] Iniciando login com ${provider}. Redirecionar para: ${redirectUrl}`);
+
+            // 2. Iniciar o fluxo com o Supabase
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: provider,
+                options: {
+                    redirectTo: redirectUrl,
+                    skipBrowserRedirect: true,
+                },
+            });
+
+            if (error) throw error;
+            if (!data?.url) throw new Error('O Supabase não retornou um URL de login.');
+
+            // 3. Abrir o Browser do Sistema e esperar que ele volte
+            const result = await WebBrowser.openAuthSessionAsync(
+                data.url,
+                redirectUrl
+            );
+
+            // 4. Verificar o resultado e FORÇAR a sessão
+            if (result.type === 'success' && result.url) {
+                // Truque de Mestre: Ler o token diretamente do URL
+                const { access_token, refresh_token } = extractParamsFromUrl(result.url);
+
+                if (access_token && refresh_token) {
+                    const { error } = await supabase.auth.setSession({
+                        access_token,
+                        refresh_token,
+                    });
+                    if (error) throw error;
+                    console.log("[OAuth] Sessão definida manualmente com sucesso!");
+                } else {
+                    // Fallback (plano B)
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) throw new Error('Sessão não detetada.');
+                }
+            } else {
+                console.log("[OAuth] Cancelado pelo utilizador.");
+            }
+
+        } catch (err: any) {
+            console.error("[OAuth Error]", err);
+            setLocalError(err.message || 'Erro ao conectar com o provedor.');
+            Alert.alert('Erro no Login', err.message);
+        } finally {
+            setIsOAuthLoading(false);
+        }
+    };
 
     const handleLogin = async () => {
-        setError('');
+        setLocalError('');
         if (!email || !password) {
-            setError('Por favor, preenche todos os campos');
+            setLocalError('Por favor, preenche todos os campos');
             return;
         }
+        
+        // Login normal com Email/Pass
         const result = await signIn(email, password);
         if (!result.success) {
-            setError(result.error?.message || 'Erro ao entrar');
+            setLocalError(result.error?.message || 'Erro ao entrar');
         }
     };
 
@@ -89,10 +176,10 @@ export default function LoginScreen() {
                         </View>
 
                         {/* Error */}
-                        {error ? (
+                        {localError ? (
                             <View style={styles.errorContainer}>
                                 <Ionicons name="alert-circle" size={16} color={colors.danger.primary} />
-                                <Text style={styles.errorText}>{error}</Text>
+                                <Text style={styles.errorText}>{localError}</Text>
                             </View>
                         ) : null}
 
@@ -108,6 +195,34 @@ export default function LoginScreen() {
                                 <Text style={styles.submitText}>Entrar</Text>
                             )}
                         </Pressable>
+
+                        {/* Divider */}
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>ou continua com</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* Social Buttons */}
+                        <View style={styles.socialButtons}>
+                            <Pressable
+                                style={styles.socialButton}
+                                onPress={() => performOAuth('google')}
+                                disabled={loading}
+                            >
+                                <Ionicons name="logo-google" size={20} color="#DB4437" />
+                                <Text style={styles.socialButtonText}>Google</Text>
+                            </Pressable>
+
+                            <Pressable
+                                style={styles.socialButton}
+                                onPress={() => performOAuth('discord')}
+                                disabled={loading}
+                            >
+                                <Ionicons name="logo-discord" size={20} color="#5865F2" />
+                                <Text style={styles.socialButtonText}>Discord</Text>
+                            </Pressable>
+                        </View>
 
                         {/* Forgot Password */}
                         <Pressable style={styles.forgotPassword}>
@@ -130,6 +245,7 @@ export default function LoginScreen() {
     );
 }
 
+// Mantive os teus estilos exatamente como estavam
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -143,8 +259,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingHorizontal: spacing['2xl'],
     },
-
-    // Logo
     logoContainer: {
         alignItems: 'center',
         marginBottom: spacing['4xl'],
@@ -169,8 +283,6 @@ const styles = StyleSheet.create({
         color: colors.text.secondary,
         marginTop: spacing.xs,
     },
-
-    // Form
     form: {
         gap: spacing.lg,
     },
@@ -205,8 +317,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.lg,
     },
-
-    // Error
     errorContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -221,8 +331,6 @@ const styles = StyleSheet.create({
         color: colors.danger.primary,
         flex: 1,
     },
-
-    // Submit
     submitButton: {
         backgroundColor: colors.accent.primary,
         borderRadius: borderRadius.lg,
@@ -239,8 +347,6 @@ const styles = StyleSheet.create({
         fontWeight: typography.weight.semibold,
         color: colors.text.inverse,
     },
-
-    // Forgot Password
     forgotPassword: {
         alignItems: 'center',
         marginTop: spacing.sm,
@@ -249,8 +355,6 @@ const styles = StyleSheet.create({
         fontSize: typography.size.sm,
         color: colors.text.secondary,
     },
-
-    // Register
     registerContainer: {
         flexDirection: 'row',
         justifyContent: 'center',
@@ -264,5 +368,42 @@ const styles = StyleSheet.create({
         fontSize: typography.size.sm,
         fontWeight: typography.weight.semibold,
         color: colors.accent.primary,
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: spacing.lg,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: colors.border,
+    },
+    dividerText: {
+        fontSize: typography.size.sm,
+        color: colors.text.tertiary,
+        marginHorizontal: spacing.md,
+    },
+    socialButtons: {
+        flexDirection: 'row',
+        gap: spacing.md,
+    },
+    socialButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.surface,
+        borderRadius: borderRadius.lg,
+        borderWidth: 1,
+        borderColor: colors.border,
+        paddingVertical: spacing.md,
+        gap: spacing.sm,
+        ...shadows.sm,
+    },
+    socialButtonText: {
+        fontSize: typography.size.sm,
+        fontWeight: typography.weight.medium,
+        color: colors.text.primary,
     },
 });

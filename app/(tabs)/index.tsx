@@ -51,9 +51,9 @@ export default function HomeScreen() {
   // User data
   const firstName = profile?.full_name?.split(' ')[0] || profile?.username || 'Estudante';
   const userXP = profile?.current_xp || 0;
-  const userTier = profile?.tier || 'bronze';
+  const userTier = profile?.current_tier || 'Bronze';
   const { level, progress } = getLevel(userXP);
-  const tierStyle = getTierStyle(userTier);
+  const tierStyle = getTierStyle(userTier.toLowerCase());
 
   // Filter tasks
   const pendingTasks = tasks.filter(t => !t.is_completed);

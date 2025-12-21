@@ -37,7 +37,6 @@ export default function ChannelChatScreen() {
     const [uploading, setUploading] = useState(false);
     const [newMessage, setNewMessage] = useState('');
 
-    const flatListRef = useRef<FlatList>(null);
     const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
     // Load channel data
@@ -188,7 +187,6 @@ export default function ChannelChatScreen() {
 
             {/* Messages */}
             <FlatList
-                ref={flatListRef}
                 data={messages}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item, index }) => (

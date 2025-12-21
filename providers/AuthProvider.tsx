@@ -66,28 +66,44 @@ export function AuthProvider({ children }: AuthProviderProps) {
         };
     }, []);
 
-    // Redirecionar baseado no estado de autenticação
+    // Redirecionar baseado no estado de autenticação E perfil completo
     useEffect(() => {
-        // Não fazer nada enquanto está a carregar
-        if (isLoading) return;
+        const checkProfileAndRedirect = async () => {
+            // Não fazer nada enquanto está a carregar
+            if (isLoading) return;
 
-        // Verificar se a navegação está pronta
-        if (!navigationState?.key) return;
+            // Verificar se a navegação está pronta
+            if (!navigationState?.key) return;
 
-        // Verificar se estamos numa rota de autenticação
-        const inAuthGroup = segments[0] === '(auth)';
+            // Verificar se estamos numa rota de autenticação
+            const inAuthGroup = segments[0] === '(auth)';
+            const inOnboarding = segments[1] === 'onboarding';
 
-        if (!session && !inAuthGroup) {
-            // Utilizador NÃO está logado e NÃO está na página de auth
-            // Redirecionar para login
-            console.log('➡️ Redirecting to login');
-            router.replace('/(auth)/login');
-        } else if (session && inAuthGroup) {
-            // Utilizador ESTÁ logado mas ainda está na página de auth
-            // Redirecionar para a app principal
-            console.log('➡️ Redirecting to tabs');
-            router.replace('/(tabs)');
-        }
+            if (!session && !inAuthGroup) {
+                // Utilizador NÃO está logado e NÃO está na página de auth
+                console.log('➡️ Redirecting to login');
+                router.replace('/(auth)/login');
+            } else if (session && inAuthGroup && !inOnboarding) {
+                // Utilizador ESTÁ logado, verificar se tem perfil completo
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('username')
+                    .eq('id', session.user.id)
+                    .single();
+
+                if (!profile?.username) {
+                    // Perfil incompleto - ir para onboarding
+                    console.log('➡️ Redirecting to onboarding (profile incomplete)');
+                    router.replace('/(auth)/onboarding');
+                } else {
+                    // Perfil completo - ir para a app
+                    console.log('➡️ Redirecting to tabs');
+                    router.replace('/(tabs)');
+                }
+            }
+        };
+
+        checkProfileAndRedirect();
     }, [session, segments, isLoading, navigationState?.key]);
 
     // Função de logout
@@ -108,3 +124,4 @@ export function AuthProvider({ children }: AuthProviderProps) {
         </AuthContext.Provider>
     );
 }
+

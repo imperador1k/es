@@ -14,7 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "A app precisa da câmara para ler QR Codes de amigos e enviar fotos.",
+        "NSCalendarsUsageDescription": "A Escolaa precisa de aceder ao teu calendário para sincronizar as tuas aulas e eventos pessoais.",
+        "NSRemindersUsageDescription": "A Escolaa precisa de acesso para criar lembretes de estudo."
+      }
     },
     "android": {
       "package": "com.imperador1k.escolaa",
@@ -23,6 +28,12 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -32,7 +43,20 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "A app precisa da câmara para ler QR Codes de amigos e enviar fotos.",
+          "microphonePermission": "A app precisa do microfone para gravar vídeos."
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "A Escolaa precisa de aceder ao teu calendário para sincronizar as tuas aulas e eventos pessoais."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

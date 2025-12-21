@@ -117,7 +117,7 @@ export default function QRScannerScreen() {
                     </Pressable>
                 </View>
             ) : (
-                // Scanner de QR Code
+                // Scanner de QR Code usando expo-camera
                 <View style={styles.scannerContainer}>
                     <CameraView
                         style={styles.camera}

@@ -5,7 +5,7 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { Profile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -24,7 +24,6 @@ export default function DMChatScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
     const insets = useSafeAreaInsets();
-    const flatListRef = useRef<FlatList>(null);
 
     const { messages, loading, sending, sendMessage } = useDMMessages(id || null);
     const [newMessage, setNewMessage] = useState('');
@@ -107,7 +106,6 @@ export default function DMChatScreen() {
 
             {/* Messages */}
             <FlatList
-                ref={flatListRef}
                 data={messages}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (

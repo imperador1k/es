@@ -1,5 +1,7 @@
 import { AuthResponse, supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
+import { makeRedirectUri } from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
 
 interface UseAuthReturn {
@@ -8,6 +10,8 @@ interface UseAuthReturn {
     loading: boolean;
     signUp: (email: string, password: string) => Promise<AuthResponse>;
     signIn: (email: string, password: string) => Promise<AuthResponse>;
+    signInWithGoogle: () => Promise<AuthResponse>;
+    signInWithDiscord: () => Promise<AuthResponse>;
     signOut: () => Promise<AuthResponse>;
 }
 
@@ -76,6 +80,95 @@ export function useAuth(): UseAuthReturn {
         }
     }, []);
 
+    // OAuth com Google
+    const signInWithGoogle = useCallback(async (): Promise<AuthResponse> => {
+        try {
+            setLoading(true);
+            const redirectUrl = makeRedirectUri({ scheme: 'escolaa' });
+            
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: redirectUrl,
+                    skipBrowserRedirect: true,
+                },
+            });
+
+            if (error) {
+                return { success: false, error: { message: error.message } };
+            }
+
+            if (data.url) {
+                const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+                
+                if (result.type === 'success' && result.url) {
+                    // Extrair tokens da URL de callback
+                    const url = new URL(result.url);
+                    const accessToken = url.searchParams.get('access_token');
+                    const refreshToken = url.searchParams.get('refresh_token');
+                    
+                    if (accessToken && refreshToken) {
+                        await supabase.auth.setSession({
+                            access_token: accessToken,
+                            refresh_token: refreshToken,
+                        });
+                    }
+                }
+            }
+
+            return { success: true };
+        } catch (error) {
+            console.error('Google OAuth error:', error);
+            return { success: false, error: { message: 'Erro ao entrar com Google' } };
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // OAuth com Discord
+    const signInWithDiscord = useCallback(async (): Promise<AuthResponse> => {
+        try {
+            setLoading(true);
+            const redirectUrl = makeRedirectUri({ scheme: 'escolaa' });
+            
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'discord',
+                options: {
+                    redirectTo: redirectUrl,
+                    skipBrowserRedirect: true,
+                },
+            });
+
+            if (error) {
+                return { success: false, error: { message: error.message } };
+            }
+
+            if (data.url) {
+                const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+                
+                if (result.type === 'success' && result.url) {
+                    const url = new URL(result.url);
+                    const accessToken = url.searchParams.get('access_token');
+                    const refreshToken = url.searchParams.get('refresh_token');
+                    
+                    if (accessToken && refreshToken) {
+                        await supabase.auth.setSession({
+                            access_token: accessToken,
+                            refresh_token: refreshToken,
+                        });
+                    }
+                }
+            }
+
+            return { success: true };
+        } catch (error) {
+            console.error('Discord OAuth error:', error);
+            return { success: false, error: { message: 'Erro ao entrar com Discord' } };
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     const signOut = useCallback(async (): Promise<AuthResponse> => {
         try {
             setLoading(true);
@@ -99,6 +192,9 @@ export function useAuth(): UseAuthReturn {
         loading,
         signUp,
         signIn,
+        signInWithGoogle,
+        signInWithDiscord,
         signOut,
     };
 }
+
