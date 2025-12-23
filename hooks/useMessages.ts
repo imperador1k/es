@@ -111,9 +111,9 @@ export function useMessages(channelId: string) {
 }
 
 /**
- * Hook para enviar mensagem com Optimistic Updates
+ * Hook para enviar mensagem com Optimistic Updates e suporte a menções @all
  */
-export function useSendMessage(channelId: string) {
+export function useSendMessage(channelId: string, channelName?: string, teamId?: string) {
   const { user } = useAuthContext();
   const { addXPWithSync, profile } = useProfile();
   const qc = useQueryClient();
@@ -132,6 +132,37 @@ export function useSendMessage(channelId: string) {
         .single();
 
       if (error) throw error;
+
+      // 🔔 Detetar menção @all e criar notificações
+      if (content?.toLowerCase().includes('@all') && teamId) {
+        try {
+          // Buscar membros da equipa (exceto o remetente)
+          const { data: members } = await supabase
+            .from('team_members')
+            .select('user_id')
+            .eq('team_id', teamId)
+            .neq('user_id', user!.id);
+
+          if (members && members.length > 0) {
+            const senderName = profile?.full_name || profile?.username || 'Alguém';
+            const notifications = members.map(m => ({
+              user_id: m.user_id,
+              actor_id: user!.id,
+              type: 'mention' as const,
+              title: `Menção em ${channelName || 'Canal'}`,
+              content: `${senderName}: ${content.slice(0, 100)}${content.length > 100 ? '...' : ''}`,
+              resource_id: channelId,
+              resource_type: 'channel' as const,
+            }));
+
+            await supabase.from('notifications').insert(notifications);
+            console.log(`🔔 Criadas ${notifications.length} notificações de @all`);
+          }
+        } catch (err) {
+          console.error('Erro ao criar notificações @all:', err);
+        }
+      }
+
       return data;
     },
 

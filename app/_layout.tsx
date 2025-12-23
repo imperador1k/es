@@ -12,6 +12,7 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ProfileProvider } from '@/providers/ProfileProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
+import { TeamsProvider } from '@/providers/TeamsProvider';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -71,15 +72,17 @@ function RootLayoutNav() {
     <QueryProvider>
       <AuthProvider>
         <ProfileProvider>
-          <PushNotificationsInitializer>
-            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-              </Stack>
-            </ThemeProvider>
-          </PushNotificationsInitializer>
+          <TeamsProvider>
+            <PushNotificationsInitializer>
+              <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(auth)" />
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                </Stack>
+              </ThemeProvider>
+            </PushNotificationsInitializer>
+          </TeamsProvider>
         </ProfileProvider>
       </AuthProvider>
     </QueryProvider>

@@ -1,4 +1,6 @@
 import { DMMessageWithSender, useDMMessages } from '@/hooks/useDMs';
+import { useUserStatus } from '@/hooks/usePresence';
+import { useTyping } from '@/hooks/useTyping';
 import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -20,14 +22,20 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+type MessageStatus = 'sent' | 'delivered' | 'read';
+
 export default function DMChatScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
     const insets = useSafeAreaInsets();
 
     const { messages, loading, sending, sendMessage } = useDMMessages(id || null);
+    const { typingText, sendTyping, sendStopTyping } = useTyping(id || null);
     const [newMessage, setNewMessage] = useState('');
     const [otherUser, setOtherUser] = useState<Profile | null>(null);
+
+    // Hook para status do outro utilizador
+    const { status: otherUserStatus, formatLastSeen } = useUserStatus(otherUser?.id || null);
 
     // Carregar dados do outro utilizador
     useEffect(() => {
@@ -96,7 +104,12 @@ export default function DMChatScreen() {
                     <Text style={styles.headerName}>
                         {otherUser?.full_name || otherUser?.username || 'Utilizador'}
                     </Text>
-                    <Text style={styles.headerStatus}>Online</Text>
+                    <Text style={[
+                        styles.headerStatus,
+                        otherUserStatus === 'online' && styles.headerStatusOnline
+                    ]}>
+                        {typingText || formatLastSeen()}
+                    </Text>
                 </View>
 
                 <Pressable style={styles.menuButton}>
@@ -125,7 +138,11 @@ export default function DMChatScreen() {
                         placeholder="Mensagem..."
                         placeholderTextColor={colors.text.tertiary}
                         value={newMessage}
-                        onChangeText={setNewMessage}
+                        onChangeText={(text) => {
+                            setNewMessage(text);
+                            if (text.trim()) sendTyping();
+                        }}
+                        onBlur={sendStopTyping}
                         multiline
                     />
                     <Pressable
@@ -148,18 +165,36 @@ export default function DMChatScreen() {
 function MessageBubble({ message, isMe }: { message: DMMessageWithSender; isMe: boolean }) {
     const formatTime = (d: string) => new Date(d).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
 
+    // Renderizar indicador de vistos baseado no status
+    const renderReadReceipt = () => {
+        if (!isMe) return null; // Só mostrar nas minhas mensagens
+
+        const status = message.status || 'sent';
+
+        switch (status) {
+            case 'sent':
+                return <Ionicons name="checkmark" size={12} color={colors.text.tertiary} style={{ marginLeft: 4 }} />;
+            case 'delivered':
+                return <Ionicons name="checkmark-done" size={12} color={colors.text.tertiary} style={{ marginLeft: 4 }} />;
+            case 'read':
+                return <Ionicons name="checkmark-done" size={12} color="#3B82F6" style={{ marginLeft: 4 }} />;
+            default:
+                return <Ionicons name="checkmark" size={12} color={colors.text.tertiary} style={{ marginLeft: 4 }} />;
+        }
+    };
+
     return (
         <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
             <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
                     {message.content}
                 </Text>
-                <Text style={[styles.timestamp, isMe && styles.timestampMe]}>
-                    {formatTime(message.created_at)}
-                    {message.is_read && isMe && (
-                        <Text> ✓</Text>
-                    )}
-                </Text>
+                <View style={styles.timestampRow}>
+                    <Text style={[styles.timestamp, isMe && styles.timestampMe]}>
+                        {formatTime(message.created_at)}
+                    </Text>
+                    {renderReadReceipt()}
+                </View>
             </View>
         </View>
     );
@@ -235,6 +270,9 @@ const styles = StyleSheet.create({
     },
     headerStatus: {
         fontSize: typography.size.xs,
+        color: colors.text.tertiary,
+    },
+    headerStatusOnline: {
         color: colors.success.primary,
     },
     menuButton: {
@@ -284,8 +322,12 @@ const styles = StyleSheet.create({
     timestamp: {
         fontSize: typography.size.xs,
         color: colors.text.tertiary,
-        marginTop: 4,
+    },
+    timestampRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         alignSelf: 'flex-end',
+        marginTop: 4,
     },
     timestampMe: {
         color: 'rgba(255,255,255,0.7)',

@@ -1,14 +1,15 @@
 import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
-import { Team, TeamWithMemberCount } from '@/types/database.types';
+import { TeamWithRole, useTeams } from '@/providers/TeamsProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
     FlatList,
+    Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -17,7 +18,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -26,8 +27,7 @@ const SQUAD_COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F43F5E', '#F97316', '#E
 
 export default function TeamsScreen() {
     const { user } = useAuthContext();
-    const [teams, setTeams] = useState<TeamWithMemberCount[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { teams, loading, refreshTeams } = useTeams();
     const [refreshing, setRefreshing] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [creating, setCreating] = useState(false);
@@ -35,54 +35,13 @@ export default function TeamsScreen() {
     // Form
     const [newName, setNewName] = useState('');
     const [newDescription, setNewDescription] = useState('');
-
-    // Load teams
-    const loadTeams = useCallback(async () => {
-        if (!user?.id) return;
-        try {
-            const { data: memberData } = await supabase
-                .from('team_members')
-                .select('team_id')
-                .eq('user_id', user.id);
-
-            if (!memberData?.length) {
-                setTeams([]);
-                return;
-            }
-
-            const teamIds = memberData.map(m => m.team_id);
-            const { data: teamsData } = await supabase
-                .from('teams')
-                .select('*')
-                .in('id', teamIds);
-
-            const withCounts: TeamWithMemberCount[] = await Promise.all(
-                (teamsData || []).map(async (team: Team) => {
-                    const { count } = await supabase
-                        .from('team_members')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('team_id', team.id);
-                    return { ...team, member_count: count || 1 };
-                })
-            );
-            setTeams(withCounts);
-        } catch (err) {
-            console.error(err);
-        }
-    }, [user?.id]);
-
-    useEffect(() => {
-        const load = async () => {
-            setLoading(true);
-            await loadTeams();
-            setLoading(false);
-        };
-        load();
-    }, [loadTeams]);
+    const [selectedColor, setSelectedColor] = useState(SQUAD_COLORS[0]);
+    const [isPublic, setIsPublic] = useState(false);
+    const [customCode, setCustomCode] = useState('');
 
     const handleRefresh = async () => {
         setRefreshing(true);
-        await loadTeams();
+        await refreshTeams();
         setRefreshing(false);
     };
 
@@ -92,20 +51,42 @@ export default function TeamsScreen() {
             Alert.alert('Erro', 'Nome é obrigatório');
             return;
         }
+
+        // Validar código personalizado se fornecido
+        if (customCode.trim() && customCode.trim().length < 4) {
+            Alert.alert('Erro', 'Código personalizado deve ter pelo menos 4 caracteres.');
+            return;
+        }
+
         try {
             setCreating(true);
+
+            const teamInsert: any = {
+                name: newName.trim(),
+                description: newDescription.trim() || null,
+                owner_id: user.id,
+                color: selectedColor,
+                is_public: isPublic,
+            };
+
+            // Se código personalizado fornecido, usá-lo
+            if (customCode.trim()) {
+                teamInsert.invite_code = customCode.trim().toUpperCase();
+            }
+
             const { data: teamData, error: teamError } = await supabase
                 .from('teams')
-                .insert({
-                    name: newName.trim(),
-                    description: newDescription.trim() || null,
-                    owner_id: user.id,
-                    color: SQUAD_COLORS[Math.floor(Math.random() * SQUAD_COLORS.length)],
-                })
+                .insert(teamInsert)
                 .select()
                 .single();
 
-            if (teamError) throw teamError;
+            if (teamError) {
+                if (teamError.code === '23505') {
+                    Alert.alert('Erro', 'Este código de convite já existe. Escolhe outro.');
+                    return;
+                }
+                throw teamError;
+            }
 
             await supabase.from('team_members').insert({
                 team_id: teamData.id,
@@ -113,16 +94,32 @@ export default function TeamsScreen() {
                 role: 'owner',
             });
 
-            setTeams(prev => [{ ...teamData, member_count: 1 }, ...prev]);
+            // Criar canal #geral por defeito
+            await supabase.from('channels').insert({
+                team_id: teamData.id,
+                name: 'geral',
+                type: 'text',
+            });
+
+            // Realtime vai atualizar a lista automaticamente, mas fazemos refresh explícito
+            await refreshTeams();
             setModalVisible(false);
-            setNewName('');
-            setNewDescription('');
-            Alert.alert('🎉 Squad Criada!', `"${teamData.name}" está pronta!`);
+            resetForm();
+            Alert.alert('🎉 Squad Criada!', `"${teamData.name}" está pronta!\n\nCódigo: ${teamData.invite_code}`);
         } catch (err) {
+            console.error('Erro ao criar squad:', err);
             Alert.alert('Erro', 'Não foi possível criar');
         } finally {
             setCreating(false);
         }
+    };
+
+    const resetForm = () => {
+        setNewName('');
+        setNewDescription('');
+        setSelectedColor(SQUAD_COLORS[0]);
+        setIsPublic(false);
+        setCustomCode('');
     };
 
     if (loading) {
@@ -143,8 +140,36 @@ export default function TeamsScreen() {
                     <Text style={styles.title}>Minhas Squads</Text>
                     <Text style={styles.subtitle}>{teams.length} squads</Text>
                 </View>
-                <Pressable style={styles.addButton} onPress={() => setModalVisible(true)}>
-                    <Ionicons name="add" size={24} color={colors.text.inverse} />
+            </View>
+
+            {/* Action Cards */}
+            <View style={styles.actionCards}>
+                <Pressable
+                    style={styles.actionCard}
+                    onPress={() => router.push('/team/join' as any)}
+                >
+                    <View style={[styles.actionIconContainer, { backgroundColor: colors.success.subtle }]}>
+                        <Ionicons name="log-in-outline" size={22} color={colors.success.primary} />
+                    </View>
+                    <View style={styles.actionTextContainer}>
+                        <Text style={styles.actionTitle}>Entrar numa Squad</Text>
+                        <Text style={styles.actionSubtitle}>Via código ou explorar</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+                </Pressable>
+
+                <Pressable
+                    style={styles.actionCard}
+                    onPress={() => setModalVisible(true)}
+                >
+                    <View style={[styles.actionIconContainer, { backgroundColor: colors.accent.subtle }]}>
+                        <Ionicons name="add-circle-outline" size={22} color={colors.accent.primary} />
+                    </View>
+                    <View style={styles.actionTextContainer}>
+                        <Text style={styles.actionTitle}>Criar Nova Squad</Text>
+                        <Text style={styles.actionSubtitle}>Torna-te o líder</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
                 </Pressable>
             </View>
 
@@ -174,7 +199,8 @@ export default function TeamsScreen() {
                         </View>
 
                         <ScrollView showsVerticalScrollIndicator={false}>
-                            <Text style={styles.inputLabel}>Nome da Squad</Text>
+                            {/* Nome */}
+                            <Text style={styles.inputLabel}>Nome da Squad *</Text>
                             <TextInput
                                 style={styles.input}
                                 placeholder="Ex: Turma 12ºA"
@@ -183,6 +209,7 @@ export default function TeamsScreen() {
                                 onChangeText={setNewName}
                             />
 
+                            {/* Descrição */}
                             <Text style={styles.inputLabel}>Descrição (opcional)</Text>
                             <TextInput
                                 style={[styles.input, styles.textArea]}
@@ -193,6 +220,69 @@ export default function TeamsScreen() {
                                 multiline
                             />
 
+                            {/* Cor */}
+                            <Text style={styles.inputLabel}>Cor da Squad</Text>
+                            <View style={styles.colorPicker}>
+                                {SQUAD_COLORS.map((color) => (
+                                    <Pressable
+                                        key={color}
+                                        style={[
+                                            styles.colorOption,
+                                            { backgroundColor: color },
+                                            selectedColor === color && styles.colorOptionSelected,
+                                        ]}
+                                        onPress={() => setSelectedColor(color)}
+                                    >
+                                        {selectedColor === color && (
+                                            <Ionicons name="checkmark" size={16} color={colors.text.inverse} />
+                                        )}
+                                    </Pressable>
+                                ))}
+                            </View>
+
+                            {/* Toggle Privacidade */}
+                            <View style={styles.toggleRow}>
+                                <View style={styles.toggleInfo}>
+                                    <Ionicons
+                                        name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
+                                        size={20}
+                                        color={isPublic ? colors.success.primary : colors.text.secondary}
+                                    />
+                                    <View style={styles.toggleTextContainer}>
+                                        <Text style={styles.toggleTitle}>
+                                            {isPublic ? 'Squad Pública' : 'Squad Privada'}
+                                        </Text>
+                                        <Text style={styles.toggleSubtitle}>
+                                            {isPublic
+                                                ? 'Qualquer pessoa pode ver e juntar-se'
+                                                : 'Só com código de convite'}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Pressable
+                                    style={[styles.toggleSwitch, isPublic && styles.toggleSwitchActive]}
+                                    onPress={() => setIsPublic(!isPublic)}
+                                >
+                                    <View style={[styles.toggleThumb, isPublic && styles.toggleThumbActive]} />
+                                </Pressable>
+                            </View>
+
+                            {/* Código Personalizado */}
+                            <Text style={styles.inputLabel}>Código de Convite (opcional)</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Ex: TURMA12A (gerado se vazio)"
+                                placeholderTextColor={colors.text.tertiary}
+                                value={customCode}
+                                onChangeText={(text) => setCustomCode(text.toUpperCase())}
+                                autoCapitalize="characters"
+                                maxLength={10}
+                            />
+                            <Text style={styles.inputHint}>
+                                Deixa vazio para gerar automaticamente
+                            </Text>
+
+                            {/* Botão Criar */}
                             <Pressable style={styles.submitButton} onPress={handleCreateTeam} disabled={creating}>
                                 {creating ? (
                                     <ActivityIndicator color={colors.text.inverse} />
@@ -211,16 +301,20 @@ export default function TeamsScreen() {
 // ============================================
 // SUB COMPONENTS
 // ============================================
-function SquadCard({ team }: { team: TeamWithMemberCount }) {
+function SquadCard({ team }: { team: TeamWithRole }) {
     const color = team.color || SQUAD_COLORS[0];
     const initial = team.name.charAt(0).toUpperCase();
 
     return (
         <Pressable style={styles.squadCard} onPress={() => router.push(`/team/${team.id}` as any)}>
-            {/* Avatar */}
-            <View style={[styles.squadAvatar, { backgroundColor: `${color}20` }]}>
-                <Text style={[styles.squadInitial, { color }]}>{initial}</Text>
-            </View>
+            {/* Avatar - Mostra icon_url se existir */}
+            {team.icon_url ? (
+                <Image source={{ uri: team.icon_url }} style={styles.squadAvatar} />
+            ) : (
+                <View style={[styles.squadAvatarPlaceholder, { backgroundColor: `${color}20` }]}>
+                    <Text style={[styles.squadInitial, { color }]}>{initial}</Text>
+                </View>
+            )}
 
             {/* Content */}
             <View style={styles.squadContent}>
@@ -229,10 +323,9 @@ function SquadCard({ team }: { team: TeamWithMemberCount }) {
                     <Text style={styles.squadDescription} numberOfLines={1}>{team.description}</Text>
                 )}
                 <View style={styles.squadMeta}>
-                    <Ionicons name="people" size={14} color={colors.text.tertiary} />
-                    <Text style={styles.squadMembers}>
-                        {team.member_count} {team.member_count === 1 ? 'membro' : 'membros'}
-                    </Text>
+                    <View style={[styles.roleBadge, { backgroundColor: `${color}20` }]}>
+                        <Text style={[styles.roleText, { color }]}>{team.role}</Text>
+                    </View>
                 </View>
             </View>
 
@@ -323,6 +416,12 @@ const styles = StyleSheet.create({
         width: 52,
         height: 52,
         borderRadius: 14,
+        marginRight: spacing.lg,
+    },
+    squadAvatarPlaceholder: {
+        width: 52,
+        height: 52,
+        borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: spacing.lg,
@@ -350,9 +449,15 @@ const styles = StyleSheet.create({
         marginTop: spacing.sm,
         gap: spacing.xs,
     },
-    squadMembers: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    roleBadge: {
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 2,
+        borderRadius: borderRadius.sm,
+    },
+    roleText: {
+        fontSize: typography.size.xs,
+        fontWeight: typography.weight.medium,
+        textTransform: 'capitalize',
     },
     squadArrow: {
         width: 32,
@@ -474,5 +579,119 @@ const styles = StyleSheet.create({
         fontSize: typography.size.md,
         fontWeight: typography.weight.semibold,
         color: colors.text.inverse,
+    },
+
+    // Action Cards
+    actionCards: {
+        paddingHorizontal: spacing.lg,
+        paddingTop: spacing.md,
+        gap: spacing.sm,
+    },
+    actionCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderRadius: borderRadius.lg,
+        padding: spacing.md,
+        ...shadows.sm,
+    },
+    actionIconContainer: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    actionTextContainer: {
+        flex: 1,
+        marginLeft: spacing.md,
+    },
+    actionTitle: {
+        fontSize: typography.size.base,
+        fontWeight: typography.weight.semibold,
+        color: colors.text.primary,
+    },
+    actionSubtitle: {
+        fontSize: typography.size.sm,
+        color: colors.text.tertiary,
+    },
+
+    // Color Picker
+    colorPicker: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing.sm,
+        marginTop: spacing.xs,
+    },
+    colorOption: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    colorOptionSelected: {
+        borderWidth: 3,
+        borderColor: colors.text.inverse,
+        ...shadows.sm,
+    },
+
+    // Toggle / Switch
+    toggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: spacing.lg,
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.md,
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: borderRadius.md,
+    },
+    toggleInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+        gap: spacing.sm,
+    },
+    toggleTextContainer: {
+        flex: 1,
+    },
+    toggleTitle: {
+        fontSize: typography.size.sm,
+        fontWeight: typography.weight.medium,
+        color: colors.text.primary,
+    },
+    toggleSubtitle: {
+        fontSize: typography.size.xs,
+        color: colors.text.tertiary,
+    },
+    toggleSwitch: {
+        width: 50,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: colors.divider,
+        padding: 2,
+        justifyContent: 'center',
+    },
+    toggleSwitchActive: {
+        backgroundColor: colors.success.primary,
+    },
+    toggleThumb: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: colors.text.inverse,
+        ...shadows.sm,
+    },
+    toggleThumbActive: {
+        alignSelf: 'flex-end',
+    },
+
+    // Input Hint
+    inputHint: {
+        fontSize: typography.size.xs,
+        color: colors.text.tertiary,
+        marginTop: spacing.xs,
+        marginBottom: spacing.sm,
     },
 });

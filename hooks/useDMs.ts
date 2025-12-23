@@ -27,6 +27,7 @@ export function useConversations() {
   const { user } = useAuthContext();
   const [conversations, setConversations] = useState<ConversationWithUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const realtimeRef = useRef<RealtimeChannel | null>(null);
 
   const loadConversations = useCallback(async () => {
     if (!user?.id) return;
@@ -43,7 +44,7 @@ export function useConversations() {
           user2:profiles!dm_conversations_user2_id_fkey(*)
         `)
         .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
-        .order('last_message_at', { ascending: false });
+        .order('last_message_at', { ascending: false, nullsFirst: false });
 
       if (error) throw error;
 
@@ -86,9 +87,38 @@ export function useConversations() {
     }
   }, [user?.id]);
 
+  // Realtime: atualizar quando novas mensagens chegam
   useEffect(() => {
+    if (!user?.id) return;
+
     loadConversations();
-  }, [loadConversations]);
+
+    // Subscrever a mudanças em dm_messages e dm_conversations
+    realtimeRef.current = supabase
+      .channel('conversations_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'dm_messages' },
+        () => {
+          // Recarregar lista quando qualquer mensagem muda
+          loadConversations();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'dm_conversations' },
+        () => {
+          loadConversations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (realtimeRef.current) {
+        supabase.removeChannel(realtimeRef.current);
+      }
+    };
+  }, [user?.id, loadConversations]);
 
   return { conversations, loading, refetch: loadConversations };
 }
@@ -123,14 +153,14 @@ export function useDMMessages(conversationId: string | null) {
       if (error) throw error;
       setMessages((data as DMMessageWithSender[]) || []);
 
-      // Marcar como lidas
+      // Marcar mensagens como LIDAS (read) - apenas as que não são minhas e estão delivered
       if (user?.id) {
         await supabase
           .from('dm_messages')
-          .update({ is_read: true })
+          .update({ status: 'read', is_read: true })
           .eq('conversation_id', conversationId)
           .neq('sender_id', user.id)
-          .eq('is_read', false);
+          .in('status', ['sent', 'delivered']); // Marca as que ainda não foram lidas
       }
     } catch (err) {
       console.error('Erro ao carregar mensagens:', err);
@@ -151,6 +181,7 @@ export function useDMMessages(conversationId: string | null) {
         sender_id: user.id,
         content: content.trim() || '📷',
         file_url: fileUrl || null,
+        status: 'sent', // Mensagem nasce como 'sent' (✓)
       });
 
       if (error) throw error;
@@ -197,13 +228,29 @@ export function useDMMessages(conversationId: string | null) {
 
           setMessages((prev) => [newMsg, ...prev]);
 
-          // Marcar como lida se não sou eu
+          // Se a mensagem não é minha, marcá-la como 'delivered' -> 'read'
+          // Como o utilizador está com o chat aberto, marcamos direto como 'read'
           if (payload.new.sender_id !== user?.id) {
             await supabase
               .from('dm_messages')
-              .update({ is_read: true })
+              .update({ status: 'read', is_read: true })
               .eq('id', payload.new.id);
           }
+        }
+      )
+      // Também ouvir UPDATEs para atualizar status das minhas mensagens (quando o outro lê)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${conversationId}` },
+        (payload) => {
+          // Atualizar o status na lista local
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === payload.new.id
+                ? { ...msg, status: payload.new.status, is_read: payload.new.is_read }
+                : msg
+            )
+          );
         }
       )
       .subscribe();

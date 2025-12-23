@@ -78,12 +78,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
             // Verificar se estamos numa rota de autenticação
             const inAuthGroup = segments[0] === '(auth)';
             const inOnboarding = segments[1] === 'onboarding';
+            const inEducationSetup = segments[1] === 'education-setup';
 
             if (!session && !inAuthGroup) {
                 // Utilizador NÃO está logado e NÃO está na página de auth
                 console.log('➡️ Redirecting to login');
                 router.replace('/(auth)/login');
-            } else if (session && inAuthGroup && !inOnboarding) {
+            } else if (session && inAuthGroup && !inOnboarding && !inEducationSetup) {
                 // Utilizador ESTÁ logado, verificar se tem perfil completo
                 const { data: profile } = await supabase
                     .from('profiles')
@@ -96,9 +97,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
                     console.log('➡️ Redirecting to onboarding (profile incomplete)');
                     router.replace('/(auth)/onboarding');
                 } else {
-                    // Perfil completo - ir para a app
-                    console.log('➡️ Redirecting to tabs');
-                    router.replace('/(tabs)');
+                    // Verificar se tem dados de educação
+                    const { data: education } = await supabase
+                        .from('user_education')
+                        .select('user_id')
+                        .eq('user_id', session.user.id)
+                        .single();
+
+                    if (!education) {
+                        // Educação não configurada - ir para education-setup
+                        console.log('➡️ Redirecting to education-setup');
+                        router.replace('/(auth)/education-setup' as any);
+                    } else {
+                        // Perfil completo - ir para a app
+                        console.log('➡️ Redirecting to tabs');
+                        router.replace('/(tabs)');
+                    }
                 }
             }
         };

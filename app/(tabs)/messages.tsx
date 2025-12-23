@@ -2,8 +2,9 @@ import { ConversationWithUser, useConversations } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -21,6 +22,13 @@ export default function MessagesScreen() {
     const { pendingRequests } = useFriends();
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<'messages' | 'requests'>('messages');
+
+    // Refetch quando o ecrã ganha foco (ex: volta do chat)
+    useFocusEffect(
+        useCallback(() => {
+            refetch();
+        }, [refetch])
+    );
 
     const handleRefresh = async () => {
         setRefreshing(true);

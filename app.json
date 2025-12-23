@@ -56,7 +56,8 @@
         {
           "calendarPermission": "A Escolaa precisa de aceder ao teu calendário para sincronizar as tuas aulas e eventos pessoais."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

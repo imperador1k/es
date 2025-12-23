@@ -27,6 +27,7 @@ export const colors = {
     primary: '#6366F1',      // Indigo vibrante
     light: '#EEF2FF',        // Indigo muito claro
     dark: '#4F46E5',         // Indigo escuro
+    subtle: '#EEF2FF',       // Alias para light (mais semântico)
   },
   
   // Success - Verde Esmeralda
@@ -34,6 +35,7 @@ export const colors = {
     primary: '#10B981',
     light: '#D1FAE5',
     dark: '#059669',
+    subtle: '#D1FAE5',       // Alias para light (mais semântico)
   },
   
   // Warning - Âmbar

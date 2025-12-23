@@ -120,9 +120,9 @@ export default function OnboardingScreen() {
 
             setStep('done');
 
-            // Pequeno delay para mostrar animação
+            // Ir para setup educacional
             setTimeout(() => {
-                router.replace('/(tabs)');
+                router.replace('/(auth)/education-setup' as any);
             }, 1500);
         } catch (err: any) {
             console.error('Erro ao guardar perfil:', err);

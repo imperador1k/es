@@ -66,12 +66,40 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
+        name="subjects"
+        options={{
+          title: 'Aulas',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'book' : 'book-outline'}
+              size={22}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="messages"
         options={{
           title: 'Chat',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+              size={22}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="activity"
+        options={{
+          title: 'Atividade',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'notifications' : 'notifications-outline'}
               size={22}
               color={color}
             />

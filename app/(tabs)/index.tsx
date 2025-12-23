@@ -1,3 +1,4 @@
+import { NextClassCard } from '@/components/schedule/NextClassCard';
 import { useTasks } from '@/hooks/useTasks';
 import { borderRadius, colors, getQuestStyle, getTierStyle, shadows, spacing, typography } from '@/lib/theme';
 import { useProfile } from '@/providers/ProfileProvider';
@@ -117,6 +118,9 @@ export default function HomeScreen() {
             <View style={[styles.tierDot, { backgroundColor: tierStyle.accent }]} />
           </Pressable>
         </View>
+
+        {/* ========== NEXT CLASS CARD ========== */}
+        <NextClassCard onPress={() => router.push('/(tabs)/subjects' as any)} />
 
         {/* ========== FEATURED QUEST CARD ========== */}
         {todayQuest ? (
