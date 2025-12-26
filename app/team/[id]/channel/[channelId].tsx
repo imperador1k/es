@@ -6,6 +6,9 @@
 import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { useProfile } from '@/providers/ProfileProvider';
+import { useTeam } from '@/providers/TeamsProvider';
+import { notifyNewMessage } from '@/services/teamNotifications';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -50,6 +53,8 @@ interface Message {
 export default function ChannelChatScreen() {
     const { id: teamId, channelId } = useLocalSearchParams<{ id: string; channelId: string }>();
     const { user } = useAuthContext();
+    const { profile } = useProfile();
+    const { team } = useTeam(teamId);
     const flatListRef = useRef<FlatList>(null);
 
     // Estados
@@ -189,7 +194,7 @@ export default function ChannelChatScreen() {
 
     const handleSend = async () => {
         const content = inputText.trim();
-        if (!content || !channelId || !user?.id) return;
+        if (!content || !channelId || !user?.id || !teamId) return;
 
         setSending(true);
         setInputText('');
@@ -202,7 +207,17 @@ export default function ChannelChatScreen() {
             });
 
             if (error) throw error;
-            // Realtime vai adicionar a mensagem automaticamente
+
+            // Enviar notificação push para outros membros
+            notifyNewMessage({
+                channelId,
+                channelName: channelName || 'Canal',
+                teamId,
+                teamName: team?.name || 'Equipa',
+                senderName: profile?.full_name || profile?.username || 'Alguém',
+                messagePreview: content,
+                senderId: user.id,
+            });
         } catch (err) {
             console.error('Erro ao enviar:', err);
             setInputText(content); // Restaurar texto

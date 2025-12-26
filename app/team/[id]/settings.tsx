@@ -24,6 +24,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { useProfile } from '@/providers/ProfileProvider';
+import { notifyTeamUpdated } from '@/services/teamNotifications';
 import { TeamRole } from '@/types/database.types';
 
 // ============================================
@@ -49,6 +51,7 @@ export default function TeamSettingsScreen() {
     const { id: teamId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const { user } = useAuthContext();
+    const { profile } = useProfile();
 
     // Estados
     const [loading, setLoading] = useState(true);
@@ -167,6 +170,16 @@ export default function TeamSettingsScreen() {
                 is_public: editIsPublic,
             });
             setHasChanges(false);
+
+            // Notificar outros membros das alterações
+            notifyTeamUpdated({
+                teamId: team.id,
+                teamName: editName.trim(),
+                changerName: profile?.full_name || profile?.username || 'Alguém',
+                changerId: user?.id || '',
+                changeDescription: 'atualizou as definições da equipa',
+            });
+
             Alert.alert('✅ Guardado', 'As alterações foram guardadas.');
         } catch (err: any) {
             console.error('❌ Erro ao guardar:', err);

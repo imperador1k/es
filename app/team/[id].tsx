@@ -3,6 +3,7 @@ import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme'
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { useTeam } from '@/providers/TeamsProvider';
+import { notifyNewTask } from '@/services/teamNotifications';
 import { Channel } from '@/types/database.types';
 import { canUser, ROLE_LABELS } from '@/utils/permissions';
 import { Ionicons } from '@expo/vector-icons';
@@ -115,6 +116,17 @@ export default function TeamDetailsScreen() {
             });
 
             if (rpcError) throw rpcError;
+
+            // Enviar notificação push para membros
+            notifyNewTask({
+                taskId: '', // RPC não retorna ID, mas não é crítico
+                taskTitle: taskTitle.trim(),
+                teamId: id,
+                teamName: team?.name || 'Equipa',
+                creatorName: profile?.full_name || profile?.username || 'Alguém',
+                creatorId: user.id,
+                dueDate: taskDueDate.toISOString(),
+            });
 
             // Fechar modal e resetar campos
             setTaskModalVisible(false);
@@ -270,6 +282,16 @@ export default function TeamDetailsScreen() {
                         <Ionicons name="people" size={22} color={colors.danger.primary} />
                     </View>
                     <Text style={styles.quickActionText}>Membros</Text>
+                </Pressable>
+
+                <Pressable
+                    style={styles.quickActionButton}
+                    onPress={() => router.push(`/team/${id}/leaderboard` as any)}
+                >
+                    <View style={[styles.quickActionIcon, { backgroundColor: '#FFD70015' }]}>
+                        <Ionicons name="trophy" size={22} color="#FFD700" />
+                    </View>
+                    <Text style={styles.quickActionText}>Ranking</Text>
                 </Pressable>
             </View>
 

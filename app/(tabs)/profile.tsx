@@ -4,6 +4,7 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Tier } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -177,6 +178,14 @@ export default function ProfileScreen() {
                     <View style={styles.progressBar}>
                         <View style={[styles.progressFill, { width: `${progress}%` }]} />
                     </View>
+                    <Pressable
+                        style={styles.shopButton}
+                        onPress={() => router.push('/shop' as any)}
+                    >
+                        <Ionicons name="bag" size={18} color={colors.accent.primary} />
+                        <Text style={styles.shopButtonText}>Loja de Recompensas</Text>
+                        <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
+                    </Pressable>
                 </View>
 
                 {/* Stats Grid */}
@@ -196,19 +205,19 @@ export default function ProfileScreen() {
                         <Text style={styles.statValue}>{level}</Text>
                         <Text style={styles.statLabel}>Nível</Text>
                     </View>
-                    <View style={styles.statBox}>
+                    <Pressable style={styles.statBox} onPress={() => router.push('/badges' as any)}>
                         <View style={[styles.statIconBg, { backgroundColor: `${colors.warning.primary}15` }]}>
-                            <Ionicons name="time" size={22} color={colors.warning.primary} />
+                            <Ionicons name="medal" size={22} color={colors.warning.primary} />
                         </View>
-                        <Text style={styles.statValue}>{profile?.focus_minutes_total || 0}</Text>
-                        <Text style={styles.statLabel}>Min Foco</Text>
-                    </View>
+                        <Text style={styles.statValue}>🏅</Text>
+                        <Text style={styles.statLabel}>Conquistas</Text>
+                    </Pressable>
                 </View>
 
                 {/* Settings Menu */}
                 <Text style={styles.sectionTitle}>Definições</Text>
                 <View style={styles.menuCard}>
-                    <MenuItem icon="settings-outline" label="Preferências" onPress={() => { }} />
+                    <MenuItem icon="analytics-outline" label="Perfil e Analíticas" onPress={() => router.push('/settings')} />
                     <MenuItem icon="notifications-outline" label="Notificações" onPress={() => { }} />
                     <MenuItem icon="shield-outline" label="Privacidade" onPress={() => { }} />
                     <MenuItem icon="help-circle-outline" label="Ajuda" onPress={() => { }} last />
@@ -543,5 +552,23 @@ const styles = StyleSheet.create({
         fontSize: typography.size.xs,
         color: colors.text.tertiary,
         textAlign: 'center',
+    },
+
+    // Shop Button
+    shopButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.accent.subtle,
+        marginTop: spacing.md,
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.lg,
+        borderRadius: borderRadius.lg,
+        gap: spacing.sm,
+    },
+    shopButtonText: {
+        flex: 1,
+        fontSize: typography.size.base,
+        fontWeight: typography.weight.medium,
+        color: colors.accent.primary,
     },
 });

@@ -97,10 +97,14 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.greeting}>Olá, {firstName}</Text>
-            <View style={styles.levelBadge}>
+            <Pressable
+              style={styles.levelBadge}
+              onPress={() => router.push('/leaderboard' as any)}
+            >
               <Ionicons name="flash" size={14} color={colors.accent.primary} />
               <Text style={styles.levelText}>Nível {level} · {userXP.toLocaleString()} XP</Text>
-            </View>
+              <Ionicons name="chevron-forward" size={14} color={colors.text.tertiary} />
+            </Pressable>
           </View>
           <Pressable
             style={styles.avatarContainer}
@@ -186,6 +190,27 @@ export default function HomeScreen() {
             color={colors.warning.primary}
           />
         </View>
+
+        {/* ========== POMODORO QUICK ACCESS ========== */}
+        <Pressable
+          style={styles.pomodoroCard}
+          onPress={() => router.push('/pomodoro' as any)}
+        >
+          <View style={styles.pomodoroLeft}>
+            <View style={styles.pomodoroIcon}>
+              <Ionicons name="timer-outline" size={28} color={colors.accent.primary} />
+            </View>
+            <View>
+              <Text style={styles.pomodoroTitle}>⏱️ Pomodoro Timer</Text>
+              <Text style={styles.pomodoroSubtitle}>
+                Foca-te e ganha XP por cada sessão
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+        </Pressable>
+
+
 
         {/* ========== LEVEL PROGRESS ========== */}
         <View style={styles.progressSection}>
@@ -618,5 +643,43 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     fontWeight: typography.weight.semibold,
     color: colors.accent.primary,
+  },
+
+  // Pomodoro Quick Access
+  pomodoroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.accent.primary + '30',
+    ...shadows.sm,
+  },
+  pomodoroLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  pomodoroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.accent.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pomodoroTitle: {
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+  },
+  pomodoroSubtitle: {
+    fontSize: typography.size.sm,
+    color: colors.text.tertiary,
+    marginTop: 2,
   },
 });

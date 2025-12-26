@@ -23,6 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { useProfile } from '@/providers/ProfileProvider';
+import { notifyMemberJoined } from '@/services/teamNotifications';
 
 // ============================================
 // TYPES
@@ -46,6 +48,7 @@ interface PublicTeam {
 export default function JoinTeamScreen() {
     const router = useRouter();
     const { user } = useAuthContext();
+    const { profile } = useProfile();
 
     // Estado geral
     const [activeTab, setActiveTab] = useState<TabType>('code');
@@ -142,6 +145,21 @@ export default function JoinTeamScreen() {
             if (error) throw error;
 
             if (data) {
+                // Buscar nome da equipa para a notificação
+                const { data: teamData } = await supabase
+                    .from('teams')
+                    .select('name')
+                    .eq('id', data)
+                    .single();
+
+                // Notificar outros membros
+                notifyMemberJoined({
+                    teamId: data,
+                    teamName: teamData?.name || 'Equipa',
+                    memberName: profile?.full_name || profile?.username || 'Alguém',
+                    memberId: user.id,
+                });
+
                 Alert.alert('✅ Sucesso!', 'Entraste na equipa!', [
                     {
                         text: 'Ver Equipa',
@@ -199,6 +217,14 @@ export default function JoinTeamScreen() {
             });
 
             if (error) throw error;
+
+            // Notificar outros membros
+            notifyMemberJoined({
+                teamId: team.id,
+                teamName: team.name,
+                memberName: profile?.full_name || profile?.username || 'Alguém',
+                memberId: user.id,
+            });
 
             Alert.alert('✅ Sucesso!', `Entraste em "${team.name}"!`, [
                 {

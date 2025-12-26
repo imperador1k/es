@@ -31,6 +31,9 @@ export interface Profile {
     current_tier: Tier;
     current_xp: number;
     focus_minutes_total: number;
+    // Status
+    status: 'online' | 'offline' | 'away' | 'dnd';
+    last_seen_at: string | null;
     // Novos campos de Gamificação e Social
     current_streak?: number;       // Dias seguidos
     longest_streak?: number;       // Recorde de dias
@@ -38,7 +41,7 @@ export interface Profile {
     active_theme?: string;         // Tema visual equipado
     active_frame?: string;         // Moldura equipada
     created_at: string;
-    updated_at: string;
+    updated_at?: string;
 }
 
 export interface ProfileUpdate {

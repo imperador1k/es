@@ -1,7 +1,10 @@
 import { AddClassModal } from '@/components/schedule/AddClassModal';
+import { AddEventModal, EventType } from '@/components/schedule/AddEventModal';
+import { QuickAddModal, QuickAddType } from '@/components/schedule/QuickAddModal';
+import { WeeklyScheduleGrid } from '@/components/schedule/WeeklyScheduleGrid';
 import { SUBJECT_COLORS, useSchedule, useSubjects } from '@/hooks/useSubjects';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
-import { DAY_NAMES, DayOfWeek, Subject } from '@/types/database.types';
+import { ClassSessionWithSubject, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCallback, useEffect, useState } from 'react';
@@ -340,9 +343,19 @@ export default function SubjectsScreen() {
     const [classModalVisible, setClassModalVisible] = useState(false);
     const [fabExpanded, setFabExpanded] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+    const [selectedSession, setSelectedSession] = useState<ClassSessionWithSubject | null>(null);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [activeTab, setActiveTab] = useState<'disciplinas' | 'horario'>('disciplinas');
+
+    // Quick Add Modal state
+    const [quickAddVisible, setQuickAddVisible] = useState(false);
+    const [selectedSlot, setSelectedSlot] = useState<{ day: DayOfWeek; hour: number } | null>(null);
+
+    // Event Modal state
+    const [eventModalVisible, setEventModalVisible] = useState(false);
+    const [eventType, setEventType] = useState<EventType>('study');
 
     // Buscar dados ao montar
     useEffect(() => {
@@ -436,10 +449,45 @@ export default function SubjectsScreen() {
         <SafeAreaView style={styles.container} edges={['top']}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.title}>Disciplinas</Text>
-                <Text style={styles.subtitle}>
-                    {subjects.length} {subjects.length === 1 ? 'disciplina' : 'disciplinas'}
+                <Text style={styles.title}>
+                    {activeTab === 'disciplinas' ? 'Disciplinas' : 'Horário'}
                 </Text>
+                <Text style={styles.subtitle}>
+                    {activeTab === 'disciplinas'
+                        ? `${subjects.length} ${subjects.length === 1 ? 'disciplina' : 'disciplinas'}`
+                        : `${schedule.length} ${schedule.length === 1 ? 'aula' : 'aulas'}`
+                    }
+                </Text>
+            </View>
+
+            {/* Tab Selector */}
+            <View style={styles.tabContainer}>
+                <Pressable
+                    style={[styles.tab, activeTab === 'disciplinas' && styles.tabActive]}
+                    onPress={() => setActiveTab('disciplinas')}
+                >
+                    <Ionicons
+                        name="book-outline"
+                        size={18}
+                        color={activeTab === 'disciplinas' ? colors.accent.primary : colors.text.tertiary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'disciplinas' && styles.tabTextActive]}>
+                        Disciplinas
+                    </Text>
+                </Pressable>
+                <Pressable
+                    style={[styles.tab, activeTab === 'horario' && styles.tabActive]}
+                    onPress={() => setActiveTab('horario')}
+                >
+                    <Ionicons
+                        name="calendar-outline"
+                        size={18}
+                        color={activeTab === 'horario' ? colors.accent.primary : colors.text.tertiary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'horario' && styles.tabTextActive]}>
+                        Horário
+                    </Text>
+                </Pressable>
             </View>
 
             {/* Content */}
@@ -456,7 +504,20 @@ export default function SubjectsScreen() {
                         <Text style={styles.retryText}>Tentar novamente</Text>
                     </Pressable>
                 </View>
+            ) : activeTab === 'horario' ? (
+                /* VISTA: Horário Semanal (Grid) */
+                <WeeklyScheduleGrid
+                    onClassPress={(session) => {
+                        setSelectedSession(session);
+                        // TODO: Open edit modal for session
+                    }}
+                    onEmptySlotPress={(day, hour) => {
+                        setSelectedSlot({ day, hour });
+                        setQuickAddVisible(true);
+                    }}
+                />
             ) : (
+                /* VISTA: Lista de Disciplinas */
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
                     refreshControl={
@@ -468,14 +529,6 @@ export default function SubjectsScreen() {
                     }
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* SECÇÃO: Disciplinas */}
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Disciplinas</Text>
-                        <Text style={styles.sectionCount}>
-                            {subjects.length} {subjects.length === 1 ? 'disciplina' : 'disciplinas'}
-                        </Text>
-                    </View>
-
                     {subjects.length === 0 ? (
                         <EmptyState />
                     ) : (
@@ -487,60 +540,6 @@ export default function SubjectsScreen() {
                                 onLongPress={() => handleDeletePress(subject)}
                             />
                         ))
-                    )}
-
-                    {/* SECÇÃO: Horário */}
-                    <View style={[styles.sectionHeader, { marginTop: spacing.xl }]}>
-                        <Text style={styles.sectionTitle}>Horário</Text>
-                        <Text style={styles.sectionCount}>
-                            {schedule.length} {schedule.length === 1 ? 'aula' : 'aulas'}
-                        </Text>
-                    </View>
-
-                    {schedule.length === 0 ? (
-                        <View style={styles.emptySchedule}>
-                            <Ionicons name="calendar-outline" size={40} color={colors.text.tertiary} />
-                            <Text style={styles.emptyScheduleText}>
-                                Sem aulas agendadas. Adiciona aulas ao teu horário!
-                            </Text>
-                        </View>
-                    ) : (
-                        Object.entries(scheduleByDay).map(([day, sessions]) => {
-                            if (sessions.length === 0) return null;
-                            const dayNum = Number(day) as DayOfWeek;
-                            return (
-                                <View key={day} style={styles.daySection}>
-                                    <Text style={styles.dayTitle}>{DAY_NAMES[dayNum]}</Text>
-                                    {sessions.map((session) => (
-                                        <View key={session.id} style={styles.classCard}>
-                                            <View style={[styles.classColorBar, { backgroundColor: session.subject.color }]} />
-                                            <View style={styles.classInfo}>
-                                                <Text style={styles.className}>{session.subject.name}</Text>
-                                                <View style={styles.classDetails}>
-                                                    <View style={styles.classDetail}>
-                                                        <Ionicons name="time-outline" size={14} color={colors.text.tertiary} />
-                                                        <Text style={styles.classDetailText}>
-                                                            {session.start_time.slice(0, 5)} - {session.end_time.slice(0, 5)}
-                                                        </Text>
-                                                    </View>
-                                                    {(session.room || session.subject.room) && (
-                                                        <View style={styles.classDetail}>
-                                                            <Ionicons name="location-outline" size={14} color={colors.text.tertiary} />
-                                                            <Text style={styles.classDetailText}>
-                                                                {session.room || session.subject.room}
-                                                            </Text>
-                                                        </View>
-                                                    )}
-                                                    <View style={styles.classTypeBadge}>
-                                                        <Text style={styles.classTypeBadgeText}>{session.type}</Text>
-                                                    </View>
-                                                </View>
-                                            </View>
-                                        </View>
-                                    ))}
-                                </View>
-                            );
-                        })
                     )}
 
                     {/* Spacer para FAB */}
@@ -629,6 +628,43 @@ export default function SubjectsScreen() {
                 onClose={() => setClassModalVisible(false)}
                 onSuccess={() => fetchSchedule()}
             />
+
+            {/* Quick Add Modal (from schedule grid) */}
+            <QuickAddModal
+                visible={quickAddVisible}
+                day={selectedSlot?.day ?? null}
+                hour={selectedSlot?.hour ?? null}
+                onClose={() => {
+                    setQuickAddVisible(false);
+                    setSelectedSlot(null);
+                }}
+                onSelect={(type: QuickAddType, day: DayOfWeek, hour: number) => {
+                    // Handle based on type
+                    if (type === 'class') {
+                        // Open AddClassModal
+                        setClassModalVisible(true);
+                    } else {
+                        // Open AddEventModal with the selected type
+                        setEventType(type as EventType);
+                        setEventModalVisible(true);
+                    }
+                }}
+            />
+
+            {/* Add Event Modal (for meetings, study sessions, events) */}
+            <AddEventModal
+                visible={eventModalVisible}
+                onClose={() => {
+                    setEventModalVisible(false);
+                    setSelectedSlot(null);
+                }}
+                onSuccess={() => {
+                    fetchSchedule();
+                }}
+                initialDay={selectedSlot?.day}
+                initialHour={selectedSlot?.hour}
+                initialType={eventType}
+            />
         </SafeAreaView>
     );
 }
@@ -656,6 +692,38 @@ const styles = StyleSheet.create({
         fontSize: typography.size.sm,
         color: colors.text.tertiary,
         marginTop: spacing.xs,
+    },
+
+    // Tab Selector
+    tabContainer: {
+        flexDirection: 'row',
+        marginHorizontal: spacing.lg,
+        marginBottom: spacing.md,
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: borderRadius.lg,
+        padding: spacing.xs,
+    },
+    tab: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacing.xs,
+        paddingVertical: spacing.md,
+        borderRadius: borderRadius.md,
+    },
+    tabActive: {
+        backgroundColor: colors.surface,
+        ...shadows.sm,
+    },
+    tabText: {
+        fontSize: typography.size.sm,
+        fontWeight: typography.weight.medium,
+        color: colors.text.tertiary,
+    },
+    tabTextActive: {
+        color: colors.accent.primary,
+        fontWeight: typography.weight.semibold,
     },
 
     // Loading

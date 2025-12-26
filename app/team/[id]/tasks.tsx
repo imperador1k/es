@@ -200,6 +200,9 @@ export default function TeamTasksScreen() {
     const handleToggleCompletion = async (task: TaskWithCompletion) => {
         if (!user?.id) return;
 
+        // Import dinâmico para evitar ciclos
+        const { awardXP } = await import('@/services/xpService');
+
         try {
             if (task.my_completion) {
                 // Desmarcar - DELETE
@@ -228,6 +231,31 @@ export default function TeamTasksScreen() {
                     .single();
 
                 if (error) throw error;
+
+                // 🎮 Atribuir XP ao utilizador
+                const xpResult = await awardXP(user.id, 'task_completed', task.xp_reward || 50);
+
+                // 🏅 Verificar badges desbloqueados
+                const { checkAndAwardBadges } = await import('@/services/badgeService');
+                const badgeResult = await checkAndAwardBadges(user.id);
+
+                // Construir mensagem de feedback
+                const xpGained = task.xp_reward || 50;
+                let message = `+${xpGained} XP`;
+
+                if (xpResult.leveledUp) {
+                    message += `\n\n🎊 Subiste para ${xpResult.newTier}!`;
+                }
+
+                if (badgeResult && badgeResult.badges_awarded.length > 0) {
+                    const badgeNames = badgeResult.badges_awarded.map(b => b.icon).join(' ');
+                    message += `\n\n🏅 Novos badges: ${badgeNames}`;
+                    if (badgeResult.total_xp_gained > 0) {
+                        message += ` (+${badgeResult.total_xp_gained} XP bónus)`;
+                    }
+                }
+
+                Alert.alert('🎉 Tarefa concluída!', message, [{ text: 'Fixe!' }]);
 
                 // Atualizar localmente
                 setTasks(prev =>
