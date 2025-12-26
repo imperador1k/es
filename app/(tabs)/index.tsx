@@ -1,11 +1,13 @@
+import DailySpinWheel from '@/components/DailySpinWheel';
 import { NextClassCard } from '@/components/schedule/NextClassCard';
 import { useTasks } from '@/hooks/useTasks';
+import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, getQuestStyle, getTierStyle, shadows, spacing, typography } from '@/lib/theme';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Task, TaskType } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -16,6 +18,7 @@ import {
   Text,
   View
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ============================================
@@ -48,6 +51,67 @@ export default function HomeScreen() {
   const { profile, loading: profileLoading, refetchProfile } = useProfile();
   const { data: tasks = [], isLoading: tasksLoading, refetch: refetchTasks } = useTasks();
   const [refreshing, setRefreshing] = useState(false);
+  const [spinModalVisible, setSpinModalVisible] = useState(false);
+  const [canSpin, setCanSpin] = useState(false);
+
+  // Animated spin button
+  const spinButtonScale = useSharedValue(1);
+
+  // Check if can spin today
+  const checkSpinAvailability = useCallback(async () => {
+    if (!profile?.id) return;
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('last_daily_spin')
+      .eq('id', profile.id)
+      .single();
+
+    if (!data?.last_daily_spin) {
+      setCanSpin(true);
+    } else {
+      const lastSpin = new Date(data.last_daily_spin);
+      const today = new Date();
+      setCanSpin(lastSpin.toDateString() !== today.toDateString());
+    }
+  }, [profile?.id]);
+
+  // Check spin and auto-popup on load (Temu-style)
+  const [hasShownPopup, setHasShownPopup] = useState(false);
+
+  useEffect(() => {
+    checkSpinAvailability();
+  }, [checkSpinAvailability]);
+
+  // Auto-popup: show modal automatically if user can spin and hasn't seen it yet
+  useEffect(() => {
+    if (canSpin && !hasShownPopup && !profileLoading) {
+      // Small delay for smoother UX
+      const timer = setTimeout(() => {
+        setSpinModalVisible(true);
+        setHasShownPopup(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [canSpin, hasShownPopup, profileLoading]);
+
+  // Spin button pulse animation
+  useEffect(() => {
+    if (canSpin) {
+      spinButtonScale.value = withRepeat(
+        withSequence(
+          withTiming(1.1, { duration: 500 }),
+          withTiming(1, { duration: 500 })
+        ),
+        -1,
+        true
+      );
+    }
+  }, [canSpin]);
+
+  const spinButtonAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: spinButtonScale.value }],
+  }));
 
   // User data
   const firstName = profile?.full_name?.split(' ')[0] || profile?.username || 'Estudante';
@@ -210,7 +274,49 @@ export default function HomeScreen() {
           <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
         </Pressable>
 
+        {/* ========== TASK HUB QUICK ACCESS ========== */}
+        <Pressable
+          style={styles.taskHubCard}
+          onPress={() => router.push('/(app)/tasks' as any)}
+        >
+          <View style={styles.pomodoroLeft}>
+            <View style={[styles.pomodoroIcon, { backgroundColor: colors.success.light }]}>
+              <Ionicons name="checkbox-outline" size={28} color={colors.success.primary} />
+            </View>
+            <View>
+              <Text style={styles.pomodoroTitle}>📋 Task Hub</Text>
+              <Text style={styles.pomodoroSubtitle}>
+                Todas as tuas tarefas num só lugar
+              </Text>
+            </View>
+          </View>
+          <View style={styles.taskHubBadge}>
+            <Text style={styles.taskHubBadgeText}>{pendingTasks.length}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+        </Pressable>
 
+        {/* ========== EVENTS & CHALLENGES QUICK ACCESS ========== */}
+        <Pressable
+          style={styles.eventsCard}
+          onPress={() => router.push('/(app)/events' as any)}
+        >
+          <View style={styles.pomodoroLeft}>
+            <View style={[styles.pomodoroIcon, { backgroundColor: '#7C3AED20' }]}>
+              <Ionicons name="trophy-outline" size={28} color="#7C3AED" />
+            </View>
+            <View>
+              <Text style={styles.pomodoroTitle}>🎮 Eventos & Desafios</Text>
+              <Text style={styles.pomodoroSubtitle}>
+                Roda da Sorte, XP Boost & mais
+              </Text>
+            </View>
+          </View>
+          <View style={styles.liveTag}>
+            <Text style={styles.liveTagText}>LIVE</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+        </Pressable>
 
         {/* ========== LEVEL PROGRESS ========== */}
         <View style={styles.progressSection}>
@@ -244,6 +350,31 @@ export default function HomeScreen() {
         {/* Bottom Spacing */}
         <View style={{ height: 120 }} />
       </ScrollView>
+
+      {/* ========== DAILY SPIN FLOATING BUTTON ========== */}
+      {canSpin && (
+        <Animated.View style={[styles.spinFab, spinButtonAnimatedStyle]}>
+          <Pressable
+            style={styles.spinFabButton}
+            onPress={() => setSpinModalVisible(true)}
+          >
+            <Text style={styles.spinFabIcon}>🎰</Text>
+            <Text style={styles.spinFabText}>GIRAR!</Text>
+          </Pressable>
+        </Animated.View>
+      )}
+
+      {/* Daily Spin Modal */}
+      <DailySpinWheel
+        visible={spinModalVisible}
+        onClose={() => {
+          setSpinModalVisible(false);
+          checkSpinAvailability();
+        }}
+        onSpinComplete={(xp) => {
+          refetchProfile();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -681,5 +812,85 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     color: colors.text.tertiary,
     marginTop: 2,
+  },
+
+  // Task Hub Quick Access
+  taskHubCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.success.primary + '30',
+    ...shadows.sm,
+  },
+  taskHubBadge: {
+    backgroundColor: colors.success.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    marginRight: spacing.sm,
+  },
+  taskHubBadgeText: {
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.bold,
+    color: '#FFF',
+  },
+
+  // Daily Spin FAB
+  spinFab: {
+    position: 'absolute',
+    bottom: 100,
+    right: spacing.lg,
+    zIndex: 100,
+  },
+  spinFabButton: {
+    backgroundColor: colors.warning.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    ...shadows.lg,
+    borderWidth: 3,
+    borderColor: '#FFF',
+  },
+  spinFabIcon: {
+    fontSize: 24,
+  },
+  spinFabText: {
+    fontSize: typography.size.base,
+    fontWeight: typography.weight.bold,
+    color: '#FFF',
+  },
+
+  // Events Card
+  eventsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#7C3AED30',
+    ...shadows.sm,
+  },
+  liveTag: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+    marginRight: spacing.sm,
+  },
+  liveTagText: {
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.bold,
+    color: '#FFF',
   },
 });

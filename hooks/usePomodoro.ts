@@ -14,6 +14,7 @@ import {
     stopPomodoroService,
     updatePomodoroProgress,
 } from '@/services/pomodoroNotificationService';
+import { updateStreakOnSession } from '@/services/streakService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -162,35 +163,31 @@ export function usePomodoro(userId: string | undefined) {
 
       if (sessionError) console.error('Erro ao guardar sessão:', sessionError);
 
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('current_xp, focus_minutes_total, current_tier')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) throw profileError;
-
-      const newXP = (profile?.current_xp || 0) + xpEarned;
-      const newFocusMinutes = (profile?.focus_minutes_total || 0) + durationMinutes;
-      const newTier = calculateTier(newXP);
-
-      await supabase
-        .from('profiles')
-        .update({
-          current_xp: newXP,
-          focus_minutes_total: newFocusMinutes,
-          current_tier: newTier,
-        })
-        .eq('id', userId);
-
-      await supabase.from('xp_history').insert({
-        user_id: userId,
-        amount: xpEarned,
-        source: 'pomodoro_session',
-        description: `Sessão Pomodoro de ${durationMinutes} minutos${stateRef.current.focusTotalEnabled ? ' (Foco Total)' : ''}`,
+      // Award XP via secure RPC (server validates and prevents manipulation)
+      const { data: xpResult, error: xpError } = await supabase.rpc('award_xp_for_pomodoro', {
+        p_duration_minutes: durationMinutes,
+        p_is_focus_total: stateRef.current.focusTotalEnabled,
       });
 
-      console.log(`✅ Sessão guardada: ${durationMinutes}min, +${xpEarned}XP`);
+      if (xpError) {
+        console.error('Erro ao atribuir XP:', xpError);
+        // Fallback: update focus minutes only (XP protected by server)
+        await supabase
+          .from('profiles')
+          .update({
+            focus_minutes_total: supabase.rpc('increment_focus_minutes', { minutes: durationMinutes }),
+          })
+          .eq('id', userId);
+      }
+
+      // Atualizar streak
+      const streakResult = await updateStreakOnSession(userId);
+      if (streakResult.isNewStreak) {
+        console.log(`🔥 Streak atualizada: ${streakResult.currentStreak} dias`);
+      }
+
+      const actualXP = xpResult?.xp_awarded || xpEarned;
+      console.log(`✅ Sessão guardada: ${durationMinutes}min, +${actualXP}XP (via RPC)`);
     } catch (err) {
       console.error('Erro ao guardar na BD:', err);
     }

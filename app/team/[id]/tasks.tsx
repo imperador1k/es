@@ -479,7 +479,7 @@ export default function TeamTasksScreen() {
                 {canUser(userRole, 'CREATE_TASK') && (
                     <Pressable
                         style={styles.addButton}
-                        onPress={() => setCreateModalVisible(true)}
+                        onPress={() => router.push(`/team/${teamId}/tasks/new` as any)}
                     >
                         <Ionicons name="add" size={22} color={colors.text.inverse} />
                     </Pressable>

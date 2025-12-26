@@ -231,14 +231,14 @@ export default function TeamDetailsScreen() {
                 <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
             </Pressable>
 
-            {/* Admin Actions: Nova Tarefa */}
+            {/* Admin Actions: Nova Tarefa (Wizard Avançado) */}
             {canCreateTask && (
                 <Pressable
                     style={styles.newTaskButton}
-                    onPress={() => setTaskModalVisible(true)}
+                    onPress={() => router.push(`/team/${id}/tasks/new` as any)}
                 >
                     <Ionicons name="clipboard-outline" size={20} color={colors.text.inverse} />
-                    <Text style={styles.newTaskButtonText}>Nova Tarefa para Equipa</Text>
+                    <Text style={styles.newTaskButtonText}>Nova Tarefa Avançada</Text>
                 </Pressable>
             )}
 
