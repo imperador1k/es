@@ -1,6 +1,7 @@
 /**
  * Events & Challenges Page
  * Hub Central de Live Ops e Gamificação
+ * SIMPLIFIED VERSION - Bug fixed
  */
 
 import DailySpinWheel from '@/components/DailySpinWheel';
@@ -10,7 +11,7 @@ import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Pressable,
@@ -20,13 +21,6 @@ import {
     Text,
     View,
 } from 'react-native';
-import Animated, {
-    useAnimatedStyle,
-    useSharedValue,
-    withRepeat,
-    withSequence,
-    withTiming,
-} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ============================================
@@ -42,56 +36,41 @@ interface Event {
     end_at: string;
     config: {
         multiplier?: number;
-        target_badge_id?: string;
-        target_xp?: number;
     };
-    banner_url: string | null;
     is_active: boolean;
 }
 
-interface Badge {
-    id: string;
-    name: string;
-    description: string;
-    icon: string;
-    category: string;
-    unlock_condition: string;
-}
-
 // ============================================
-// HELPER: Countdown Timer (using timestamp for stable dependency)
+// SIMPLE COUNTDOWN COMPONENT
 // ============================================
 
-function useCountdown(targetTimestamp: number | null) {
-    const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0, expired: false });
+function CountdownDisplay({ endTime }: { endTime: string }) {
+    const [timeLeft, setTimeLeft] = useState('');
 
     useEffect(() => {
-        if (!targetTimestamp) {
-            setTimeLeft({ hours: 0, minutes: 0, seconds: 0, expired: true });
-            return;
-        }
-
         const calculate = () => {
+            const end = new Date(endTime).getTime();
             const now = Date.now();
-            if (now >= targetTimestamp) {
-                setTimeLeft({ hours: 0, minutes: 0, seconds: 0, expired: true });
+            const diff = end - now;
+
+            if (diff <= 0) {
+                setTimeLeft('Expirado');
                 return;
             }
 
-            const diff = targetTimestamp - now;
             const hours = Math.floor(diff / (1000 * 60 * 60));
             const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
             const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-            setTimeLeft({ hours, minutes, seconds, expired: false });
+            setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
         };
 
         calculate();
         const interval = setInterval(calculate, 1000);
         return () => clearInterval(interval);
-    }, [targetTimestamp]);
+    }, [endTime]);
 
-    return timeLeft;
+    return <Text style={styles.timerText}>{timeLeft}</Text>;
 }
 
 // ============================================
@@ -103,20 +82,15 @@ export default function EventsScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [events, setEvents] = useState<Event[]>([]);
-    const [specialBadges, setSpecialBadges] = useState<Badge[]>([]);
     const [canSpin, setCanSpin] = useState(false);
     const [spinModalVisible, setSpinModalVisible] = useState(false);
     const [currentMultiplier, setCurrentMultiplier] = useState(1.0);
-
-    // Animations
-    const boostPulse = useSharedValue(1);
-    const spinGlow = useSharedValue(0);
 
     // ============================================
     // DATA FETCHING
     // ============================================
 
-    const fetchData = useCallback(async () => {
+    const fetchData = async () => {
         try {
             // 1. Fetch active events
             const { data: eventsData } = await supabase
@@ -148,62 +122,16 @@ export default function EventsScreen() {
                     setCanSpin(lastSpin.toDateString() !== today.toDateString());
                 }
             }
-
-            // 4. Fetch special badges
-            const { data: badgesData } = await supabase
-                .from('badges')
-                .select('*')
-                .eq('category', 'special')
-                .limit(6);
-
-            setSpecialBadges(badgesData || []);
-
         } catch (err) {
             console.error('Error fetching events:', err);
         } finally {
             setLoading(false);
         }
-    }, [profile?.id]);
+    };
 
     useEffect(() => {
         fetchData();
-    }, [fetchData]);
-
-    // Pulse animation for XP boost
-    useEffect(() => {
-        if (currentMultiplier > 1) {
-            boostPulse.value = withRepeat(
-                withSequence(
-                    withTiming(1.05, { duration: 800 }),
-                    withTiming(1, { duration: 800 })
-                ),
-                -1,
-                true
-            );
-        }
-    }, [currentMultiplier]);
-
-    // Glow animation for spin
-    useEffect(() => {
-        if (canSpin) {
-            spinGlow.value = withRepeat(
-                withSequence(
-                    withTiming(1, { duration: 1000 }),
-                    withTiming(0.3, { duration: 1000 })
-                ),
-                -1,
-                true
-            );
-        }
-    }, [canSpin]);
-
-    const boostAnimatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: boostPulse.value }],
-    }));
-
-    const spinGlowStyle = useAnimatedStyle(() => ({
-        opacity: spinGlow.value,
-    }));
+    }, [profile?.id]);
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -216,24 +144,14 @@ export default function EventsScreen() {
     // ============================================
 
     const activeXPBoost = events.find(e => e.type === 'xp_boost');
-    const otherEvents = events.filter(e => e.type !== 'xp_boost');
 
-    // Countdown for XP boost (using timestamp)
-    const xpBoostEndTimestamp = useMemo(() => {
-        if (!activeXPBoost) return null;
-        return new Date(activeXPBoost.end_at).getTime();
-    }, [activeXPBoost?.end_at]);
-    const xpBoostCountdown = useCountdown(xpBoostEndTimestamp);
-
-    // Countdown for next spin (midnight) - memoized timestamp
-    const midnightTimestamp = useMemo(() => {
-        if (canSpin) return null;
+    // Calculate time until midnight for spin
+    const getTimeUntilMidnight = () => {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(0, 0, 0, 0);
-        return tomorrow.getTime();
-    }, [canSpin]);
-    const spinCountdown = useCountdown(midnightTimestamp);
+        return tomorrow.toISOString();
+    };
 
     if (loading) {
         return (
@@ -272,35 +190,28 @@ export default function EventsScreen() {
 
                 {/* ========== XP BOOST BANNER ========== */}
                 {activeXPBoost ? (
-                    <Animated.View style={boostAnimatedStyle}>
-                        <LinearGradient
-                            colors={['#7C3AED', '#F59E0B', '#EF4444']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={styles.xpBoostBanner}
-                        >
-                            <View style={styles.xpBoostContent}>
-                                <Text style={styles.xpBoostEmoji}>⚡</Text>
-                                <View style={styles.xpBoostText}>
-                                    <Text style={styles.xpBoostTitle}>
-                                        XP {activeXPBoost.config.multiplier}x ATIVO!
-                                    </Text>
-                                    <Text style={styles.xpBoostDescription}>
-                                        {activeXPBoost.title}
-                                    </Text>
-                                </View>
-                            </View>
-                            <View style={styles.xpBoostTimer}>
-                                <Ionicons name="time-outline" size={16} color="#FFF" />
-                                <Text style={styles.xpBoostTimerText}>
-                                    {xpBoostCountdown.expired
-                                        ? 'Expirado'
-                                        : `${xpBoostCountdown.hours}h ${xpBoostCountdown.minutes}m ${xpBoostCountdown.seconds}s`
-                                    }
+                    <LinearGradient
+                        colors={['#7C3AED', '#F59E0B', '#EF4444']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.xpBoostBanner}
+                    >
+                        <View style={styles.xpBoostContent}>
+                            <Text style={styles.xpBoostEmoji}>⚡</Text>
+                            <View style={styles.xpBoostText}>
+                                <Text style={styles.xpBoostTitle}>
+                                    XP {activeXPBoost.config.multiplier || 2}x ATIVO!
+                                </Text>
+                                <Text style={styles.xpBoostDescription}>
+                                    {activeXPBoost.title}
                                 </Text>
                             </View>
-                        </LinearGradient>
-                    </Animated.View>
+                        </View>
+                        <View style={styles.xpBoostTimer}>
+                            <Ionicons name="time-outline" size={16} color="#FFF" />
+                            <CountdownDisplay endTime={activeXPBoost.end_at} />
+                        </View>
+                    </LinearGradient>
                 ) : (
                     <View style={styles.noEventBanner}>
                         <Ionicons name="calendar-outline" size={24} color={colors.text.tertiary} />
@@ -315,13 +226,9 @@ export default function EventsScreen() {
                     <Text style={styles.sectionTitle}>🎰 Roda da Sorte Diária</Text>
 
                     <Pressable
-                        style={styles.spinCard}
+                        style={[styles.spinCard, canSpin && styles.spinCardActive]}
                         onPress={() => canSpin && setSpinModalVisible(true)}
                     >
-                        {canSpin && (
-                            <Animated.View style={[styles.spinGlow, spinGlowStyle]} />
-                        )}
-
                         <LinearGradient
                             colors={canSpin ? ['#10B981', '#059669'] : ['#374151', '#1F2937']}
                             style={styles.spinCardGradient}
@@ -333,10 +240,9 @@ export default function EventsScreen() {
                                         {canSpin ? 'GIRAR AGORA (Grátis!)' : 'Volta Amanhã'}
                                     </Text>
                                     <Text style={styles.spinCardSubtitle}>
-                                        {canSpin
-                                            ? 'Ganha até 50 XP!'
-                                            : `Próximo giro em ${spinCountdown.hours}h ${spinCountdown.minutes}m`
-                                        }
+                                        {canSpin ? 'Ganha até 50 XP!' : (
+                                            <CountdownDisplay endTime={getTimeUntilMidnight()} />
+                                        )}
                                     </Text>
                                 </View>
                                 {canSpin ? (
@@ -353,55 +259,76 @@ export default function EventsScreen() {
                     </Pressable>
                 </View>
 
-                {/* ========== OTHER EVENTS ========== */}
-                {otherEvents.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>🏆 Eventos Ativos</Text>
-                        {otherEvents.map(event => (
-                            <EventCard key={event.id} event={event} />
-                        ))}
-                    </View>
-                )}
-
-                {/* ========== LIMITED BADGES ========== */}
+                {/* ========== STUDY ROOMS (LIVE!) ========== */}
                 <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>🏅 Badges Limitados</Text>
-                        <View style={styles.fomoTag}>
-                            <Text style={styles.fomoText}>FOMO!</Text>
-                        </View>
-                    </View>
+                    <Text style={styles.sectionTitle}>🎧 Study Rooms</Text>
 
-                    <View style={styles.badgesGrid}>
-                        {specialBadges.length > 0 ? (
-                            specialBadges.map(badge => (
-                                <BadgeCard key={badge.id} badge={badge} locked />
-                            ))
-                        ) : (
-                            <View style={styles.emptyBadges}>
-                                <Ionicons name="ribbon-outline" size={40} color={colors.text.tertiary} />
-                                <Text style={styles.emptyBadgesText}>
-                                    Badges especiais brevemente...
-                                </Text>
+                    <Pressable
+                        style={styles.studyRoomCard}
+                        onPress={() => router.push('/(app)/study-room' as any)}
+                    >
+                        <LinearGradient
+                            colors={['#10B981', '#059669']}
+                            style={styles.studyRoomGradient}
+                        >
+                            <View style={styles.studyRoomContent}>
+                                <Text style={styles.studyRoomEmoji}>🎧</Text>
+                                <View style={styles.studyRoomText}>
+                                    <Text style={styles.studyRoomTitle}>Entrar nas Salas</Text>
+                                    <Text style={styles.studyRoomSubtitle}>
+                                        Estuda com colegas em tempo real!
+                                    </Text>
+                                </View>
+                                <View style={styles.liveBadge}>
+                                    <Text style={styles.liveText}>LIVE</Text>
+                                </View>
                             </View>
-                        )}
-                    </View>
+                        </LinearGradient>
+                    </Pressable>
                 </View>
 
-                {/* ========== TEAM CHALLENGES (Placeholder) ========== */}
+                {/* ========== AI STUDY ASSISTANT (LIVE!) ========== */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>🤖 AI Study Assistant</Text>
+
+                    <Pressable
+                        style={styles.aiTutorCard}
+                        onPress={() => router.push('/(app)/ai-tutor' as any)}
+                    >
+                        <LinearGradient
+                            colors={['#8B5CF6', '#6D28D9']}
+                            style={styles.aiTutorGradient}
+                        >
+                            <View style={styles.aiTutorContent}>
+                                <Text style={styles.aiTutorEmoji}>🤖</Text>
+                                <View style={styles.aiTutorText}>
+                                    <Text style={styles.aiTutorTitle}>Falar com a AI</Text>
+                                    <Text style={styles.aiTutorSubtitle}>
+                                        Tira dúvidas, fotos e gera imagens!
+                                    </Text>
+                                </View>
+                                <View style={styles.aiBadge}>
+                                    <Text style={styles.aiText}>GEMINI</Text>
+                                </View>
+                            </View>
+                        </LinearGradient>
+                    </Pressable>
+                </View>
+
+                {/* ========== TEAM CHALLENGES ========== */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>👥 Desafios de Equipa</Text>
 
                     <View style={styles.teamChallengeCard}>
                         <View style={styles.teamChallengeHeader}>
-                            <Text style={styles.teamChallengeName}>🎄 Maratona de Natal</Text>
-                            <Text style={styles.teamChallengeTeam}>Classe 12ºB</Text>
+                            <Text style={styles.teamChallengeName}>🎄 Maratona de Estudo</Text>
+                            <Text style={styles.teamChallengeTeam}>Toda a Escola</Text>
                         </View>
                         <View style={styles.teamChallengeProgress}>
                             <View style={styles.teamProgressBar}>
                                 <View style={[styles.teamProgressFill, { width: '45%' }]} />
                             </View>
-                            <Text style={styles.teamProgressText}>450 / 1000 Tarefas</Text>
+                            <Text style={styles.teamProgressText}>450 / 1000 Horas de Foco</Text>
                         </View>
                         <View style={styles.teamChallengeReward}>
                             <Ionicons name="gift-outline" size={16} color={colors.accent.primary} />
@@ -419,82 +346,13 @@ export default function EventsScreen() {
                 visible={spinModalVisible}
                 onClose={() => {
                     setSpinModalVisible(false);
-                    fetchData(); // Refresh to update canSpin state
+                    fetchData();
                 }}
                 onSpinComplete={() => {
                     setCanSpin(false);
                 }}
             />
         </SafeAreaView>
-    );
-}
-
-// ============================================
-// SUB COMPONENTS
-// ============================================
-
-function EventCard({ event }: { event: Event }) {
-    const endTimestamp = useMemo(() => new Date(event.end_at).getTime(), [event.end_at]);
-    const countdown = useCountdown(endTimestamp);
-
-    const getEventIcon = () => {
-        switch (event.type) {
-            case 'focus_marathon': return '🎯';
-            case 'team_clash': return '⚔️';
-            case 'login_streak': return '🔥';
-            default: return '🎮';
-        }
-    };
-
-    const getEventColors = (): [string, string] => {
-        switch (event.type) {
-            case 'focus_marathon': return ['#3B82F6', '#1D4ED8'];
-            case 'team_clash': return ['#EF4444', '#B91C1C'];
-            case 'login_streak': return ['#F59E0B', '#D97706'];
-            default: return ['#8B5CF6', '#6D28D9'];
-        }
-    };
-
-    return (
-        <LinearGradient colors={getEventColors()} style={styles.eventCard}>
-            <View style={styles.eventCardContent}>
-                <Text style={styles.eventCardEmoji}>{getEventIcon()}</Text>
-                <View style={styles.eventCardText}>
-                    <Text style={styles.eventCardTitle}>{event.title}</Text>
-                    <Text style={styles.eventCardDescription} numberOfLines={2}>
-                        {event.description}
-                    </Text>
-                </View>
-            </View>
-            <View style={styles.eventCardTimer}>
-                <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.eventCardTimerText}>
-                    {countdown.expired
-                        ? 'Terminado'
-                        : `${countdown.hours}h ${countdown.minutes}m restantes`
-                    }
-                </Text>
-            </View>
-        </LinearGradient>
-    );
-}
-
-function BadgeCard({ badge, locked }: { badge: Badge; locked?: boolean }) {
-    return (
-        <View style={[styles.badgeCard, locked && styles.badgeCardLocked]}>
-            <View style={styles.badgeIconContainer}>
-                <Text style={styles.badgeIcon}>{badge.icon || '🏅'}</Text>
-                {locked && (
-                    <View style={styles.badgeLockOverlay}>
-                        <Ionicons name="lock-closed" size={16} color="#FFF" />
-                    </View>
-                )}
-            </View>
-            <Text style={styles.badgeName} numberOfLines={1}>{badge.name}</Text>
-            <Text style={styles.badgeCondition} numberOfLines={2}>
-                {badge.unlock_condition || badge.description}
-            </Text>
-        </View>
     );
 }
 
@@ -544,6 +402,13 @@ const styles = StyleSheet.create({
         color: colors.text.tertiary,
     },
 
+    // Timer
+    timerText: {
+        fontSize: typography.size.sm,
+        fontWeight: typography.weight.semibold,
+        color: '#FFF',
+    },
+
     // XP Boost Banner
     xpBoostBanner: {
         borderRadius: borderRadius.xl,
@@ -583,11 +448,6 @@ const styles = StyleSheet.create({
         borderRadius: borderRadius.full,
         alignSelf: 'flex-start',
     },
-    xpBoostTimerText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
 
     // No Event Banner
     noEventBanner: {
@@ -611,46 +471,22 @@ const styles = StyleSheet.create({
     section: {
         marginBottom: spacing.xl,
     },
-    sectionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        marginBottom: spacing.md,
-    },
     sectionTitle: {
         fontSize: typography.size.lg,
         fontWeight: typography.weight.bold,
         color: colors.text.primary,
         marginBottom: spacing.md,
     },
-    fomoTag: {
-        backgroundColor: '#EF4444',
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 2,
-        borderRadius: borderRadius.sm,
-    },
-    fomoText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
 
     // Spin Card
     spinCard: {
         borderRadius: borderRadius.xl,
         overflow: 'hidden',
-        position: 'relative',
         ...shadows.md,
     },
-    spinGlow: {
-        position: 'absolute',
-        top: -4,
-        left: -4,
-        right: -4,
-        bottom: -4,
-        backgroundColor: '#10B981',
-        borderRadius: borderRadius.xl + 4,
-        zIndex: -1,
+    spinCardActive: {
+        borderWidth: 2,
+        borderColor: '#10B981',
     },
     spinCardGradient: {
         padding: spacing.lg,
@@ -693,108 +529,51 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
 
-    // Event Card
-    eventCard: {
+    // Coming Soon Card
+    comingSoonCard: {
+        backgroundColor: colors.surface,
         borderRadius: borderRadius.xl,
         padding: spacing.lg,
-        marginBottom: spacing.md,
-        ...shadows.md,
+        ...shadows.sm,
     },
-    eventCardContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.md,
+    comingSoonBadge: {
+        backgroundColor: colors.accent.primary,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 4,
+        borderRadius: borderRadius.sm,
+        alignSelf: 'flex-start',
+        marginBottom: spacing.sm,
     },
-    eventCardEmoji: {
-        fontSize: 32,
-    },
-    eventCardText: {
-        flex: 1,
-    },
-    eventCardTitle: {
-        fontSize: typography.size.base,
+    comingSoonText: {
+        fontSize: typography.size.xs,
         fontWeight: typography.weight.bold,
         color: '#FFF',
     },
-    eventCardDescription: {
+    comingSoonTitle: {
+        fontSize: typography.size.lg,
+        fontWeight: typography.weight.bold,
+        color: colors.text.primary,
+        marginBottom: spacing.xs,
+    },
+    comingSoonDescription: {
         fontSize: typography.size.sm,
-        color: 'rgba(255,255,255,0.8)',
-        marginTop: 2,
+        color: colors.text.secondary,
+        marginBottom: spacing.md,
+        lineHeight: 20,
     },
-    eventCardTimer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        marginTop: spacing.md,
-    },
-    eventCardTimerText: {
-        fontSize: typography.size.sm,
-        color: 'rgba(255,255,255,0.8)',
-    },
-
-    // Badges
-    badgesGrid: {
+    comingSoonFeatures: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: spacing.md,
     },
-    badgeCard: {
-        width: '30%',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
+    featureItem: {
+        flexDirection: 'row',
         alignItems: 'center',
-        ...shadows.sm,
+        gap: spacing.xs,
     },
-    badgeCardLocked: {
-        opacity: 0.7,
-    },
-    badgeIconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.background,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.sm,
-        position: 'relative',
-    },
-    badgeIcon: {
-        fontSize: 24,
-    },
-    badgeLockOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        borderRadius: 24,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    badgeName: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        textAlign: 'center',
-    },
-    badgeCondition: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        textAlign: 'center',
-        marginTop: 2,
-    },
-    emptyBadges: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing.xl,
-    },
-    emptyBadgesText: {
+    featureText: {
         fontSize: typography.size.sm,
         color: colors.text.tertiary,
-        marginTop: spacing.sm,
     },
 
     // Team Challenges
@@ -852,5 +631,87 @@ const styles = StyleSheet.create({
         fontSize: typography.size.sm,
         color: colors.accent.primary,
         fontWeight: typography.weight.medium,
+    },
+
+    // Study Room Card
+    studyRoomCard: {
+        borderRadius: borderRadius.xl,
+        overflow: 'hidden',
+        ...shadows.md,
+    },
+    studyRoomGradient: {
+        padding: spacing.lg,
+    },
+    studyRoomContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+    },
+    studyRoomEmoji: {
+        fontSize: 40,
+    },
+    studyRoomText: {
+        flex: 1,
+    },
+    studyRoomTitle: {
+        fontSize: typography.size.lg,
+        fontWeight: typography.weight.bold,
+        color: '#FFF',
+    },
+    studyRoomSubtitle: {
+        fontSize: typography.size.sm,
+        color: 'rgba(255,255,255,0.9)',
+    },
+    liveBadge: {
+        backgroundColor: '#EF4444',
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 4,
+        borderRadius: borderRadius.sm,
+    },
+    liveText: {
+        fontSize: typography.size.xs,
+        fontWeight: typography.weight.bold,
+        color: '#FFF',
+    },
+
+    // AI Tutor Card (reusing study room styles structure)
+    aiTutorCard: {
+        borderRadius: borderRadius.xl,
+        overflow: 'hidden',
+        ...shadows.md,
+    },
+    aiTutorGradient: {
+        padding: spacing.lg,
+    },
+    aiTutorContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+    },
+    aiTutorEmoji: {
+        fontSize: 40,
+    },
+    aiTutorText: {
+        flex: 1,
+    },
+    aiTutorTitle: {
+        fontSize: typography.size.lg,
+        fontWeight: typography.weight.bold,
+        color: '#FFF',
+    },
+    aiTutorSubtitle: {
+        fontSize: typography.size.sm,
+        color: 'rgba(255,255,255,0.9)',
+    },
+    aiBadge: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 4,
+        borderRadius: borderRadius.sm,
+    },
+    aiText: {
+        fontSize: typography.size.xs,
+        fontWeight: typography.weight.bold,
+        color: '#FFF',
     },
 });

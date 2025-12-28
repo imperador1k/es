@@ -129,30 +129,9 @@ export default function TeamTasksScreen() {
 
             if (tasksError) throw tasksError;
 
-            // Buscar minhas completions
-            const { data: completionsData, error: completionsError } = await supabase
-                .from('team_task_completions')
-                .select('*')
-                .eq('user_id', user.id);
-
-            if (completionsError) throw completionsError;
-
-            // Criar mapa de completions
-            const completionsMap = new Map<string, TeamTaskCompletion>();
-            (completionsData || []).forEach(c => {
-                completionsMap.set(c.task_id, c);
-            });
-
-            // Combinar dados
-            const combined: TaskWithCompletion[] = (tasksData || []).map(task => ({
-                ...task,
-                my_completion: completionsMap.get(task.id) || null,
-            }));
-
-            setTasks(combined);
-
-            // Buscar role (só 1x)
-            if (!userRole) {
+            // Buscar role primeiro para saber se filtrar
+            let currentRole = userRole;
+            if (!currentRole) {
                 const { data: memberData } = await supabase
                     .from('team_members')
                     .select('role')
@@ -161,9 +140,44 @@ export default function TeamTasksScreen() {
                     .single();
 
                 if (memberData) {
-                    setUserRole(memberData.role as TeamRole);
+                    currentRole = memberData.role as TeamRole;
+                    setUserRole(currentRole);
                 }
             }
+
+            // Buscar minhas submissions (usando task_submissions)
+            const { data: submissionsData } = await supabase
+                .from('task_submissions')
+                .select('task_id, status, submitted_at')
+                .eq('user_id', user.id);
+
+            // Criar mapa de submissions
+            const submissionsMap = new Map<string, { status: string; submitted_at: string | null }>();
+            (submissionsData || []).forEach(s => {
+                submissionsMap.set(s.task_id, { status: s.status, submitted_at: s.submitted_at });
+            });
+
+            // Filtrar tarefas:
+            // - Admins/owners/moderators: veem TUDO (para gerir)
+            // - Members: só veem tarefas que NÃO criaram
+            const isAdmin = ['owner', 'admin', 'moderator'].includes(currentRole || '');
+            const filteredTasks = (tasksData || []).filter(task => {
+                if (isAdmin) return true; // Admins veem tudo
+                return task.created_by !== user.id; // Membros não veem suas próprias
+            });
+
+            // Combinar dados com status de submission
+            const combined: TaskWithCompletion[] = filteredTasks.map(task => ({
+                ...task,
+                my_completion: submissionsMap.get(task.id) ? {
+                    task_id: task.id,
+                    user_id: user.id,
+                    status: submissionsMap.get(task.id)?.status || 'pending',
+                    completed_at: submissionsMap.get(task.id)?.submitted_at || null,
+                } as any : null,
+            }));
+
+            setTasks(combined);
 
             // Buscar nome da equipa (só 1x)
             if (!teamName) {

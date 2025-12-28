@@ -7,12 +7,15 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 import "../global.css";
 
+import { MiniPlayer } from '@/components/MiniPlayer';
 import { useColorScheme } from '@/components/useColorScheme';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { AudioPlayerProvider } from '@/providers/AudioPlayerProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ProfileProvider } from '@/providers/ProfileProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { TeamsProvider } from '@/providers/TeamsProvider';
+import { View } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -73,15 +76,20 @@ function RootLayoutNav() {
       <AuthProvider>
         <ProfileProvider>
           <TeamsProvider>
-            <PushNotificationsInitializer>
-              <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(auth)" />
-                  <Stack.Screen name="(tabs)" />
-                  <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-                </Stack>
-              </ThemeProvider>
-            </PushNotificationsInitializer>
+            <AudioPlayerProvider>
+              <PushNotificationsInitializer>
+                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                  <View style={{ flex: 1 }}>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(auth)" />
+                      <Stack.Screen name="(tabs)" />
+                      <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                    </Stack>
+                    <MiniPlayer />
+                  </View>
+                </ThemeProvider>
+              </PushNotificationsInitializer>
+            </AudioPlayerProvider>
           </TeamsProvider>
         </ProfileProvider>
       </AuthProvider>

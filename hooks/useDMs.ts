@@ -120,7 +120,10 @@ export function useConversations() {
     };
   }, [user?.id, loadConversations]);
 
-  return { conversations, loading, refetch: loadConversations };
+  // Count conversations with unread messages
+  const unreadConversationsCount = conversations.filter(c => c.unread_count > 0).length;
+
+  return { conversations, loading, refetch: loadConversations, unreadConversationsCount };
 }
 
 /**

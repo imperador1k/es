@@ -1,47 +1,78 @@
-import { DMMessageWithSender, useDMMessages } from '@/hooks/useDMs';
+/**
+ * DM Chat Screen
+ * Direct Messages with Rich Media Support
+ */
+
+import { ChatInputBar } from '@/components/ChatInputBar';
+import { MessageBubble } from '@/components/MessageBubble';
 import { useUserStatus } from '@/hooks/usePresence';
 import { useTyping } from '@/hooks/useTyping';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { colors, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Profile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
     Image,
-    KeyboardAvoidingView,
-    Platform,
     Pressable,
     StyleSheet,
     Text,
-    TextInput,
     View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type MessageStatus = 'sent' | 'delivered' | 'read';
+// ============================================
+// TYPES
+// ============================================
+
+interface DMMessage {
+    id: string;
+    content: string;
+    created_at: string;
+    sender_id: string;
+    status: 'sent' | 'delivered' | 'read';
+    attachment_url?: string | null;
+    attachment_type?: 'image' | 'video' | 'file' | 'gif' | null;
+    attachment_name?: string | null;
+    sender?: {
+        username: string;
+        avatar_url: string | null;
+    };
+}
+
+// ============================================
+// COMPONENT
+// ============================================
 
 export default function DMChatScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
     const insets = useSafeAreaInsets();
+    const flatListRef = useRef<FlatList>(null);
 
-    const { messages, loading, sending, sendMessage } = useDMMessages(id || null);
-    const { typingText, sendTyping, sendStopTyping } = useTyping(id || null);
-    const [newMessage, setNewMessage] = useState('');
+    const [messages, setMessages] = useState<DMMessage[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [sending, setSending] = useState(false);
     const [otherUser, setOtherUser] = useState<Profile | null>(null);
 
-    // Hook para status do outro utilizador
+    const { typingText, sendTyping, sendStopTyping } = useTyping(id || null);
     const { status: otherUserStatus, formatLastSeen } = useUserStatus(otherUser?.id || null);
 
-    // Carregar dados do outro utilizador
+    // ============================================
+    // LOAD OTHER USER & MESSAGES
+    // ============================================
+
     useEffect(() => {
-        async function loadOtherUser() {
+        async function load() {
             if (!id || !user?.id) return;
 
+            setLoading(true);
+
+            // Get conversation & other user
             const { data: conv } = await supabase
                 .from('dm_conversations')
                 .select('user1_id, user2_id')
@@ -58,19 +89,176 @@ export default function DMChatScreen() {
 
                 if (profile) setOtherUser(profile as Profile);
             }
+
+            // Load messages
+            const { data: msgs } = await supabase
+                .from('dm_messages')
+                .select(`
+                    id, content, created_at, sender_id, status,
+                    attachment_url, attachment_type, attachment_name,
+                    sender:profiles!dm_messages_sender_id_fkey(username, avatar_url)
+                `)
+                .eq('conversation_id', id)
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (msgs) {
+                const mapped = msgs.map(m => ({
+                    ...m,
+                    sender: Array.isArray(m.sender) ? m.sender[0] : m.sender,
+                })) as DMMessage[];
+                setMessages(mapped);
+
+                // Mark messages as read (messages from other user that are not read yet)
+                const { error: updateError, count } = await supabase
+                    .from('dm_messages')
+                    .update({ status: 'read', is_read: true })
+                    .eq('conversation_id', id)
+                    .neq('sender_id', user.id)
+                    .eq('is_read', false);
+
+                if (updateError) {
+                    console.error('❌ Error marking messages as read:', updateError);
+                } else {
+                    console.log('✅ Marked messages as read');
+                }
+            }
+
+            setLoading(false);
         }
-        loadOtherUser();
+        load();
     }, [id, user?.id]);
 
-    const handleSend = async () => {
-        if (!newMessage.trim()) return;
-        const success = await sendMessage(newMessage);
-        if (success) setNewMessage('');
-    };
+    // ============================================
+    // REALTIME SUBSCRIPTION
+    // ============================================
 
-    const formatTime = (dateStr: string) => {
-        return new Date(dateStr).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-    };
+    useEffect(() => {
+        if (!id) return;
+
+        const channel = supabase
+            .channel(`dm-${id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'dm_messages',
+                    filter: `conversation_id=eq.${id}`,
+                },
+                async (payload) => {
+                    const newMsg = payload.new as DMMessage;
+
+                    // Fetch sender profile
+                    const { data: sender } = await supabase
+                        .from('profiles')
+                        .select('username, avatar_url')
+                        .eq('id', newMsg.sender_id)
+                        .single();
+
+                    const msgWithSender: DMMessage = {
+                        ...newMsg,
+                        sender: sender || undefined,
+                    };
+
+                    setMessages(prev => [msgWithSender, ...prev]);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [id]);
+
+    // ============================================
+    // SEND MESSAGE
+    // ============================================
+
+    const handleSend = useCallback(async (
+        content: string,
+        attachment?: { url: string; type: 'image' | 'video' | 'file' | 'gif'; name?: string }
+    ) => {
+        if (!id || sending || !otherUser) return;
+
+        setSending(true);
+        sendStopTyping();
+
+        try {
+            const { error } = await supabase.rpc('send_dm_message', {
+                p_conversation_id: id,
+                p_content: content.trim() || (attachment ? '📎' : ''),
+                p_attachment_url: attachment?.url || null,
+                p_attachment_type: attachment?.type || null,
+                p_attachment_name: attachment?.name || null,
+            });
+
+            if (error) {
+                console.error('Error sending DM:', error);
+            } else {
+                // Get sender's profile for username
+                const { data: senderProfile } = await supabase
+                    .from('profiles')
+                    .select('username, full_name')
+                    .eq('id', user?.id)
+                    .single();
+
+                const senderName = senderProfile?.full_name || senderProfile?.username || 'Alguém';
+
+                // Create notification for the other user
+                await supabase.from('notifications').insert({
+                    user_id: otherUser.id,
+                    actor_id: user?.id,
+                    type: 'direct_message',
+                    title: `${senderName} enviou-te mensagem`,
+                    content: content.substring(0, 100) || (attachment ? '📎 Anexo' : ''),
+                    resource_id: id,
+                    resource_type: 'message',
+                });
+            }
+        } catch (err) {
+            console.error('Send error:', err);
+        } finally {
+            setSending(false);
+        }
+    }, [id, sending, sendStopTyping, otherUser, user]);
+
+    // ============================================
+    // RENDER MESSAGE
+    // ============================================
+
+    const renderMessage = useCallback(({ item }: { item: DMMessage }) => {
+        const isMe = item.sender_id === user?.id;
+
+        return (
+            <View style={styles.messageWrapper}>
+                <MessageBubble
+                    content={item.content}
+                    isMe={isMe}
+                    attachmentUrl={item.attachment_url}
+                    attachmentType={item.attachment_type}
+                    attachmentName={item.attachment_name}
+                />
+                <View style={[styles.timestampRow, isMe && styles.timestampRowMe]}>
+                    <Text style={styles.timestamp}>
+                        {new Date(item.created_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                    {isMe && (
+                        <Ionicons
+                            name={item.status === 'read' ? 'checkmark-done' : 'checkmark'}
+                            size={12}
+                            color={item.status === 'read' ? '#3B82F6' : colors.text.tertiary}
+                            style={{ marginLeft: 4 }}
+                        />
+                    )}
+                </View>
+            </View>
+        );
+    }, [user?.id]);
+
+    // ============================================
+    // RENDER
+    // ============================================
 
     if (loading) {
         return (
@@ -119,86 +307,31 @@ export default function DMChatScreen() {
 
             {/* Messages */}
             <FlatList
+                ref={flatListRef}
                 data={messages}
                 keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <MessageBubble message={item} isMe={item.sender_id === user?.id} />
-                )}
+                renderItem={renderMessage}
                 contentContainerStyle={styles.messagesList}
                 ListEmptyComponent={<EmptyMessages />}
                 inverted
                 showsVerticalScrollIndicator={false}
             />
 
-            {/* Input */}
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-                <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Mensagem..."
-                        placeholderTextColor={colors.text.tertiary}
-                        value={newMessage}
-                        onChangeText={(text) => {
-                            setNewMessage(text);
-                            if (text.trim()) sendTyping();
-                        }}
-                        onBlur={sendStopTyping}
-                        multiline
-                    />
-                    <Pressable
-                        style={[styles.sendButton, newMessage.trim() && styles.sendButtonActive]}
-                        onPress={handleSend}
-                        disabled={!newMessage.trim() || sending}
-                    >
-                        {sending ? (
-                            <ActivityIndicator size="small" color={colors.text.inverse} />
-                        ) : (
-                            <Ionicons name="send" size={18} color={newMessage.trim() ? colors.text.inverse : colors.text.tertiary} />
-                        )}
-                    </Pressable>
-                </View>
-            </KeyboardAvoidingView>
+            {/* Rich Input Bar */}
+            <View style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
+                <ChatInputBar
+                    onSend={handleSend}
+                    placeholder="Mensagem..."
+                    disabled={sending}
+                />
+            </View>
         </SafeAreaView>
     );
 }
 
-function MessageBubble({ message, isMe }: { message: DMMessageWithSender; isMe: boolean }) {
-    const formatTime = (d: string) => new Date(d).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-
-    // Renderizar indicador de vistos baseado no status
-    const renderReadReceipt = () => {
-        if (!isMe) return null; // Só mostrar nas minhas mensagens
-
-        const status = message.status || 'sent';
-
-        switch (status) {
-            case 'sent':
-                return <Ionicons name="checkmark" size={12} color={colors.text.tertiary} style={{ marginLeft: 4 }} />;
-            case 'delivered':
-                return <Ionicons name="checkmark-done" size={12} color={colors.text.tertiary} style={{ marginLeft: 4 }} />;
-            case 'read':
-                return <Ionicons name="checkmark-done" size={12} color="#3B82F6" style={{ marginLeft: 4 }} />;
-            default:
-                return <Ionicons name="checkmark" size={12} color={colors.text.tertiary} style={{ marginLeft: 4 }} />;
-        }
-    };
-
-    return (
-        <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
-            <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
-                <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
-                    {message.content}
-                </Text>
-                <View style={styles.timestampRow}>
-                    <Text style={[styles.timestamp, isMe && styles.timestampMe]}>
-                        {formatTime(message.created_at)}
-                    </Text>
-                    {renderReadReceipt()}
-                </View>
-            </View>
-        </View>
-    );
-}
+// ============================================
+// EMPTY STATE
+// ============================================
 
 function EmptyMessages() {
     return (
@@ -211,6 +344,10 @@ function EmptyMessages() {
         </View>
     );
 }
+
+// ============================================
+// STYLES
+// ============================================
 
 const styles = StyleSheet.create({
     container: {
@@ -273,7 +410,7 @@ const styles = StyleSheet.create({
         color: colors.text.tertiary,
     },
     headerStatusOnline: {
-        color: colors.success.primary,
+        color: '#10B981',
     },
     menuButton: {
         width: 40,
@@ -285,86 +422,26 @@ const styles = StyleSheet.create({
 
     // Messages
     messagesList: {
-        paddingHorizontal: spacing.lg,
+        paddingHorizontal: spacing.md,
         paddingVertical: spacing.md,
         flexGrow: 1,
     },
-    messageRow: {
-        marginBottom: spacing.xs,
-        alignItems: 'flex-start',
-    },
-    messageRowMe: {
-        alignItems: 'flex-end',
-    },
-    bubble: {
-        maxWidth: '80%',
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-    },
-    bubbleMe: {
-        backgroundColor: colors.accent.primary,
-        borderBottomRightRadius: 4,
-    },
-    bubbleOther: {
-        backgroundColor: colors.surface,
-        borderBottomLeftRadius: 4,
-        ...shadows.sm,
-    },
-    messageText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        lineHeight: 22,
-    },
-    messageTextMe: {
-        color: colors.text.inverse,
-    },
-    timestamp: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+    messageWrapper: {
+        marginBottom: spacing.sm,
     },
     timestampRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        alignSelf: 'flex-end',
-        marginTop: 4,
+        marginTop: 2,
+        marginLeft: spacing.xs,
     },
-    timestampMe: {
-        color: 'rgba(255,255,255,0.7)',
-    },
-
-    // Input
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        paddingHorizontal: spacing.md,
-        paddingTop: spacing.md,
-        backgroundColor: colors.surface,
-        borderTopWidth: 1,
-        borderTopColor: colors.divider,
-    },
-    input: {
-        flex: 1,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.xl,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        maxHeight: 120,
+    timestampRowMe: {
+        justifyContent: 'flex-end',
         marginRight: spacing.xs,
     },
-    sendButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.surfaceSubtle,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    sendButtonActive: {
-        backgroundColor: colors.accent.primary,
-        ...shadows.sm,
+    timestamp: {
+        fontSize: typography.size.xs,
+        color: colors.text.tertiary,
     },
 
     // Empty

@@ -37,6 +37,10 @@ const NOTIFICATION_ICONS: Record<NotificationType, keyof typeof Ionicons.glyphMa
     reply: 'chatbubble-outline',
     reaction: 'heart-outline',
     system: 'information-circle-outline',
+    direct_message: 'mail-outline',
+    new_task: 'document-text-outline',
+    team_invite: 'people-outline',
+    task_submitted: 'cloud-upload-outline',
 };
 
 const NOTIFICATION_COLORS: Record<NotificationType, string> = {
@@ -45,6 +49,10 @@ const NOTIFICATION_COLORS: Record<NotificationType, string> = {
     reply: colors.success.primary,
     reaction: '#EC4899',
     system: colors.text.tertiary,
+    direct_message: '#3B82F6',
+    new_task: '#8B5CF6',
+    team_invite: '#10B981',
+    task_submitted: '#F97316',
 };
 
 function formatRelativeTime(dateStr: string): string {
@@ -157,22 +165,41 @@ export default function ActivityScreen() {
             markAsRead.mutate(notification.id);
         }
 
-        // Navegar para o recurso
-        if (notification.resource_type && notification.resource_id) {
-            switch (notification.resource_type) {
-                case 'task':
-                    router.push('/(tabs)/calendar' as any);
-                    break;
-                case 'channel':
-                    router.push(`/channel/${notification.resource_id}` as any);
-                    break;
-                case 'message':
-                    // Navegar para mensagens se tiver channel_id
+        // Navegar para o recurso baseado no tipo
+        switch (notification.type) {
+            case 'direct_message':
+                // Navegar para a conversa DM
+                if (notification.resource_id) {
+                    router.push(`/dm/${notification.resource_id}` as any);
+                } else {
                     router.push('/(tabs)/messages' as any);
-                    break;
-                default:
-                    break;
-            }
+                }
+                break;
+            case 'new_task':
+            case 'task_assigned':
+                // Navegar para o planner
+                router.push('/(tabs)/planner' as any);
+                break;
+            case 'team_invite':
+                // Navegar para equipas
+                router.push('/(tabs)/teams' as any);
+                break;
+            case 'task_submitted':
+                // Navegar para detalhes da tarefa
+                if (notification.resource_id) {
+                    router.push(`/team/task/${notification.resource_id}` as any);
+                }
+                break;
+            case 'mention':
+            case 'reply':
+            case 'reaction':
+                // Navegar para o canal
+                if (notification.resource_id) {
+                    router.push(`/channel/${notification.resource_id}` as any);
+                }
+                break;
+            default:
+                break;
         }
     };
 

@@ -16,6 +16,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
+    "@react-native-community/slider": "5.0.1",
     "@react-navigation/native": "^7.1.8",
     "@supabase/supabase-js": "^2.89.0",
     "@tanstack/query-async-storage-persister": "^5.90.14",
@@ -73,7 +74,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "react-test-renderer": "19.1.0",
-    "supabase": "^2.67.3",
+    "supabase": "^2.70.5",
     "typescript": "~5.9.2"
   },
   "private": true

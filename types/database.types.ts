@@ -398,7 +398,11 @@ export type NotificationType =
     | 'mention'        // "@all devem entregar..."
     | 'reply'          // "João respondeu ao teu comentário"
     | 'reaction'       // "Ana gostou da tua mensagem"
-    | 'system';        // "Bem-vindo à Escola+"
+    | 'system'         // "Bem-vindo à Escola+"
+    | 'direct_message' // "Gabriel enviou-te mensagem"
+    | 'new_task'       // "Matemática A criou uma tarefa"
+    | 'team_invite'    // "Foste adicionado à equipa X"
+    | 'task_submitted';// "Aluno entregou tarefa"
 
 export type NotificationResourceType = 'task' | 'message' | 'channel' | 'profile';
 

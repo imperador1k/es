@@ -1,8 +1,9 @@
 /**
  * Channel Chat Screen
- * Chat em tempo real com Supabase Realtime
+ * Chat em tempo real com Supabase Realtime + Rich Media
  */
 
+import { ChatInputBar } from '@/components/ChatInputBar';
 import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -16,15 +17,12 @@ import {
     ActivityIndicator,
     FlatList,
     Image,
-    KeyboardAvoidingView,
-    Platform,
     Pressable,
     StyleSheet,
     Text,
-    TextInput,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ============================================
 // TYPES
@@ -44,6 +42,9 @@ interface Message {
     content: string;
     created_at: string;
     author: MessageAuthor | null;
+    attachment_url?: string | null;
+    attachment_type?: 'image' | 'video' | 'file' | 'gif' | null;
+    attachment_name?: string | null;
 }
 
 // ============================================
@@ -56,6 +57,7 @@ export default function ChannelChatScreen() {
     const { profile } = useProfile();
     const { team } = useTeam(teamId);
     const flatListRef = useRef<FlatList>(null);
+    const insets = useSafeAreaInsets();
 
     // Estados
     const [messages, setMessages] = useState<Message[]>([]);
@@ -81,6 +83,9 @@ export default function ChannelChatScreen() {
                     user_id,
                     content,
                     created_at,
+                    attachment_url,
+                    attachment_type,
+                    attachment_name,
                     author:profiles!user_id (
                         id,
                         username,
@@ -192,18 +197,22 @@ export default function ChannelChatScreen() {
     // SEND MESSAGE
     // ============================================
 
-    const handleSend = async () => {
-        const content = inputText.trim();
-        if (!content || !channelId || !user?.id || !teamId) return;
+    const handleSend = async (
+        content: string,
+        attachment?: { url: string; type: 'image' | 'video' | 'file' | 'gif'; name?: string }
+    ) => {
+        if ((!content.trim() && !attachment) || !channelId || !user?.id || !teamId) return;
 
         setSending(true);
-        setInputText('');
 
         try {
-            const { error } = await supabase.from('messages').insert({
-                channel_id: channelId,
-                user_id: user.id,
-                content,
+            // Use RPC for proper attachment support
+            const { error } = await supabase.rpc('send_team_message', {
+                p_channel_id: channelId,
+                p_content: content.trim() || (attachment ? '📎' : ''),
+                p_attachment_url: attachment?.url || null,
+                p_attachment_type: attachment?.type || null,
+                p_attachment_name: attachment?.name || null,
             });
 
             if (error) throw error;
@@ -215,12 +224,11 @@ export default function ChannelChatScreen() {
                 teamId,
                 teamName: team?.name || 'Equipa',
                 senderName: profile?.full_name || profile?.username || 'Alguém',
-                messagePreview: content,
+                messagePreview: content.trim() || '📎 Anexo',
                 senderId: user.id,
             });
         } catch (err) {
             console.error('Erro ao enviar:', err);
-            setInputText(content); // Restaurar texto
         } finally {
             setSending(false);
         }
@@ -315,54 +323,31 @@ export default function ChannelChatScreen() {
             </View>
 
             {/* Messages List */}
-            <KeyboardAvoidingView
-                style={styles.content}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={0}
-            >
-                <FlatList
-                    ref={flatListRef}
-                    data={messages}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderMessage}
-                    inverted
-                    contentContainerStyle={styles.messagesList}
-                    showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Ionicons name="chatbubble-outline" size={48} color={colors.text.tertiary} />
-                            <Text style={styles.emptyText}>Ainda não há mensagens</Text>
-                            <Text style={styles.emptySubtext}>Sê o primeiro a enviar!</Text>
-                        </View>
-                    }
-                />
-
-                {/* Input Area */}
-                <View style={styles.inputContainer}>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Escreve uma mensagem..."
-                            placeholderTextColor={colors.text.tertiary}
-                            value={inputText}
-                            onChangeText={setInputText}
-                            multiline
-                            maxLength={2000}
-                        />
+            <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={(item) => item.id}
+                renderItem={renderMessage}
+                inverted
+                contentContainerStyle={styles.messagesList}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Ionicons name="chatbubble-outline" size={48} color={colors.text.tertiary} />
+                        <Text style={styles.emptyText}>Ainda não há mensagens</Text>
+                        <Text style={styles.emptySubtext}>Sê o primeiro a enviar!</Text>
                     </View>
-                    <Pressable
-                        style={[styles.sendButton, (!inputText.trim() || sending) && styles.sendButtonDisabled]}
-                        onPress={handleSend}
-                        disabled={!inputText.trim() || sending}
-                    >
-                        {sending ? (
-                            <ActivityIndicator size="small" color={colors.text.inverse} />
-                        ) : (
-                            <Ionicons name="send" size={20} color={colors.text.inverse} />
-                        )}
-                    </Pressable>
-                </View>
-            </KeyboardAvoidingView>
+                }
+            />
+
+            {/* Rich Input Bar */}
+            <View style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
+                <ChatInputBar
+                    onSend={handleSend}
+                    placeholder="Escreve uma mensagem..."
+                    disabled={sending}
+                />
+            </View>
         </SafeAreaView>
     );
 }
@@ -544,7 +529,7 @@ const styles = StyleSheet.create({
         backgroundColor: colors.background,
         borderRadius: borderRadius.xl,
         paddingHorizontal: spacing.md,
-        paddingVertical: Platform.OS === 'ios' ? spacing.sm : 0,
+        paddingVertical: spacing.sm,
         maxHeight: 120,
     },
     input: {

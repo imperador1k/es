@@ -1,3 +1,5 @@
+import { useConversations } from '@/hooks/useDMs';
+import { useNotifications } from '@/hooks/useNotifications';
 import { colors } from '@/lib/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
@@ -6,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  const { unreadCount } = useNotifications();
+  const { unreadConversationsCount } = useConversations();
 
   return (
     <Tabs
@@ -52,12 +56,12 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="calendar"
+        name="planner"
         options={{
-          title: 'Quests',
+          title: 'Planner',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? 'flash' : 'flash-outline'}
+              name={focused ? 'checkbox' : 'checkbox-outline'}
               size={22}
               color={color}
             />
@@ -83,6 +87,8 @@ export default function TabsLayout() {
         name="messages"
         options={{
           title: 'Chat',
+          tabBarBadge: unreadConversationsCount > 0 ? unreadConversationsCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: '#3B82F6', fontSize: 10 },
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
@@ -97,6 +103,8 @@ export default function TabsLayout() {
         name="activity"
         options={{
           title: 'Atividade',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: '#EF4444', fontSize: 10 },
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'notifications' : 'notifications-outline'}
@@ -137,6 +145,13 @@ export default function TabsLayout() {
 
       <Tabs.Screen
         name="two"
+        options={{
+          href: null,
+        }}
+      />
+
+      <Tabs.Screen
+        name="calendar"
         options={{
           href: null,
         }}
