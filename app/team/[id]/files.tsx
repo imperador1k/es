@@ -1,12 +1,11 @@
 /**
- * Ecrã de Ficheiros de Equipa
- * Estilo Google Drive / Microsoft Teams
- * Com suporte a Pastas, Navegação e Breadcrumbs
- * Escola+ App
+ * Team Files Screen - Ultra Premium Design
+ * Estilo Google Drive / Dropbox Premium
+ * Com pastas, navegação, breadcrumbs, upload/download
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { TeamRole } from '@/types/database.types';
 import { canUser } from '@/utils/permissions';
@@ -15,14 +14,17 @@ import { decode } from 'base64-arraybuffer';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    FlatList,
+    Animated,
+    Dimensions,
     Image,
+    KeyboardAvoidingView,
     Modal,
     Platform,
     Pressable,
@@ -34,6 +36,8 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
 // TYPES
@@ -58,33 +62,33 @@ interface Breadcrumb {
 }
 
 // ============================================
-// FILE TYPE HELPERS
+// FILE TYPE CONFIG
 // ============================================
 
-const FILE_ICONS: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-    folder: { icon: 'folder', color: '#F59E0B' },
-    pdf: { icon: 'document-text', color: '#EF4444' },
-    doc: { icon: 'document', color: '#3B82F6' },
-    docx: { icon: 'document', color: '#3B82F6' },
-    xls: { icon: 'grid', color: '#22C55E' },
-    xlsx: { icon: 'grid', color: '#22C55E' },
-    ppt: { icon: 'easel', color: '#F97316' },
-    pptx: { icon: 'easel', color: '#F97316' },
-    jpg: { icon: 'image', color: '#8B5CF6' },
-    jpeg: { icon: 'image', color: '#8B5CF6' },
-    png: { icon: 'image', color: '#8B5CF6' },
-    gif: { icon: 'image', color: '#8B5CF6' },
-    mp4: { icon: 'videocam', color: '#EC4899' },
-    mp3: { icon: 'musical-notes', color: '#14B8A6' },
-    zip: { icon: 'archive', color: '#6B7280' },
-    rar: { icon: 'archive', color: '#6B7280' },
-    txt: { icon: 'document-text', color: '#6B7280' },
-    default: { icon: 'document-outline', color: '#6B7280' },
+const FILE_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string; gradient: [string, string] }> = {
+    folder: { icon: 'folder', color: '#F59E0B', gradient: ['#F59E0B', '#D97706'] },
+    pdf: { icon: 'document-text', color: '#EF4444', gradient: ['#EF4444', '#DC2626'] },
+    doc: { icon: 'document', color: '#3B82F6', gradient: ['#3B82F6', '#2563EB'] },
+    docx: { icon: 'document', color: '#3B82F6', gradient: ['#3B82F6', '#2563EB'] },
+    xls: { icon: 'grid', color: '#22C55E', gradient: ['#22C55E', '#16A34A'] },
+    xlsx: { icon: 'grid', color: '#22C55E', gradient: ['#22C55E', '#16A34A'] },
+    ppt: { icon: 'easel', color: '#F97316', gradient: ['#F97316', '#EA580C'] },
+    pptx: { icon: 'easel', color: '#F97316', gradient: ['#F97316', '#EA580C'] },
+    jpg: { icon: 'image', color: '#8B5CF6', gradient: ['#8B5CF6', '#7C3AED'] },
+    jpeg: { icon: 'image', color: '#8B5CF6', gradient: ['#8B5CF6', '#7C3AED'] },
+    png: { icon: 'image', color: '#8B5CF6', gradient: ['#8B5CF6', '#7C3AED'] },
+    gif: { icon: 'image', color: '#EC4899', gradient: ['#EC4899', '#DB2777'] },
+    mp4: { icon: 'videocam', color: '#EC4899', gradient: ['#EC4899', '#DB2777'] },
+    mp3: { icon: 'musical-notes', color: '#14B8A6', gradient: ['#14B8A6', '#0D9488'] },
+    zip: { icon: 'archive', color: '#6B7280', gradient: ['#6B7280', '#4B5563'] },
+    rar: { icon: 'archive', color: '#6B7280', gradient: ['#6B7280', '#4B5563'] },
+    txt: { icon: 'document-text', color: '#6B7280', gradient: ['#6B7280', '#4B5563'] },
+    default: { icon: 'document-outline', color: '#6B7280', gradient: ['#6B7280', '#4B5563'] },
 };
 
-function getFileIcon(item: TeamFile): { icon: keyof typeof Ionicons.glyphMap; color: string } {
-    if (item.is_folder) return FILE_ICONS.folder;
-    return FILE_ICONS[item.file_type?.toLowerCase()] || FILE_ICONS.default;
+function getFileConfig(item: TeamFile) {
+    if (item.is_folder) return FILE_CONFIG.folder;
+    return FILE_CONFIG[item.file_type?.toLowerCase()] || FILE_CONFIG.default;
 }
 
 function formatFileSize(bytes: number): string {
@@ -101,28 +105,18 @@ function formatDate(dateStr: string): string {
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
     const fileDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-    // Hoje: mostrar hora
     if (fileDate.getTime() === today.getTime()) {
         return date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
     }
-
-    // Ontem
-    if (fileDate.getTime() === yesterday.getTime()) {
-        return 'Ontem';
-    }
-
-    // Este ano: dia e mês
+    if (fileDate.getTime() === yesterday.getTime()) return 'Ontem';
     if (date.getFullYear() === now.getFullYear()) {
         return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
     }
-
-    // Ano diferente: data completa
     return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function isImageFile(fileType: string): boolean {
-    const imageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
-    return imageTypes.includes(fileType?.toLowerCase());
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(fileType?.toLowerCase());
 }
 
 // ============================================
@@ -133,7 +127,6 @@ export default function TeamFilesScreen() {
     const { id: teamId } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
 
-    // Lista e estados base
     const [files, setFiles] = useState<TeamFile[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -142,34 +135,16 @@ export default function TeamFilesScreen() {
     const [userRole, setUserRole] = useState<TeamRole | null>(null);
     const [teamName, setTeamName] = useState('');
 
-    // Estados de Navegação por Pastas
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-    const [breadcrumbs, setBreadcrumbs] = useState<Breadcrumb[]>([
-        { id: null, name: 'Ficheiros' }
-    ]);
+    const [breadcrumbs, setBreadcrumbs] = useState<Breadcrumb[]>([{ id: null, name: 'Ficheiros' }]);
 
-    // Modal de Nova Pasta
     const [folderModalVisible, setFolderModalVisible] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     const [creatingFolder, setCreatingFolder] = useState(false);
 
-    // Pesquisa
     const [searchQuery, setSearchQuery] = useState('');
-
-    // Modal de Renomear
-    const [renameModalVisible, setRenameModalVisible] = useState(false);
-    const [renameTarget, setRenameTarget] = useState<TeamFile | null>(null);
-    const [newName, setNewName] = useState('');
-    const [renaming, setRenaming] = useState(false);
-
-    // Cache de URLs de imagens
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
-
-    // Vista e Ordenação
-    type ViewMode = 'list' | 'grid';
-    type SortOption = 'recent' | 'oldest' | 'name' | 'size';
-    const [viewMode, setViewMode] = useState<ViewMode>('list');
-    const [sortBy, setSortBy] = useState<SortOption>('recent');
 
     // ============================================
     // LOAD DATA
@@ -179,25 +154,13 @@ export default function TeamFilesScreen() {
         if (!teamId || !user?.id) return;
 
         try {
-            // Buscar ficheiros
-            let query = supabase
-                .from('team_files')
-                .select('*')
-                .eq('team_id', teamId);
+            let query = supabase.from('team_files').select('*').eq('team_id', teamId);
 
-            // Se estamos na raiz E há pesquisa, buscar TODOS os ficheiros (recursivo)
-            // Se estamos na raiz SEM pesquisa, buscar só nível raiz
-            // Se estamos dentro de pasta, buscar só essa pasta
             if (searchQuery.trim()) {
-                // Com pesquisa: buscar tudo e filtrar pelo nome
-                // Na raiz: buscar todos
-                // Dentro de pasta: buscar só essa pasta
                 if (currentFolderId) {
                     query = query.eq('parent_id', currentFolderId);
                 }
-                // Se na raiz, não filtra por parent_id - busca tudo
             } else {
-                // Sem pesquisa: comportamento normal por pasta
                 if (currentFolderId) {
                     query = query.eq('parent_id', currentFolderId);
                 } else {
@@ -206,10 +169,8 @@ export default function TeamFilesScreen() {
             }
 
             const { data: filesData, error } = await query;
-
             if (error) throw error;
 
-            // Ordenar: pastas primeiro, depois por data
             const sorted = (filesData || []).sort((a, b) => {
                 if (a.is_folder && !b.is_folder) return -1;
                 if (!a.is_folder && b.is_folder) return 1;
@@ -218,7 +179,6 @@ export default function TeamFilesScreen() {
 
             setFiles(sorted);
 
-            // Buscar role do utilizador (só uma vez)
             if (!userRole) {
                 const { data: memberData } = await supabase
                     .from('team_members')
@@ -226,25 +186,15 @@ export default function TeamFilesScreen() {
                     .eq('team_id', teamId)
                     .eq('user_id', user.id)
                     .single();
-
-                if (memberData) {
-                    setUserRole(memberData.role as TeamRole);
-                }
+                if (memberData) setUserRole(memberData.role as TeamRole);
             }
 
-            // Buscar nome da equipa (só uma vez)
             if (!teamName) {
-                const { data: teamData } = await supabase
-                    .from('teams')
-                    .select('name')
-                    .eq('id', teamId)
-                    .single();
+                const { data: teamData } = await supabase.from('teams').select('name').eq('id', teamId).single();
                 if (teamData) setTeamName(teamData.name);
             }
-
         } catch (err) {
-            console.error('Erro ao carregar ficheiros:', err);
-            Alert.alert('Erro', 'Não foi possível carregar os ficheiros.');
+            console.error('Error loading files:', err);
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -255,12 +205,9 @@ export default function TeamFilesScreen() {
         loadFiles();
     }, [loadFiles]);
 
-    // Debounce da pesquisa (recarregar quando para de digitar)
     useEffect(() => {
         const timer = setTimeout(() => {
-            if (searchQuery.trim()) {
-                loadFiles();
-            }
+            if (searchQuery.trim()) loadFiles();
         }, 300);
         return () => clearTimeout(timer);
     }, [searchQuery]);
@@ -271,7 +218,7 @@ export default function TeamFilesScreen() {
     };
 
     // ============================================
-    // NAVEGAÇÃO POR PASTAS
+    // NAVIGATION
     // ============================================
 
     const openFolder = (folder: TeamFile) => {
@@ -286,54 +233,7 @@ export default function TeamFilesScreen() {
     };
 
     // ============================================
-    // ORDENAÇÃO
-    // ============================================
-
-    const SORT_OPTIONS: { key: SortOption; label: string }[] = [
-        { key: 'recent', label: 'Mais Recentes' },
-        { key: 'oldest', label: 'Mais Antigos' },
-        { key: 'name', label: 'Nome (A-Z)' },
-        { key: 'size', label: 'Tamanho (Maior)' },
-    ];
-
-    const showSortOptions = () => {
-        Alert.alert(
-            'Ordenar por',
-            undefined,
-            [
-                ...SORT_OPTIONS.map(option => ({
-                    text: option.key === sortBy ? `✓ ${option.label}` : option.label,
-                    onPress: () => setSortBy(option.key),
-                })),
-                { text: 'Cancelar', style: 'cancel' as const },
-            ]
-        );
-    };
-
-    // Função para ordenar ficheiros (pastas sempre primeiro)
-    const getSortedFiles = (fileList: TeamFile[]): TeamFile[] => {
-        const folders = fileList.filter(f => f.is_folder);
-        const nonFolders = fileList.filter(f => !f.is_folder);
-
-        const sortFn = (a: TeamFile, b: TeamFile) => {
-            switch (sortBy) {
-                case 'oldest':
-                    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-                case 'name':
-                    return a.name.localeCompare(b.name);
-                case 'size':
-                    return (b.size_bytes || 0) - (a.size_bytes || 0);
-                case 'recent':
-                default:
-                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-            }
-        };
-
-        return [...folders.sort(sortFn), ...nonFolders.sort(sortFn)];
-    };
-
-    // ============================================
-    // CRIAR PASTA
+    // CREATE FOLDER
     // ============================================
 
     const handleCreateFolder = async () => {
@@ -343,7 +243,6 @@ export default function TeamFilesScreen() {
         }
 
         setCreatingFolder(true);
-
         try {
             const { error } = await supabase.from('team_files').insert({
                 team_id: teamId,
@@ -357,139 +256,16 @@ export default function TeamFilesScreen() {
             });
 
             if (error) throw error;
-
             setFolderModalVisible(false);
             setNewFolderName('');
             loadFiles();
         } catch (err) {
-            console.error('Erro ao criar pasta:', err);
+            console.error('Error creating folder:', err);
             Alert.alert('Erro', 'Não foi possível criar a pasta.');
         } finally {
             setCreatingFolder(false);
         }
     };
-
-    const openFolderModal = () => {
-        if (!canUser(userRole, 'UPLOAD_FILES')) {
-            Alert.alert('Sem Permissão', 'Não tens permissão para criar pastas.');
-            return;
-        }
-        setNewFolderName('');
-        setFolderModalVisible(true);
-    };
-
-    // ============================================
-    // RENOMEAR
-    // ============================================
-
-    // Extrai nome base (sem extensão) e extensão separadamente
-    const getBaseName = (filename: string) => {
-        const lastDot = filename.lastIndexOf('.');
-        if (lastDot === -1 || lastDot === 0) return filename;
-        return filename.substring(0, lastDot);
-    };
-
-    const getExtension = (filename: string) => {
-        const lastDot = filename.lastIndexOf('.');
-        if (lastDot === -1 || lastDot === 0) return '';
-        return filename.substring(lastDot); // inclui o ponto
-    };
-
-    const openRenameModal = (file: TeamFile) => {
-        setRenameTarget(file);
-        // Só mostra o nome base (sem extensão) para edição
-        if (file.is_folder) {
-            setNewName(file.name);
-        } else {
-            setNewName(getBaseName(file.name));
-        }
-        setRenameModalVisible(true);
-    };
-
-    const handleRename = async () => {
-        if (!renameTarget || !newName.trim()) {
-            Alert.alert('Erro', 'Introduz um nome válido.');
-            return;
-        }
-
-        setRenaming(true);
-
-        try {
-            // Para ficheiros, adiciona a extensão de volta; para pastas, usa o nome tal como está
-            const finalName = renameTarget.is_folder
-                ? newName.trim()
-                : newName.trim() + getExtension(renameTarget.name);
-
-            console.log('🔄 Renomeando:', renameTarget.id, 'para:', finalName);
-            console.log('📋 renameTarget:', JSON.stringify(renameTarget, null, 2));
-
-            const { data, error, count } = await supabase
-                .from('team_files')
-                .update({ name: finalName })
-                .eq('id', renameTarget.id)
-                .select();
-
-            console.log('📦 Resposta Supabase - data:', data, 'error:', error, 'count:', count);
-
-            if (error) {
-                console.error('❌ Erro Supabase:', error);
-                throw error;
-            }
-
-            // Verificar se realmente atualizou
-            if (!data || data.length === 0) {
-                console.error('⚠️ UPDATE não afetou nenhuma linha! Possível problema de RLS.');
-                Alert.alert(
-                    'Erro',
-                    'Não tens permissão para renomear este item. Só o uploader ou admins podem renomear.'
-                );
-                return;
-            }
-
-            console.log('✅ Renomeado com sucesso:', data[0]);
-            Alert.alert('✅ Sucesso', 'Nome atualizado!');
-            setRenameModalVisible(false);
-            setRenameTarget(null);
-            setNewName('');
-            loadFiles();
-        } catch (err) {
-            console.error('💥 Erro ao renomear:', err);
-            Alert.alert('Erro', 'Não foi possível renomear. Verifica a ligação.');
-        } finally {
-            setRenaming(false);
-        }
-    };
-
-    // ============================================
-    // THUMBNAIL URL
-    // ============================================
-
-    const getImageUrl = useCallback(async (file: TeamFile) => {
-        if (imageUrls[file.id]) return imageUrls[file.id];
-
-        try {
-            const { data } = await supabase.storage
-                .from('team-files')
-                .createSignedUrl(file.file_path, 3600);
-
-            if (data?.signedUrl) {
-                setImageUrls(prev => ({ ...prev, [file.id]: data.signedUrl }));
-                return data.signedUrl;
-            }
-        } catch (err) {
-            console.warn('Erro ao obter URL da imagem:', err);
-        }
-        return null;
-    }, [imageUrls]);
-
-    // Carregar URLs de imagem ao carregar ficheiros
-    useEffect(() => {
-        files.filter(f => isImageFile(f.file_type) && !f.is_folder).forEach(file => {
-            if (!imageUrls[file.id]) {
-                getImageUrl(file);
-            }
-        });
-    }, [files, getImageUrl, imageUrls]);
 
     // ============================================
     // UPLOAD
@@ -497,16 +273,12 @@ export default function TeamFilesScreen() {
 
     const handleUpload = async () => {
         if (!canUser(userRole, 'UPLOAD_FILES')) {
-            Alert.alert('Sem Permissão', 'Não tens permissão para fazer upload de ficheiros.');
+            Alert.alert('Sem Permissão', 'Não tens permissão para fazer upload.');
             return;
         }
 
         try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: '*/*',
-                copyToCacheDirectory: true,
-            });
-
+            const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
             if (result.canceled || !result.assets?.[0]) return;
 
             const file = result.assets[0];
@@ -514,24 +286,15 @@ export default function TeamFilesScreen() {
 
             const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'file';
             const uniqueName = `${teamId}/${Date.now()}_${file.name}`;
-
-            // Ler ficheiro como Base64
-            const base64Data = await FileSystem.readAsStringAsync(file.uri, {
-                encoding: 'base64',
-            });
-
+            const base64Data = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
             const arrayBuffer = decode(base64Data);
 
-            // Upload para Storage
             const { error: uploadError } = await supabase.storage
                 .from('team-files')
-                .upload(uniqueName, arrayBuffer, {
-                    contentType: file.mimeType || 'application/octet-stream',
-                });
+                .upload(uniqueName, arrayBuffer, { contentType: file.mimeType || 'application/octet-stream' });
 
             if (uploadError) throw uploadError;
 
-            // Inserir na tabela COM parent_id
             const { error: dbError } = await supabase.from('team_files').insert({
                 team_id: teamId,
                 uploader_id: user!.id,
@@ -540,16 +303,14 @@ export default function TeamFilesScreen() {
                 file_type: fileExtension,
                 size_bytes: file.size || 0,
                 is_folder: false,
-                parent_id: currentFolderId, // Ficheiro vai para a pasta atual
+                parent_id: currentFolderId,
             });
 
             if (dbError) throw dbError;
-
-            Alert.alert('✅ Sucesso', 'Ficheiro carregado com sucesso!');
+            Alert.alert('✅ Sucesso', 'Ficheiro carregado!');
             loadFiles();
-
         } catch (err) {
-            console.error('Erro no upload:', err);
+            console.error('Error uploading:', err);
             Alert.alert('Erro', 'Não foi possível carregar o ficheiro.');
         } finally {
             setUploading(false);
@@ -557,11 +318,10 @@ export default function TeamFilesScreen() {
     };
 
     // ============================================
-    // DOWNLOAD & OPEN
+    // OPEN FILE
     // ============================================
 
     const handleOpenFile = async (file: TeamFile) => {
-        // Se for pasta, entrar nela
         if (file.is_folder) {
             openFolder(file);
             return;
@@ -569,46 +329,25 @@ export default function TeamFilesScreen() {
 
         try {
             setDownloadingId(file.id);
-
             const localUri = `${(FileSystem as any).cacheDirectory}${file.name}`;
             const fileInfo = await FileSystem.getInfoAsync(localUri);
 
             if (!fileInfo.exists) {
-                const { data: urlData } = await supabase.storage
-                    .from('team-files')
-                    .createSignedUrl(file.file_path, 3600);
-
-                if (!urlData?.signedUrl) {
-                    throw new Error('Não foi possível obter o URL do ficheiro.');
-                }
-
-                const downloadResult = await FileSystem.downloadAsync(
-                    urlData.signedUrl,
-                    localUri
-                );
-
-                if (downloadResult.status !== 200) {
-                    throw new Error('Falha no download do ficheiro.');
-                }
+                const { data: urlData } = await supabase.storage.from('team-files').createSignedUrl(file.file_path, 3600);
+                if (!urlData?.signedUrl) throw new Error('URL não obtido');
+                const downloadResult = await FileSystem.downloadAsync(urlData.signedUrl, localUri);
+                if (downloadResult.status !== 200) throw new Error('Download falhou');
             }
 
             if (Platform.OS === 'android') {
                 const contentUri = await FileSystem.getContentUriAsync(localUri);
-                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-                    data: contentUri,
-                    flags: 1,
-                });
+                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: contentUri, flags: 1 });
             } else {
                 const canShare = await Sharing.isAvailableAsync();
-                if (canShare) {
-                    await Sharing.shareAsync(localUri);
-                } else {
-                    Alert.alert('Erro', 'Não é possível abrir este ficheiro no iOS.');
-                }
+                if (canShare) await Sharing.shareAsync(localUri);
             }
-
         } catch (err) {
-            console.error('Erro ao abrir ficheiro:', err);
+            console.error('Error opening file:', err);
             Alert.alert('Erro', 'Não foi possível abrir o ficheiro.');
         } finally {
             setDownloadingId(null);
@@ -619,7 +358,7 @@ export default function TeamFilesScreen() {
     // DELETE
     // ============================================
 
-    const handleDelete = async (file: TeamFile) => {
+    const handleDelete = (file: TeamFile) => {
         const canDeleteAny = canUser(userRole, 'DELETE_FILES');
         const isOwnFile = file.uploader_id === user?.id;
 
@@ -628,11 +367,9 @@ export default function TeamFilesScreen() {
             return;
         }
 
-        const itemType = file.is_folder ? 'pasta' : 'ficheiro';
-
         Alert.alert(
-            `Apagar ${itemType}`,
-            `Tens a certeza que queres apagar "${file.name}"?${file.is_folder ? '\n\nTodo o conteúdo dentro será apagado!' : ''}`,
+            `Apagar ${file.is_folder ? 'Pasta' : 'Ficheiro'}`,
+            `Tens a certeza que queres apagar "${file.name}"?`,
             [
                 { text: 'Cancelar', style: 'cancel' },
                 {
@@ -640,27 +377,15 @@ export default function TeamFilesScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            // Se não for pasta, apagar do storage
                             if (!file.is_folder && file.file_path) {
-                                await supabase.storage
-                                    .from('team-files')
-                                    .remove([file.file_path]);
+                                await supabase.storage.from('team-files').remove([file.file_path]);
                             }
-
-                            // Apagar da tabela (CASCADE apaga filhos)
-                            const { error: dbError } = await supabase
-                                .from('team_files')
-                                .delete()
-                                .eq('id', file.id);
-
-                            if (dbError) throw dbError;
-
-                            setFiles(prev => prev.filter(f => f.id !== file.id));
-                            Alert.alert('✅ Apagado', `${itemType.charAt(0).toUpperCase() + itemType.slice(1)} apagado com sucesso.`);
-
+                            const { error } = await supabase.from('team_files').delete().eq('id', file.id);
+                            if (error) throw error;
+                            setFiles((prev) => prev.filter((f) => f.id !== file.id));
                         } catch (err) {
-                            console.error('Erro ao apagar:', err);
-                            Alert.alert('Erro', `Não foi possível apagar o ${itemType}.`);
+                            console.error('Error deleting:', err);
+                            Alert.alert('Erro', 'Não foi possível apagar.');
                         }
                     },
                 },
@@ -669,403 +394,320 @@ export default function TeamFilesScreen() {
     };
 
     // ============================================
-    // RENDER FILE ITEM
+    // IMAGE URLS
     // ============================================
 
-    const renderFileItem = ({ item }: { item: TeamFile }) => {
-        const { icon, color } = getFileIcon(item);
-        const isDownloading = downloadingId === item.id;
-        const canModify = canUser(userRole, 'DELETE_FILES') || item.uploader_id === user?.id;
-        const isImage = isImageFile(item.file_type) && !item.is_folder;
-        const thumbnailUrl = imageUrls[item.id];
-
-        // Menu de opções no longPress
-        const showOptionsMenu = () => {
-            const options: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
-                { text: 'Cancelar', style: 'cancel' },
-            ];
-
-            if (canModify) {
-                options.push({
-                    text: 'Renomear',
-                    onPress: () => openRenameModal(item),
-                });
-                options.push({
-                    text: 'Apagar',
-                    style: 'destructive',
-                    onPress: () => handleDelete(item),
-                });
+    const getImageUrl = useCallback(async (file: TeamFile) => {
+        if (imageUrls[file.id]) return imageUrls[file.id];
+        try {
+            const { data } = await supabase.storage.from('team-files').createSignedUrl(file.file_path, 3600);
+            if (data?.signedUrl) {
+                setImageUrls((prev) => ({ ...prev, [file.id]: data.signedUrl }));
+                return data.signedUrl;
             }
+        } catch (err) {
+            console.warn('Error getting image URL:', err);
+        }
+        return null;
+    }, [imageUrls]);
 
-            Alert.alert(
-                item.name,
-                item.is_folder ? 'Pasta' : formatFileSize(item.size_bytes),
-                options
-            );
-        };
-
-        // Metadados formatados: "Data • Tamanho"
-        const getMetaText = () => {
-            if (item.is_folder) return 'Pasta';
-            const date = formatDate(item.created_at);
-            const size = formatFileSize(item.size_bytes);
-            return size ? `${date} • ${size}` : date;
-        };
-
-        return (
-            <Pressable
-                style={({ pressed }) => [
-                    styles.fileCard,
-                    pressed && styles.fileCardPressed,
-                ]}
-                onPress={() => handleOpenFile(item)}
-                onLongPress={showOptionsMenu}
-                android_ripple={{ color: colors.accent.subtle }}
-            >
-                {/* Thumbnail ou Icon */}
-                {isImage && thumbnailUrl ? (
-                    <Image
-                        source={{ uri: thumbnailUrl }}
-                        style={styles.thumbnail}
-                        resizeMode="cover"
-                    />
-                ) : (
-                    <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
-                        {isDownloading ? (
-                            <ActivityIndicator size="small" color={color} />
-                        ) : (
-                            <Ionicons name={icon} size={22} color={color} />
-                        )}
-                    </View>
-                )}
-
-                {/* Info - Coluna de Texto */}
-                <View style={styles.fileInfo}>
-                    <Text style={styles.fileName} numberOfLines={1}>
-                        {item.name}
-                    </Text>
-                    <Text style={styles.fileMeta} numberOfLines={1}>
-                        {getMetaText()}
-                    </Text>
-                </View>
-
-                {/* Ação à direita */}
-                <Pressable
-                    style={styles.moreButton}
-                    onPress={showOptionsMenu}
-                    hitSlop={8}
-                >
-                    {item.is_folder ? (
-                        <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-                    ) : (
-                        <Ionicons name="ellipsis-horizontal" size={20} color={colors.text.tertiary} />
-                    )}
-                </Pressable>
-            </Pressable>
-        );
-    };
+    useEffect(() => {
+        files.filter((f) => isImageFile(f.file_type) && !f.is_folder).forEach((file) => {
+            if (!imageUrls[file.id]) getImageUrl(file);
+        });
+    }, [files, getImageUrl, imageUrls]);
 
     // ============================================
-    // RENDER GRID ITEM
+    // FILTER
     // ============================================
 
-    const renderGridItem = ({ item }: { item: TeamFile }) => {
-        const { icon, color } = getFileIcon(item);
-        const isImage = isImageFile(item.file_type) && !item.is_folder;
-        const thumbnailUrl = imageUrls[item.id];
-        const canModify = canUser(userRole, 'DELETE_FILES') || item.uploader_id === user?.id;
+    const filteredFiles = searchQuery.trim()
+        ? files.filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        : files;
 
-        const showOptionsMenu = () => {
-            const options: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
-                { text: 'Cancelar', style: 'cancel' },
-            ];
-            if (canModify) {
-                options.push({ text: 'Renomear', onPress: () => openRenameModal(item) });
-                options.push({ text: 'Apagar', style: 'destructive', onPress: () => handleDelete(item) });
-            }
-            Alert.alert(item.name, item.is_folder ? 'Pasta' : formatFileSize(item.size_bytes), options);
-        };
-
-        return (
-            <Pressable
-                style={({ pressed }) => [
-                    styles.gridCard,
-                    pressed && styles.gridCardPressed,
-                ]}
-                onPress={() => handleOpenFile(item)}
-                onLongPress={showOptionsMenu}
-                android_ripple={{ color: colors.accent.subtle }}
-            >
-                {/* Thumbnail ou Icon */}
-                {isImage && thumbnailUrl ? (
-                    <Image source={{ uri: thumbnailUrl }} style={styles.gridThumbnail} resizeMode="cover" />
-                ) : (
-                    <View style={[styles.gridIconContainer, { backgroundColor: `${color}15` }]}>
-                        <Ionicons name={icon} size={36} color={color} />
-                    </View>
-                )}
-
-                {/* Nome */}
-                <Text style={styles.gridFileName} numberOfLines={2}>
-                    {item.name}
-                </Text>
-            </Pressable>
-        );
-    };
+    const folders = filteredFiles.filter((f) => f.is_folder);
+    const regularFiles = filteredFiles.filter((f) => !f.is_folder);
 
     // ============================================
-    // LOADING STATE
+    // LOADING
     // ============================================
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
+                    <Text style={styles.loadingText}>A carregar ficheiros...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    // Contar ficheiros vs pastas
-    const folderCount = files.filter(f => f.is_folder).length;
-    const fileCount = files.filter(f => !f.is_folder).length;
-
-    // ============================================
-    // MAIN RENDER
-    // ============================================
-
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>Ficheiros</Text>
-                    <Text style={styles.headerSubtitle}>
-                        {teamName} • {folderCount > 0 ? `${folderCount} pastas, ` : ''}{fileCount} ficheiros
-                    </Text>
-                </View>
-                <View style={styles.headerActions}>
-                    {/* Botão Ordenar */}
-                    <Pressable style={styles.headerActionButton} onPress={showSortOptions}>
-                        <Ionicons name="swap-vertical" size={20} color={colors.text.secondary} />
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
                     </Pressable>
-                    {/* Botão Toggle View */}
-                    <Pressable
-                        style={styles.headerActionButton}
-                        onPress={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-                    >
-                        <Ionicons
-                            name={viewMode === 'list' ? 'grid-outline' : 'list-outline'}
-                            size={20}
-                            color={colors.text.secondary}
-                        />
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>📁 Ficheiros</Text>
+                        <Text style={styles.headerSubtitle}>{teamName}</Text>
+                    </View>
+                    <Pressable style={styles.headerAction} onPress={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}>
+                        <Ionicons name={viewMode === 'list' ? 'grid-outline' : 'list-outline'} size={20} color={COLORS.text.secondary} />
                     </Pressable>
-                    {canUser(userRole, 'UPLOAD_FILES') && (
-                        <>
-                            <Pressable style={styles.headerActionButton} onPress={openFolderModal}>
-                                <Ionicons name="folder-outline" size={20} color={colors.accent.primary} />
-                            </Pressable>
-                            <Pressable
-                                style={styles.uploadButton}
-                                onPress={handleUpload}
-                                disabled={uploading}
-                            >
-                                {uploading ? (
-                                    <ActivityIndicator size="small" color={colors.text.inverse} />
-                                ) : (
-                                    <Ionicons name="cloud-upload" size={20} color={colors.text.inverse} />
-                                )}
-                            </Pressable>
-                        </>
-                    )}
                 </View>
-            </View>
 
-            {/* Breadcrumbs */}
-            {breadcrumbs.length > 1 && (
-                <View style={styles.breadcrumbContainer}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {/* Search & Actions */}
+                <View style={styles.actionsRow}>
+                    <View style={styles.searchBar}>
+                        <Ionicons name="search" size={18} color={COLORS.text.tertiary} />
+                        <TextInput
+                            style={styles.searchInput}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Procurar ficheiros..."
+                            placeholderTextColor={COLORS.text.tertiary}
+                        />
+                        {searchQuery.length > 0 && (
+                            <Pressable onPress={() => setSearchQuery('')}>
+                                <Ionicons name="close-circle" size={18} color={COLORS.text.tertiary} />
+                            </Pressable>
+                        )}
+                    </View>
+                </View>
+
+                {/* Breadcrumbs */}
+                {breadcrumbs.length > 1 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.breadcrumbsContainer} contentContainerStyle={styles.breadcrumbsContent}>
                         {breadcrumbs.map((crumb, index) => (
-                            <View key={crumb.id || 'root'} style={styles.breadcrumbItem}>
+                            <React.Fragment key={crumb.id || 'root'}>
                                 <Pressable onPress={() => navigateToBreadcrumb(index)}>
-                                    <Text
-                                        style={[
-                                            styles.breadcrumbText,
-                                            index === breadcrumbs.length - 1 && styles.breadcrumbTextActive,
-                                        ]}
-                                    >
+                                    <Text style={[styles.breadcrumbText, index === breadcrumbs.length - 1 && styles.breadcrumbActive]}>
                                         {crumb.name}
                                     </Text>
                                 </Pressable>
                                 {index < breadcrumbs.length - 1 && (
-                                    <Ionicons name="chevron-forward" size={14} color={colors.text.tertiary} style={{ marginHorizontal: 4 }} />
+                                    <Ionicons name="chevron-forward" size={14} color={COLORS.text.tertiary} style={{ marginHorizontal: 4 }} />
                                 )}
-                            </View>
+                            </React.Fragment>
                         ))}
                     </ScrollView>
-                </View>
-            )}
-
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-                <Ionicons name="search" size={18} color={colors.text.tertiary} />
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder="Pesquisar ficheiros..."
-                    placeholderTextColor={colors.text.tertiary}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                />
-                {searchQuery.length > 0 && (
-                    <Pressable onPress={() => setSearchQuery('')}>
-                        <Ionicons name="close-circle" size={18} color={colors.text.tertiary} />
-                    </Pressable>
                 )}
-            </View>
 
-            {/* File List */}
-            <FlatList
-                key={viewMode} // Força re-render ao mudar de modo
-                data={getSortedFiles(files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase())))}
-                keyExtractor={(item) => item.id}
-                renderItem={viewMode === 'grid' ? renderGridItem : renderFileItem}
-                numColumns={viewMode === 'grid' ? 2 : 1}
-                columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
-                contentContainerStyle={[
-                    viewMode === 'grid' ? styles.gridContent : styles.listContent,
-                    files.length === 0 && styles.listContentEmpty,
-                ]}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={colors.accent.primary}
-                    />
-                }
-                ItemSeparatorComponent={viewMode === 'list' ? () => <View style={styles.separator} /> : undefined}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <View style={styles.emptyIconContainer}>
-                            <Ionicons name="folder-open-outline" size={64} color={colors.text.tertiary} />
+                {/* Content */}
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366F1" />}
+                >
+                    {/* Quick Actions */}
+                    {canUser(userRole, 'UPLOAD_FILES') && (
+                        <View style={styles.quickActions}>
+                            <Pressable style={styles.quickActionBtn} onPress={handleUpload} disabled={uploading}>
+                                <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.quickActionGradient}>
+                                    {uploading ? <ActivityIndicator color="#FFF" /> : <Ionicons name="cloud-upload" size={22} color="#FFF" />}
+                                </LinearGradient>
+                                <Text style={styles.quickActionLabel}>Upload</Text>
+                            </Pressable>
+                            <Pressable style={styles.quickActionBtn} onPress={() => setFolderModalVisible(true)}>
+                                <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.quickActionGradient}>
+                                    <Ionicons name="folder-open" size={22} color="#FFF" />
+                                </LinearGradient>
+                                <Text style={styles.quickActionLabel}>Nova Pasta</Text>
+                            </Pressable>
                         </View>
-                        <Text style={styles.emptyTitle}>
-                            {currentFolderId ? 'Pasta vazia' : 'Sem ficheiros'}
-                        </Text>
-                        <Text style={styles.emptyText}>
-                            {currentFolderId
-                                ? 'Esta pasta ainda não tem conteúdo.'
-                                : 'Esta equipa ainda não tem ficheiros.\n'}
-                            {canUser(userRole, 'UPLOAD_FILES') ? 'Carrega o primeiro!' : ''}
-                        </Text>
-                        {canUser(userRole, 'UPLOAD_FILES') && (
-                            <View style={styles.emptyActions}>
-                                <Pressable style={styles.emptyButtonSecondary} onPress={openFolderModal}>
-                                    <Ionicons name="folder-outline" size={20} color={colors.accent.primary} />
-                                    <Text style={styles.emptyButtonSecondaryText}>Nova Pasta</Text>
-                                </Pressable>
-                                <Pressable style={styles.emptyButton} onPress={handleUpload}>
-                                    <Ionicons name="cloud-upload-outline" size={20} color={colors.text.inverse} />
-                                    <Text style={styles.emptyButtonText}>Carregar</Text>
-                                </Pressable>
+                    )}
+
+                    {/* Folders Section */}
+                    {folders.length > 0 && (
+                        <>
+                            <Text style={styles.sectionTitle}>Pastas ({folders.length})</Text>
+                            <View style={viewMode === 'grid' ? styles.gridContainer : undefined}>
+                                {folders.map((folder) => (
+                                    <FileCard
+                                        key={folder.id}
+                                        file={folder}
+                                        viewMode={viewMode}
+                                        onPress={() => openFolder(folder)}
+                                        onDelete={() => handleDelete(folder)}
+                                        imageUrl={null}
+                                        isDownloading={false}
+                                        canModify={canUser(userRole, 'DELETE_FILES') || folder.uploader_id === user?.id}
+                                    />
+                                ))}
                             </View>
-                        )}
-                    </View>
-                }
-            />
+                        </>
+                    )}
 
-            {/* Modal Nova Pasta */}
-            <Modal
-                visible={folderModalVisible}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setFolderModalVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Nova Pasta</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            placeholder="Nome da pasta"
-                            placeholderTextColor={colors.text.tertiary}
-                            value={newFolderName}
-                            onChangeText={setNewFolderName}
-                            autoFocus
-                        />
-                        <View style={styles.modalActions}>
-                            <Pressable
-                                style={styles.modalButtonCancel}
-                                onPress={() => setFolderModalVisible(false)}
-                            >
-                                <Text style={styles.modalButtonCancelText}>Cancelar</Text>
-                            </Pressable>
-                            <Pressable
-                                style={styles.modalButtonConfirm}
-                                onPress={handleCreateFolder}
-                                disabled={creatingFolder}
-                            >
-                                {creatingFolder ? (
-                                    <ActivityIndicator size="small" color={colors.text.inverse} />
-                                ) : (
-                                    <Text style={styles.modalButtonConfirmText}>Criar</Text>
-                                )}
-                            </Pressable>
+                    {/* Files Section */}
+                    {regularFiles.length > 0 && (
+                        <>
+                            <Text style={styles.sectionTitle}>Ficheiros ({regularFiles.length})</Text>
+                            <View style={viewMode === 'grid' ? styles.gridContainer : undefined}>
+                                {regularFiles.map((file) => (
+                                    <FileCard
+                                        key={file.id}
+                                        file={file}
+                                        viewMode={viewMode}
+                                        onPress={() => handleOpenFile(file)}
+                                        onDelete={() => handleDelete(file)}
+                                        imageUrl={imageUrls[file.id]}
+                                        isDownloading={downloadingId === file.id}
+                                        canModify={canUser(userRole, 'DELETE_FILES') || file.uploader_id === user?.id}
+                                    />
+                                ))}
+                            </View>
+                        </>
+                    )}
+
+                    {/* Empty State */}
+                    {filteredFiles.length === 0 && (
+                        <View style={styles.emptyContainer}>
+                            <View style={styles.emptyIconBg}>
+                                <Ionicons name="folder-open-outline" size={48} color={COLORS.text.tertiary} />
+                            </View>
+                            <Text style={styles.emptyTitle}>Sem ficheiros</Text>
+                            <Text style={styles.emptySubtitle}>
+                                {searchQuery ? 'Nenhum resultado encontrado' : 'Faz upload para começar'}
+                            </Text>
                         </View>
-                    </View>
-                </View>
-            </Modal>
+                    )}
+                </ScrollView>
 
-            {/* Modal Renomear */}
-            <Modal
-                visible={renameModalVisible}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setRenameModalVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Renomear</Text>
-                        <View style={styles.renameInputRow}>
+                {/* New Folder Modal */}
+                <Modal visible={folderModalVisible} animationType="slide" transparent onRequestClose={() => setFolderModalVisible(false)}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
+                        <Pressable style={styles.modalBackdrop} onPress={() => setFolderModalVisible(false)} />
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHandle} />
+                            <Text style={styles.modalTitle}>Nova Pasta</Text>
+
                             <TextInput
-                                style={[styles.modalInput, styles.renameInput]}
-                                placeholder="Novo nome"
-                                placeholderTextColor={colors.text.tertiary}
-                                value={newName}
-                                onChangeText={setNewName}
+                                style={styles.modalInput}
+                                value={newFolderName}
+                                onChangeText={setNewFolderName}
+                                placeholder="Nome da pasta"
+                                placeholderTextColor={COLORS.text.tertiary}
                                 autoFocus
                             />
-                            {renameTarget && !renameTarget.is_folder && (
-                                <Text style={styles.extensionLabel}>
-                                    {getExtension(renameTarget.name)}
-                                </Text>
+
+                            <View style={styles.modalButtons}>
+                                <Pressable style={styles.modalBtnCancel} onPress={() => setFolderModalVisible(false)}>
+                                    <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+                                </Pressable>
+                                <Pressable style={styles.modalBtnConfirm} onPress={handleCreateFolder} disabled={creatingFolder}>
+                                    {creatingFolder ? (
+                                        <ActivityIndicator color="#FFF" size="small" />
+                                    ) : (
+                                        <Text style={styles.modalBtnConfirmText}>Criar</Text>
+                                    )}
+                                </Pressable>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
+            </SafeAreaView>
+        </View>
+    );
+}
+
+// ============================================
+// FILE CARD COMPONENT
+// ============================================
+
+function FileCard({
+    file,
+    viewMode,
+    onPress,
+    onDelete,
+    imageUrl,
+    isDownloading,
+    canModify,
+}: {
+    file: TeamFile;
+    viewMode: 'list' | 'grid';
+    onPress: () => void;
+    onDelete: () => void;
+    imageUrl: string | null;
+    isDownloading: boolean;
+    canModify: boolean;
+}) {
+    const scale = useRef(new Animated.Value(1)).current;
+    const config = getFileConfig(file);
+    const isImage = isImageFile(file.file_type) && !file.is_folder && imageUrl;
+
+    const showMenu = () => {
+        if (!canModify) return;
+        Alert.alert(file.name, file.is_folder ? 'Pasta' : formatFileSize(file.size_bytes), [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Apagar', style: 'destructive', onPress: onDelete },
+        ]);
+    };
+
+    if (viewMode === 'grid') {
+        return (
+            <Pressable
+                onPress={onPress}
+                onLongPress={showMenu}
+                onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start()}
+                onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+                style={styles.gridCardWrapper}
+            >
+                <Animated.View style={[styles.gridCard, { transform: [{ scale }] }]}>
+                    {isImage ? (
+                        <Image source={{ uri: imageUrl }} style={styles.gridThumbnail} resizeMode="cover" />
+                    ) : (
+                        <LinearGradient colors={config.gradient} style={styles.gridIconBg}>
+                            {isDownloading ? (
+                                <ActivityIndicator color="#FFF" />
+                            ) : (
+                                <Ionicons name={config.icon} size={28} color="#FFF" />
                             )}
-                        </View>
-                        <View style={styles.modalActions}>
-                            <Pressable
-                                style={styles.modalButtonCancel}
-                                onPress={() => setRenameModalVisible(false)}
-                            >
-                                <Text style={styles.modalButtonCancelText}>Cancelar</Text>
-                            </Pressable>
-                            <Pressable
-                                style={styles.modalButtonConfirm}
-                                onPress={handleRename}
-                                disabled={renaming}
-                            >
-                                {renaming ? (
-                                    <ActivityIndicator size="small" color={colors.text.inverse} />
-                                ) : (
-                                    <Text style={styles.modalButtonConfirmText}>Guardar</Text>
-                                )}
-                            </Pressable>
-                        </View>
-                    </View>
+                        </LinearGradient>
+                    )}
+                    <Text style={styles.gridFileName} numberOfLines={2}>{file.name}</Text>
+                </Animated.View>
+            </Pressable>
+        );
+    }
+
+    return (
+        <Pressable
+            onPress={onPress}
+            onLongPress={showMenu}
+            onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+        >
+            <Animated.View style={[styles.listCard, { transform: [{ scale }] }]}>
+                {isImage ? (
+                    <Image source={{ uri: imageUrl }} style={styles.listThumbnail} resizeMode="cover" />
+                ) : (
+                    <LinearGradient colors={config.gradient} style={styles.listIconBg}>
+                        {isDownloading ? (
+                            <ActivityIndicator color="#FFF" size="small" />
+                        ) : (
+                            <Ionicons name={config.icon} size={22} color="#FFF" />
+                        )}
+                    </LinearGradient>
+                )}
+
+                <View style={styles.listInfo}>
+                    <Text style={styles.listFileName} numberOfLines={1}>{file.name}</Text>
+                    <Text style={styles.listFileMeta}>
+                        {file.is_folder ? 'Pasta' : `${formatDate(file.created_at)} • ${formatFileSize(file.size_bytes)}`}
+                    </Text>
                 </View>
-            </Modal>
-        </SafeAreaView>
+
+                <Ionicons
+                    name={file.is_folder ? 'chevron-forward' : 'ellipsis-horizontal'}
+                    size={18}
+                    color={COLORS.text.tertiary}
+                />
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -1076,351 +718,301 @@ export default function TeamFilesScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        gap: SPACING.md,
+    },
+    loadingText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+    },
+    scrollContent: {
+        paddingBottom: 100,
+        paddingHorizontal: SPACING.lg,
     },
 
     // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
     },
     backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
     },
     headerContent: {
         flex: 1,
-        marginLeft: spacing.sm,
+        marginLeft: SPACING.md,
     },
     headerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
-    headerActions: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-    },
-    headerActionButton: {
+    headerAction: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: colors.accent.subtle,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    uploadButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.accent.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...shadows.md,
     },
 
-    // Search
-    searchContainer: {
+    // Actions Row
+    actionsRow: {
+        paddingHorizontal: SPACING.lg,
+        marginBottom: SPACING.md,
+    },
+    searchBar: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        marginHorizontal: spacing.md,
-        marginTop: spacing.sm,
-        marginBottom: spacing.xs,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.lg,
-        gap: spacing.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        gap: SPACING.sm,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     searchInput: {
         flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        paddingVertical: 0,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
     },
 
     // Breadcrumbs
-    breadcrumbContainer: {
-        backgroundColor: colors.surface,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+    breadcrumbsContainer: {
+        maxHeight: 40,
+        marginBottom: SPACING.sm,
     },
-    breadcrumbItem: {
-        flexDirection: 'row',
+    breadcrumbsContent: {
+        paddingHorizontal: SPACING.lg,
         alignItems: 'center',
     },
     breadcrumbText: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
-    breadcrumbTextActive: {
-        color: colors.text.primary,
-        fontWeight: typography.weight.medium,
+    breadcrumbActive: {
+        color: COLORS.text.primary,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+    },
+
+    // Quick Actions
+    quickActions: {
+        flexDirection: 'row',
+        gap: SPACING.md,
+        marginBottom: SPACING.xl,
+    },
+    quickActionBtn: {
+        alignItems: 'center',
+        gap: SPACING.xs,
+    },
+    quickActionGradient: {
+        width: 56,
+        height: 56,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    quickActionLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.secondary,
+    },
+
+    // Section Title
+    sectionTitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.tertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: SPACING.md,
+        marginTop: SPACING.lg,
+    },
+
+    // Grid
+    gridContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: SPACING.md,
+    },
+    gridCardWrapper: {
+        width: (SCREEN_WIDTH - SPACING.lg * 2 - SPACING.md * 2) / 3,
+    },
+    gridCard: {
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    gridIconBg: {
+        width: 56,
+        height: 56,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: SPACING.sm,
+    },
+    gridThumbnail: {
+        width: 56,
+        height: 56,
+        borderRadius: 12,
+        marginBottom: SPACING.sm,
+    },
+    gridFileName: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
+        textAlign: 'center',
     },
 
     // List
-    listContent: {
-        paddingHorizontal: spacing.md,
-        paddingTop: spacing.sm,
-    },
-    listContentEmpty: {
-        flex: 1,
-    },
-    separator: {
-        height: 1,
-        backgroundColor: colors.divider,
-        marginLeft: 60, // Alinha com o texto (após thumbnail)
-    },
-
-    // File Card
-    fileCard: {
+    listCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.xs,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        marginBottom: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    fileCardPressed: {
-        backgroundColor: colors.surfaceSubtle,
-    },
-    iconContainer: {
+    listIconBg: {
         width: 44,
         height: 44,
-        borderRadius: 10,
+        borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    thumbnail: {
+    listThumbnail: {
         width: 44,
         height: 44,
-        borderRadius: 10,
+        borderRadius: 12,
     },
-    fileInfo: {
+    listInfo: {
         flex: 1,
-        marginLeft: spacing.md,
-        justifyContent: 'center',
+        marginLeft: SPACING.md,
     },
-    fileName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        marginBottom: 2,
+    listFileName: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
-    fileMeta: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    moreButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
+    listFileMeta: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
     },
 
-    // Empty State
+    // Empty
     emptyContainer: {
-        flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: spacing.xl,
+        paddingVertical: 60,
     },
-    emptyIconContainer: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        backgroundColor: colors.surfaceSubtle,
+    emptyIconBg: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
+        marginBottom: SPACING.lg,
     },
     emptyTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
     },
-    emptyText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        textAlign: 'center',
-        lineHeight: 20,
-        marginBottom: spacing.xl,
-    },
-    emptyActions: {
-        flexDirection: 'row',
-        gap: spacing.md,
-    },
-    emptyButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
-    },
-    emptyButtonText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
-    emptyButtonSecondary: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.accent.subtle,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-    },
-    emptyButtonSecondaryText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
+    emptySubtitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
     },
 
     // Modal
-    modalOverlay: {
+    modalWrapper: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: spacing.xl,
+        justifyContent: 'flex-end',
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
     },
     modalContent: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.xl,
-        width: '100%',
-        maxWidth: 400,
+        backgroundColor: COLORS.surface,
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        padding: SPACING.xl,
+        paddingBottom: 50,
+    },
+    modalHandle: {
+        width: 40,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        alignSelf: 'center',
+        marginBottom: SPACING.lg,
     },
     modalTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.lg,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xl,
+        textAlign: 'center',
     },
     modalInput: {
-        backgroundColor: colors.background,
-        borderRadius: borderRadius.md,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
         borderWidth: 1,
-        borderColor: colors.divider,
-        marginBottom: spacing.lg,
+        borderColor: 'rgba(255,255,255,0.05)',
+        marginBottom: SPACING.xl,
     },
-    modalActions: {
+    modalButtons: {
         flexDirection: 'row',
-        justifyContent: 'flex-end',
-        gap: spacing.sm,
+        gap: SPACING.md,
     },
-    modalButtonCancel: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.md,
-    },
-    modalButtonCancelText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    modalButtonConfirm: {
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.md,
-        minWidth: 80,
-        alignItems: 'center',
-    },
-    modalButtonConfirmText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
-
-    // Rename Modal
-    renameInputRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: spacing.lg,
-    },
-    renameInput: {
+    modalBtnCancel: {
         flex: 1,
-        marginBottom: 0,
-    },
-    extensionLabel: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginLeft: spacing.xs,
-        backgroundColor: colors.surfaceSubtle,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.md,
-    },
-
-    // Grid View
-    gridContent: {
-        padding: spacing.md,
-    },
-    gridRow: {
-        justifyContent: 'space-between',
-        marginBottom: spacing.md,
-    },
-    gridCard: {
-        width: '48%',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
+        paddingVertical: SPACING.lg,
         alignItems: 'center',
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.xl,
     },
-    gridCardPressed: {
-        opacity: 0.8,
-        transform: [{ scale: 0.98 }],
+    modalBtnCancelText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
-    gridThumbnail: {
-        width: '100%',
-        aspectRatio: 1,
-        borderRadius: borderRadius.md,
-        marginBottom: spacing.sm,
-    },
-    gridIconContainer: {
-        width: '100%',
-        aspectRatio: 1,
-        borderRadius: borderRadius.md,
+    modalBtnConfirm: {
+        flex: 1,
+        paddingVertical: SPACING.lg,
         alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.sm,
+        backgroundColor: '#6366F1',
+        borderRadius: RADIUS.xl,
     },
-    gridFileName: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        textAlign: 'center',
+    modalBtnConfirmText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 });

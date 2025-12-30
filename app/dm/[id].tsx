@@ -35,6 +35,7 @@ interface DMMessage {
     created_at: string;
     sender_id: string;
     status: 'sent' | 'delivered' | 'read';
+    is_read?: boolean;
     attachment_url?: string | null;
     attachment_type?: 'image' | 'video' | 'file' | 'gif' | null;
     attachment_name?: string | null;
@@ -134,7 +135,7 @@ export default function DMChatScreen() {
     // ============================================
 
     useEffect(() => {
-        if (!id) return;
+        if (!id || !user?.id) return;
 
         const channel = supabase
             .channel(`dm-${id}`)
@@ -162,6 +163,36 @@ export default function DMChatScreen() {
                     };
 
                     setMessages(prev => [msgWithSender, ...prev]);
+
+                    // ✅ DELIVERED: If message is from OTHER user and status is 'sent', mark as 'delivered'
+                    if (newMsg.sender_id !== user.id && newMsg.status === 'sent') {
+                        await supabase
+                            .from('dm_messages')
+                            .update({ status: 'delivered' })
+                            .eq('id', newMsg.id);
+
+                        console.log('📨 Marked message as delivered:', newMsg.id);
+                    }
+                }
+            )
+            // Listen for UPDATE events to sync read receipts in real-time
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'dm_messages',
+                    filter: `conversation_id=eq.${id}`,
+                },
+                (payload) => {
+                    const updatedMsg = payload.new as DMMessage;
+
+                    // Update the message status in the list (sent → delivered → read)
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === updatedMsg.id
+                            ? { ...msg, status: updatedMsg.status, is_read: updatedMsg.is_read }
+                            : msg
+                    ));
                 }
             )
             .subscribe();
@@ -169,7 +200,7 @@ export default function DMChatScreen() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [id]);
+    }, [id, user?.id]);
 
     // ============================================
     // SEND MESSAGE
@@ -245,7 +276,7 @@ export default function DMChatScreen() {
                     </Text>
                     {isMe && (
                         <Ionicons
-                            name={item.status === 'read' ? 'checkmark-done' : 'checkmark'}
+                            name={item.status === 'sent' ? 'checkmark' : 'checkmark-done'}
                             size={12}
                             color={item.status === 'read' ? '#3B82F6' : colors.text.tertiary}
                             style={{ marginLeft: 4 }}

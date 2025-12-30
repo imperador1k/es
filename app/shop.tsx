@@ -1,25 +1,28 @@
 /**
- * Shop Screen - Loja de Recompensas
- * Gastar XP em itens, temas e customizações
+ * Shop Screen - ABSURDAMENTE PREMIUM
+ * Loja épica com cards 3D, animações, efeitos visuais insanos
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
+    Dimensions,
     FlatList,
     Image,
     Pressable,
     RefreshControl,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,34 +41,28 @@ interface ShopItem {
     is_consumable: boolean;
 }
 
-interface OwnedItem {
-    item_id: string;
-}
+type CategoryFilter = 'all' | 'avatar_frame' | 'consumable';
 
-type CategoryFilter = 'all' | 'avatar_frame' | 'theme' | 'title' | 'consumable';
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = (width - SPACING.lg * 2 - SPACING.md) / 2;
 
 // ============================================
-// CONSTANTS
+// EPIC CONSTANTS
 // ============================================
 
-const CATEGORY_CONFIG: Record<CategoryFilter, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-    all: { label: 'Tudo', icon: 'grid-outline' },
-    avatar_frame: { label: 'Molduras', icon: 'person-circle-outline' },
-    theme: { label: 'Temas', icon: 'color-palette-outline' },
-    title: { label: 'Títulos', icon: 'ribbon-outline' },
-    consumable: { label: 'Consumíveis', icon: 'flash-outline' },
+const CATEGORY_CONFIG = {
+    all: { label: 'Tudo', icon: 'apps' as const, gradient: ['#6366F1', '#4F46E5'] as const, emoji: '🛒' },
+    avatar_frame: { label: 'Molduras', icon: 'person-circle' as const, gradient: ['#EC4899', '#DB2777'] as const, emoji: '🖼️' },
+    consumable: { label: 'Power-ups', icon: 'flash' as const, gradient: ['#22C55E', '#16A34A'] as const, emoji: '⚡' },
 };
 
-const TYPE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-    avatar_frame: 'person-circle',
-    theme: 'color-palette',
-    title: 'ribbon',
-    badge: 'medal',
-    consumable: 'flash',
+const RARITY_GLOW: Record<string, string> = {
+    avatar_frame: 'rgba(236, 72, 153, 0.4)',
+    consumable: 'rgba(34, 197, 94, 0.4)',
 };
 
 // ============================================
-// MAIN COMPONENT
+// COMPONENT
 // ============================================
 
 export default function ShopScreen() {
@@ -79,6 +76,9 @@ export default function ShopScreen() {
     const [purchasing, setPurchasing] = useState<string | null>(null);
     const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
 
+    const headerAnim = useRef(new Animated.Value(0)).current;
+    const balanceAnim = useRef(new Animated.Value(0)).current;
+
     // ============================================
     // LOAD DATA
     // ============================================
@@ -87,346 +87,282 @@ export default function ShopScreen() {
         if (!user?.id) return;
 
         try {
-            // Buscar itens ativos
-            const { data: itemsData, error: itemsError } = await supabase
-                .from('shop_items')
-                .select('*')
-                .eq('is_active', true)
-                .order('price', { ascending: true });
+            const [itemsRes, inventoryRes] = await Promise.all([
+                supabase.from('shop_items').select('*').eq('is_active', true).order('price', { ascending: true }),
+                supabase.from('user_inventory').select('item_id').eq('user_id', user.id),
+            ]);
 
-            if (itemsError) throw itemsError;
-            setItems(itemsData || []);
+            if (itemsRes.error) throw itemsRes.error;
+            setItems(itemsRes.data || []);
+            setOwnedItems(new Set((inventoryRes.data || []).map((i) => i.item_id)));
 
-            // Buscar itens já possuídos
-            const { data: inventoryData, error: inventoryError } = await supabase
-                .from('user_inventory')
-                .select('item_id')
-                .eq('user_id', user.id);
-
-            if (inventoryError) throw inventoryError;
-
-            const owned = new Set((inventoryData || []).map((i: OwnedItem) => i.item_id));
-            setOwnedItems(owned);
-
+            // Animate in
+            Animated.stagger(100, [
+                Animated.spring(headerAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
+                Animated.spring(balanceAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
+            ]).start();
         } catch (err) {
             console.error('Erro ao carregar loja:', err);
-            Alert.alert('Erro', 'Não foi possível carregar a loja.');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     }, [user?.id]);
 
-    useEffect(() => {
-        loadShopData();
-    }, [loadShopData]);
+    useEffect(() => { loadShopData(); }, [loadShopData]);
 
-    // Realtime para XP
+    // Realtime XP
     useEffect(() => {
         if (!user?.id) return;
-
         const channel = supabase
-            .channel(`profile:${user.id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'profiles',
-                    filter: `id=eq.${user.id}`,
-                },
-                () => {
-                    refetchProfile();
-                }
-            )
+            .channel(`shop-xp:${user.id}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => refetchProfile())
             .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => { supabase.removeChannel(channel); };
     }, [user?.id, refetchProfile]);
 
-    const handleRefresh = () => {
-        setRefreshing(true);
-        loadShopData();
-        refetchProfile();
-    };
-
     // ============================================
-    // PURCHASE LOGIC
+    // PURCHASE
     // ============================================
 
     const handlePurchase = async (item: ShopItem) => {
         if (!user?.id) return;
-
         const userXP = profile?.current_xp || 0;
 
-        // Verificar se já possui
         if (!item.is_consumable && ownedItems.has(item.id)) {
             Alert.alert('Já Adquirido', 'Já possuis este item!');
             return;
         }
 
-        // Verificar XP suficiente
         if (userXP < item.price) {
-            Alert.alert(
-                'XP Insuficiente',
-                `Precisas de ${item.price} XP mas só tens ${userXP} XP.`,
-                [{ text: 'OK' }]
-            );
+            Alert.alert('XP Insuficiente', `Precisas de ${item.price} XP mas tens ${userXP} XP.`);
             return;
         }
 
-        // Confirmação
-        Alert.alert(
-            '🛒 Confirmar Compra',
-            `Queres comprar "${item.name}" por ${item.price} XP?`,
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Comprar',
-                    onPress: async () => {
-                        setPurchasing(item.id);
+        Alert.alert('🛒 Confirmar Compra', `Comprar "${item.name}" por ${item.price} XP?`, [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Comprar!',
+                onPress: async () => {
+                    setPurchasing(item.id);
+                    try {
+                        const { data, error } = await supabase.rpc('purchase_shop_item', { p_user_id: user.id, p_item_id: item.id });
+                        if (error) throw error;
 
-                        try {
-                            const { data, error } = await supabase.rpc('purchase_shop_item', {
-                                p_user_id: user.id,
-                                p_item_id: item.id,
-                            });
-
-                            if (error) throw error;
-
-                            if (data?.success) {
-                                // Sucesso!
-                                Alert.alert(
-                                    '🎉 Compra Realizada!',
-                                    `Adquiriste "${data.item_name}"!\n\nNovo saldo: ${data.new_xp} XP`,
-                                    [{ text: 'Fantástico!' }]
-                                );
-
-                                // Atualizar estado local
-                                setOwnedItems(prev => new Set([...prev, item.id]));
-                                refetchProfile();
-                            } else {
-                                Alert.alert('Erro', data?.error || 'Não foi possível completar a compra.');
-                            }
-                        } catch (err: any) {
-                            console.error('Erro na compra:', err);
-                            Alert.alert('Erro', err.message || 'Erro ao processar compra.');
-                        } finally {
-                            setPurchasing(null);
+                        if (data?.success) {
+                            Alert.alert('🎉 Compra Realizada!', `Adquiriste "${data.item_name}"!\n\nNovo saldo: ${data.new_xp} XP`);
+                            setOwnedItems((prev) => new Set([...prev, item.id]));
+                            refetchProfile();
+                        } else {
+                            Alert.alert('Erro', data?.error || 'Compra falhou.');
                         }
-                    },
+                    } catch (err: any) {
+                        Alert.alert('Erro', err.message);
+                    } finally {
+                        setPurchasing(null);
+                    }
                 },
-            ]
-        );
+            },
+        ]);
     };
 
     // ============================================
-    // FILTER & RENDER
+    // FILTER
     // ============================================
 
-    const filteredItems = activeCategory === 'all'
-        ? items
-        : items.filter(item => item.type === activeCategory);
+    const filteredItems = activeCategory === 'all' ? items : items.filter((i) => i.type === activeCategory);
 
-    const getItemStatus = (item: ShopItem): 'owned' | 'affordable' | 'locked' => {
+    const getStatus = (item: ShopItem): 'owned' | 'affordable' | 'locked' => {
         if (!item.is_consumable && ownedItems.has(item.id)) return 'owned';
         if ((profile?.current_xp || 0) >= item.price) return 'affordable';
         return 'locked';
     };
 
-    const renderItem = ({ item }: { item: ShopItem }) => {
-        const status = getItemStatus(item);
-        const isPurchasing = purchasing === item.id;
-
-        return (
-            <Pressable
-                style={[
-                    styles.itemCard,
-                    status === 'owned' && styles.itemCardOwned,
-                    status === 'locked' && styles.itemCardLocked,
-                ]}
-                onPress={() => status === 'affordable' && handlePurchase(item)}
-                disabled={status === 'owned' || isPurchasing}
-            >
-                {/* Preview */}
-                <View style={[
-                    styles.itemPreview,
-                    { backgroundColor: item.preview_color || `${colors.accent.primary}20` },
-                ]}>
-                    {item.icon_url ? (
-                        <Image source={{ uri: item.icon_url }} style={styles.itemImage} />
-                    ) : (
-                        <Ionicons
-                            name={TYPE_ICONS[item.type] || 'gift'}
-                            size={40}
-                            color={colors.accent.primary}
-                        />
-                    )}
-                    {status === 'owned' && (
-                        <View style={styles.ownedBadge}>
-                            <Ionicons name="checkmark" size={12} color="#FFF" />
-                        </View>
-                    )}
-                </View>
-
-                {/* Info */}
-                <View style={styles.itemInfo}>
-                    <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                    {item.description && (
-                        <Text style={styles.itemDescription} numberOfLines={2}>
-                            {item.description}
-                        </Text>
-                    )}
-                </View>
-
-                {/* Action Button */}
-                {status === 'owned' ? (
-                    <View style={styles.ownedButton}>
-                        <Ionicons name="checkmark-circle" size={16} color={colors.success.primary} />
-                        <Text style={styles.ownedButtonText}>Adquirido</Text>
-                    </View>
-                ) : (
-                    <Pressable
-                        style={[
-                            styles.buyButton,
-                            status === 'locked' && styles.buyButtonLocked,
-                        ]}
-                        onPress={() => handlePurchase(item)}
-                        disabled={status === 'locked' || isPurchasing}
-                    >
-                        {isPurchasing ? (
-                            <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                            <>
-                                <Ionicons
-                                    name={status === 'locked' ? 'lock-closed' : 'flash'}
-                                    size={14}
-                                    color="#FFF"
-                                />
-                                <Text style={styles.buyButtonText}>{item.price} XP</Text>
-                            </>
-                        )}
-                    </Pressable>
-                )}
-            </Pressable>
-        );
-    };
-
     // ============================================
-    // LOADING STATE
+    // RENDER
     // ============================================
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
                     <Text style={styles.loadingText}>A carregar loja...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    // ============================================
-    // MAIN RENDER
-    // ============================================
+    const userXP = profile?.current_xp || 0;
+    const ownedCount = items.filter((i) => ownedItems.has(i.id)).length;
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>🛒 Loja</Text>
-                    <Text style={styles.headerSubtitle}>Gasta o teu XP em recompensas</Text>
-                </View>
-            </View>
-
-            {/* XP Balance */}
-            <View style={styles.balanceCard}>
-                <View style={styles.balanceIcon}>
-                    <Ionicons name="flash" size={24} color="#FFD700" />
-                </View>
-                <View style={styles.balanceInfo}>
-                    <Text style={styles.balanceLabel}>Teu Saldo</Text>
-                    <Text style={styles.balanceValue}>
-                        {(profile?.current_xp || 0).toLocaleString()} XP
-                    </Text>
-                </View>
-                <Pressable
-                    style={styles.earnMoreButton}
-                    onPress={() => router.push('/(tabs)/calendar' as any)}
-                >
-                    <Text style={styles.earnMoreText}>Ganhar +</Text>
-                    <Ionicons name="chevron-forward" size={14} color={colors.accent.primary} />
-                </Pressable>
-            </View>
-
-            {/* Category Filters */}
-            <View style={styles.categoriesContainer}>
-                <FlatList
-                    horizontal
-                    data={Object.entries(CATEGORY_CONFIG) as [CategoryFilter, typeof CATEGORY_CONFIG['all']][]}
-                    keyExtractor={([key]) => key}
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.categoriesList}
-                    renderItem={({ item: [key, config] }) => (
-                        <Pressable
-                            style={[
-                                styles.categoryChip,
-                                activeCategory === key && styles.categoryChipActive,
-                            ]}
-                            onPress={() => setActiveCategory(key)}
-                        >
-                            <Ionicons
-                                name={config.icon}
-                                size={16}
-                                color={activeCategory === key ? '#FFF' : colors.text.secondary}
-                            />
-                            <Text style={[
-                                styles.categoryText,
-                                activeCategory === key && styles.categoryTextActive,
-                            ]}>
-                                {config.label}
-                            </Text>
-                        </Pressable>
-                    )}
-                />
-            </View>
-
-            {/* Items Grid */}
-            <FlatList
-                data={filteredItems}
-                keyExtractor={(item) => item.id}
-                renderItem={renderItem}
-                numColumns={2}
-                columnWrapperStyle={styles.gridRow}
-                contentContainerStyle={styles.gridContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={colors.accent.primary}
-                    />
-                }
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Ionicons name="bag-outline" size={64} color={colors.text.tertiary} />
-                        <Text style={styles.emptyTitle}>Loja Vazia</Text>
-                        <Text style={styles.emptySubtitle}>
-                            {activeCategory === 'all'
-                                ? 'Ainda não há itens disponíveis.'
-                                : 'Não há itens nesta categoria.'}
-                        </Text>
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Epic Header */}
+                <Animated.View style={[styles.header, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                    </Pressable>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>🛒 Loja</Text>
+                        <Text style={styles.headerSubtitle}>{items.length} itens • {ownedCount} adquiridos</Text>
                     </View>
-                }
-            />
-        </SafeAreaView>
+                </Animated.View>
+
+                {/* Epic Balance Card */}
+                <Animated.View style={[styles.balanceSection, { opacity: balanceAnim, transform: [{ scale: balanceAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }]}>
+                    <LinearGradient colors={['#6366F1', '#4F46E5', '#4338CA']} style={styles.balanceCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                        {/* Decorative circles */}
+                        <View style={styles.balanceDecor1} />
+                        <View style={styles.balanceDecor2} />
+
+                        <View style={styles.balanceLeft}>
+                            <View style={styles.balanceIconWrap}>
+                                <Ionicons name="flash" size={28} color="#FFD700" />
+                            </View>
+                            <View>
+                                <Text style={styles.balanceLabel}>Teu Saldo</Text>
+                                <Text style={styles.balanceValue}>{userXP.toLocaleString()}</Text>
+                            </View>
+                        </View>
+
+                        <Pressable style={styles.earnButton} onPress={() => router.push('/(tabs)/calendar' as any)}>
+                            <Ionicons name="add-circle" size={20} color="#6366F1" />
+                            <Text style={styles.earnButtonText}>Ganhar</Text>
+                        </Pressable>
+                    </LinearGradient>
+                </Animated.View>
+
+                {/* Category Filters - Estrutura Simples */}
+                <View style={styles.categoriesContainer}>
+                    {(Object.keys(CATEGORY_CONFIG) as CategoryFilter[]).map((key) => {
+                        const config = CATEGORY_CONFIG[key];
+                        const isActive = activeCategory === key;
+                        const count = key === 'all' ? items.length : items.filter((i) => i.type === key).length;
+
+                        return (
+                            <Pressable
+                                key={key}
+                                style={[
+                                    styles.categoryButton,
+                                    isActive && { backgroundColor: config.gradient[0] }
+                                ]}
+                                onPress={() => setActiveCategory(key)}
+                            >
+                                <Text style={styles.categoryEmoji}>{config.emoji}</Text>
+                                <Text style={[
+                                    styles.categoryText,
+                                    isActive && styles.categoryTextActive
+                                ]}>
+                                    {config.label}
+                                </Text>
+                                {isActive && (
+                                    <View style={styles.categoryBadge}>
+                                        <Text style={styles.categoryBadgeText}>{count}</Text>
+                                    </View>
+                                )}
+                            </Pressable>
+                        );
+                    })}
+                </View>
+
+                {/* Items Grid */}
+                <FlatList
+                    data={filteredItems}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => <ShopCard item={item} status={getStatus(item)} purchasing={purchasing === item.id} onPurchase={() => handlePurchase(item)} />}
+                    numColumns={2}
+                    columnWrapperStyle={styles.gridRow}
+                    contentContainerStyle={styles.gridContent}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadShopData(); }} tintColor="#6366F1" />}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Text style={styles.emptyEmoji}>🛍️</Text>
+                            <Text style={styles.emptyTitle}>Loja Vazia</Text>
+                            <Text style={styles.emptySubtitle}>{activeCategory === 'all' ? 'Ainda não há itens.' : 'Nenhum item nesta categoria.'}</Text>
+                        </View>
+                    }
+                />
+            </SafeAreaView>
+        </View>
+    );
+}
+
+// ============================================
+// SHOP CARD COMPONENT
+// ============================================
+
+function ShopCard({ item, status, purchasing, onPurchase }: { item: ShopItem; status: 'owned' | 'affordable' | 'locked'; purchasing: boolean; onPurchase: () => void }) {
+    const scale = useRef(new Animated.Value(1)).current;
+    const config = CATEGORY_CONFIG[item.type as CategoryFilter] || CATEGORY_CONFIG.all;
+    const glow = RARITY_GLOW[item.type] || RARITY_GLOW.badge;
+
+    return (
+        <Pressable
+            onPress={() => status === 'affordable' && onPurchase()}
+            onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+            disabled={status === 'owned' || purchasing}
+        >
+            <Animated.View style={[styles.shopCard, { transform: [{ scale }] }, status === 'owned' && styles.shopCardOwned, status === 'locked' && styles.shopCardLocked]}>
+                {/* Glow */}
+                {status === 'affordable' && <View style={[styles.shopCardGlow, { backgroundColor: glow }]} />}
+
+                {/* Owned Badge */}
+                {status === 'owned' && (
+                    <View style={styles.ownedRibbon}>
+                        <LinearGradient colors={['#22C55E', '#16A34A']} style={styles.ownedRibbonGradient}>
+                            <Ionicons name="checkmark" size={12} color="#FFF" />
+                        </LinearGradient>
+                    </View>
+                )}
+
+                {/* Preview */}
+                <LinearGradient colors={[`${config.gradient[0]}30`, `${config.gradient[1]}10`]} style={styles.shopCardPreview}>
+                    {item.icon_url ? (
+                        <Image source={{ uri: item.icon_url }} style={styles.shopCardImage} />
+                    ) : (
+                        <View style={styles.shopCardIconWrap}>
+                            <LinearGradient colors={config.gradient} style={styles.shopCardIconGradient}>
+                                <Ionicons name={config.icon} size={32} color="#FFF" />
+                            </LinearGradient>
+                        </View>
+                    )}
+                </LinearGradient>
+
+                {/* Info */}
+                <View style={styles.shopCardInfo}>
+                    <Text style={styles.shopCardName} numberOfLines={1}>{item.name}</Text>
+                    {item.description && <Text style={styles.shopCardDesc} numberOfLines={2}>{item.description}</Text>}
+
+                    {/* Type Badge */}
+                    <View style={[styles.typeBadge, { backgroundColor: `${config.gradient[0]}20` }]}>
+                        <Text style={[styles.typeBadgeText, { color: config.gradient[0] }]}>{config.emoji} {config.label}</Text>
+                    </View>
+                </View>
+
+                {/* Action */}
+                {status === 'owned' ? (
+                    <View style={styles.ownedBar}>
+                        <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
+                        <Text style={styles.ownedBarText}>Adquirido</Text>
+                    </View>
+                ) : (
+                    <Pressable style={[styles.buyBar, status === 'locked' && styles.buyBarLocked]} onPress={onPurchase} disabled={status === 'locked' || purchasing}>
+                        {purchasing ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <>
+                                <Ionicons name={status === 'locked' ? 'lock-closed' : 'flash'} size={14} color="#FFF" />
+                                <Text style={styles.buyBarText}>{item.price} XP</Text>
+                            </>
+                        )}
+                    </Pressable>
+                )}
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -435,244 +371,100 @@ export default function ShopScreen() {
 // ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.md,
-    },
-    loadingText: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
+    loadingText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    headerContent: {
-        flex: 1,
-        marginLeft: spacing.sm,
-    },
-    headerTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
+    backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    headerContent: { flex: 1, marginLeft: SPACING.md },
+    headerTitle: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    headerSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.secondary },
 
-    // Balance Card
-    balanceCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        marginHorizontal: spacing.md,
-        marginTop: spacing.md,
-        padding: spacing.lg,
-        borderRadius: borderRadius.xl,
-        ...shadows.md,
-    },
-    balanceIcon: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: '#FFD70020',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    balanceInfo: {
-        flex: 1,
-        marginLeft: spacing.md,
-    },
-    balanceLabel: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    balanceValue: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    earnMoreButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        backgroundColor: colors.accent.subtle,
-        borderRadius: borderRadius.lg,
-    },
-    earnMoreText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
-    },
+    // Balance
+    balanceSection: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.md },
+    balanceCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.xl, paddingVertical: SPACING.lg, borderRadius: RADIUS['2xl'], overflow: 'hidden', position: 'relative' },
+    balanceDecor1: { position: 'absolute', top: -30, right: -30, width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.1)' },
+    balanceDecor2: { position: 'absolute', bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)' },
+    balanceLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+    balanceIconWrap: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255, 215, 0, 0.2)', alignItems: 'center', justifyContent: 'center' },
+    balanceLabel: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.7)' },
+    balanceValue: { fontSize: 32, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    earnButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: RADIUS.full },
+    earnButtonText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#6366F1' },
 
-    // Categories
+    // Categories - Nova estrutura simples
     categoriesContainer: {
-        marginTop: spacing.md,
+        flexDirection: 'row',
+        paddingHorizontal: SPACING.lg,
+        marginBottom: SPACING.lg,
+        gap: SPACING.sm
     },
-    categoriesList: {
-        paddingHorizontal: spacing.md,
-        gap: spacing.sm,
-    },
-    categoryChip: {
+    categoryButton: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.full,
-        borderWidth: 1,
-        borderColor: colors.divider,
+        justifyContent: 'center',
+        gap: 6,
+        height: 44,
+        borderRadius: RADIUS.xl,
+        backgroundColor: COLORS.surfaceElevated
     },
-    categoryChipActive: {
-        backgroundColor: colors.accent.primary,
-        borderColor: colors.accent.primary,
-    },
+    categoryEmoji: { fontSize: 16 },
     categoryText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary
     },
     categoryTextActive: {
         color: '#FFF',
+        fontWeight: TYPOGRAPHY.weight.bold
+    },
+    categoryBadge: {
+        backgroundColor: 'rgba(255,255,255,0.25)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
+        marginLeft: 2
+    },
+    categoryBadgeText: {
+        fontSize: 10,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF'
     },
 
     // Grid
-    gridContent: {
-        padding: spacing.md,
-    },
-    gridRow: {
-        justifyContent: 'space-between',
-        marginBottom: spacing.md,
-    },
+    gridContent: { paddingHorizontal: SPACING.lg, paddingBottom: 100 },
+    gridRow: { gap: SPACING.md, marginBottom: SPACING.md },
 
-    // Item Card
-    itemCard: {
-        width: '48%',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        overflow: 'hidden',
-        ...shadows.sm,
-    },
-    itemCardOwned: {
-        opacity: 0.8,
-    },
-    itemCardLocked: {
-        opacity: 0.6,
-    },
-    itemPreview: {
-        height: 100,
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-    },
-    itemImage: {
-        width: 60,
-        height: 60,
-        resizeMode: 'contain',
-    },
-    ownedBadge: {
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: colors.success.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    itemInfo: {
-        padding: spacing.md,
-    },
-    itemName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    itemDescription: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        marginTop: 4,
-    },
+    // Shop Card
+    shopCard: { width: CARD_WIDTH, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['2xl'], overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', position: 'relative' },
+    shopCardOwned: { opacity: 0.7 },
+    shopCardLocked: { opacity: 0.5 },
+    shopCardGlow: { position: 'absolute', top: 0, left: 0, right: 0, height: 80, borderTopLeftRadius: RADIUS['2xl'], borderTopRightRadius: RADIUS['2xl'] },
+    ownedRibbon: { position: 'absolute', top: 8, right: 8, zIndex: 10 },
+    ownedRibbonGradient: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    shopCardPreview: { height: 100, alignItems: 'center', justifyContent: 'center' },
+    shopCardImage: { width: 56, height: 56, resizeMode: 'contain' },
+    shopCardIconWrap: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden' },
+    shopCardIconGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+    shopCardInfo: { padding: SPACING.md },
+    shopCardName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    shopCardDesc: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, marginTop: 4, lineHeight: 16 },
+    typeBadge: { alignSelf: 'flex-start', paddingHorizontal: SPACING.sm, paddingVertical: 3, borderRadius: RADIUS.full, marginTop: SPACING.sm },
+    typeBadgeText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium },
 
     // Buttons
-    buyButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        backgroundColor: colors.accent.primary,
-        marginHorizontal: spacing.md,
-        marginBottom: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.lg,
-    },
-    buyButtonLocked: {
-        backgroundColor: colors.text.tertiary,
-    },
-    buyButtonText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
-    ownedButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        backgroundColor: `${colors.success.primary}15`,
-        marginHorizontal: spacing.md,
-        marginBottom: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.lg,
-    },
-    ownedButtonText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.success.primary,
-    },
+    buyBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#6366F1', paddingVertical: SPACING.sm, marginHorizontal: SPACING.md, marginBottom: SPACING.md, borderRadius: RADIUS.lg },
+    buyBarLocked: { backgroundColor: COLORS.text.tertiary },
+    buyBarText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    ownedBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(34, 197, 94, 0.15)', paddingVertical: SPACING.sm, marginHorizontal: SPACING.md, marginBottom: SPACING.md, borderRadius: RADIUS.lg },
+    ownedBarText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#22C55E' },
 
-    // Empty State
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing['5xl'],
-    },
-    emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginTop: spacing.md,
-    },
-    emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: spacing.xs,
-        textAlign: 'center',
-    },
+    // Empty
+    emptyContainer: { alignItems: 'center', paddingVertical: 60 },
+    emptyEmoji: { fontSize: 48 },
+    emptyTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary, marginTop: SPACING.md },
+    emptySubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary, marginTop: SPACING.xs },
 });

@@ -497,15 +497,14 @@ export async function getUserSubmission(
 
 /**
  * Obter todas as submissões de uma tarefa (para professor)
+ * Nota: Busca profiles separadamente para evitar erros de FK
  */
 export async function getTaskSubmissions(taskId: string): Promise<TaskSubmission[]> {
     try {
-        const { data, error } = await supabase
+        // Buscar submissions sem embedding
+        const { data: submissions, error } = await supabase
             .from('task_submissions')
-            .select(`
-                *,
-                user:profiles(username, full_name, avatar_url)
-            `)
+            .select('*')
             .eq('task_id', taskId)
             .order('submitted_at', { ascending: false });
 
@@ -514,7 +513,28 @@ export async function getTaskSubmissions(taskId: string): Promise<TaskSubmission
             return [];
         }
 
-        return (data || []) as TaskSubmission[];
+        if (!submissions || submissions.length === 0) {
+            return [];
+        }
+
+        // Buscar profiles separadamente
+        const userIds = [...new Set(submissions.map(s => s.user_id))];
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, username, full_name, avatar_url')
+            .in('id', userIds);
+
+        const profilesMap = new Map(
+            (profiles || []).map(p => [p.id, p])
+        );
+
+        // Combinar
+        const result = submissions.map(sub => ({
+            ...sub,
+            user: profilesMap.get(sub.user_id) || null,
+        }));
+
+        return result as TaskSubmission[];
     } catch (err) {
         console.error('❌ Unexpected error fetching submissions:', err);
         return [];
@@ -560,7 +580,7 @@ export async function gradeSubmission(
 // ============================================
 
 /**
- * Upload ficheiro para Storage
+ * Upload ficheiro para Storage - Compatível com React Native
  */
 export async function uploadSubmissionFile(
     teamId: string,
@@ -574,27 +594,52 @@ export async function uploadSubmissionFile(
 ): Promise<{ url: string; path: string } | null> {
     try {
         const filePath = `${teamId}/${taskId}/${userId}/${Date.now()}_${file.name}`;
+        
+        // Para React Native, usar FormData com fetch direto para o Storage
+        const formData = new FormData();
+        formData.append('file', {
+            uri: file.uri,
+            name: file.name,
+            type: file.type || 'application/octet-stream',
+        } as any);
 
-        // Fetch file as blob
-        const response = await fetch(file.uri);
-        const blob = await response.blob();
-
-        const { error } = await supabase.storage
-            .from('task-submissions')
-            .upload(filePath, blob, {
-                contentType: file.type,
-                upsert: false,
-            });
-
-        if (error) {
-            console.error('❌ Error uploading file:', error);
+        // Obter a URL de upload do Supabase
+        const { data: session } = await supabase.auth.getSession();
+        const accessToken = session?.session?.access_token;
+        
+        if (!accessToken) {
+            console.error('❌ No access token for upload');
             return null;
         }
 
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+        if (!supabaseUrl) {
+            console.error('❌ EXPO_PUBLIC_SUPABASE_URL not set');
+            return null;
+        }
+        const uploadUrl = `${supabaseUrl}/storage/v1/object/task-submissions/${filePath}`;
+
+        const response = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'x-upsert': 'false',
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Upload failed:', errorText);
+            return null;
+        }
+
+        // Obter URL pública
         const { data: urlData } = supabase.storage
             .from('task-submissions')
             .getPublicUrl(filePath);
 
+        console.log('✅ File uploaded:', filePath);
         return {
             url: urlData.publicUrl,
             path: filePath,

@@ -1,11 +1,10 @@
 /**
  * WeeklyScheduleGrid Component
- * Vista semanal do horário escolar estilo Google Calendar
- * Premium design com indicador de hora atual
+ * Vista semanal do horário - Premium Dark Theme
  */
 
 import { useSchedule } from '@/hooks/useSubjects';
-import { borderRadius, colors, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { ClassSessionWithSubject, ClassType, DayOfWeek } from '@/types/database.types';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -22,22 +21,20 @@ import {
 // CONSTANTS
 // ============================================
 
-const DAYS: DayOfWeek[] = [1, 2, 3, 4, 5]; // Segunda a Sexta
+const DAYS: DayOfWeek[] = [1, 2, 3, 4, 5];
 const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 
-// Horário escolar típico
 const START_HOUR = 8;
 const END_HOUR = 20;
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
-// Layout
-const TIME_COLUMN_WIDTH = 48;
-const HEADER_HEIGHT = 44;
-const HOUR_HEIGHT = 60; // Pixels por hora
-const MIN_CLASS_HEIGHT = 30;
+const TIME_COLUMN_WIDTH = 50;
+const HEADER_HEIGHT = 48;
+const HOUR_HEIGHT = 56;
+const MIN_CLASS_HEIGHT = 28;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const DAY_COLUMN_WIDTH = (SCREEN_WIDTH - TIME_COLUMN_WIDTH - spacing.lg * 2) / 5;
+const DAY_COLUMN_WIDTH = (SCREEN_WIDTH - TIME_COLUMN_WIDTH - SPACING.lg * 2) / 5;
 
 const CLASS_TYPE_SHORT: Record<ClassType, string> = {
     'T': 'T',
@@ -52,20 +49,45 @@ const CLASS_TYPE_SHORT: Record<ClassType, string> = {
 // ============================================
 
 function parseTimeToMinutes(timeStr: string): number {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + minutes;
+    if (!timeStr) {
+        console.warn('⚠️ parseTimeToMinutes: empty timeStr');
+        return 0;
+    }
+
+    // Remove any extra characters, get just HH:MM or HH:MM:SS
+    const cleanTime = timeStr.trim();
+    const parts = cleanTime.split(':');
+
+    if (parts.length < 2) {
+        console.warn(`⚠️ parseTimeToMinutes: invalid format "${timeStr}"`);
+        return 0;
+    }
+
+    const hours = parseInt(parts[0], 10) || 0;
+    const minutes = parseInt(parts[1], 10) || 0;
+
+    const totalMinutes = hours * 60 + minutes;
+
+    console.log(`⏱️ parseTimeToMinutes: "${timeStr}" → ${hours}h ${minutes}m = ${totalMinutes} minutes`);
+
+    return totalMinutes;
 }
 
 function getClassPosition(startTime: string, endTime: string) {
     const startMinutes = parseTimeToMinutes(startTime);
     const endMinutes = parseTimeToMinutes(endTime);
-    const startOffset = startMinutes - START_HOUR * 60;
+    const startOffset = startMinutes - START_HOUR * 60; // START_HOUR = 8, so 8*60 = 480
     const duration = endMinutes - startMinutes;
 
-    return {
-        top: (startOffset / 60) * HOUR_HEIGHT,
-        height: Math.max((duration / 60) * HOUR_HEIGHT - 2, MIN_CLASS_HEIGHT),
-    };
+    const top = (startOffset / 60) * HOUR_HEIGHT;
+    const height = Math.max((duration / 60) * HOUR_HEIGHT - 2, MIN_CLASS_HEIGHT);
+
+    console.log(`📍 getClassPosition: "${startTime}" → "${endTime}"`);
+    console.log(`   startMinutes=${startMinutes}, endMinutes=${endMinutes}`);
+    console.log(`   startOffset=${startOffset} (${startMinutes} - ${START_HOUR * 60})`);
+    console.log(`   top=${top}px, height=${height}px`);
+
+    return { top, height };
 }
 
 function getCurrentTimePosition(): number | null {
@@ -81,7 +103,6 @@ function getCurrentTimePosition(): number | null {
 
 function isToday(dayOfWeek: DayOfWeek): boolean {
     const today = new Date().getDay();
-    // JS: 0 = Sunday, our system: 1 = Monday
     return today === dayOfWeek;
 }
 
@@ -99,30 +120,27 @@ interface WeeklyScheduleGridProps {
 // ============================================
 
 export function WeeklyScheduleGrid({ onClassPress, onEmptySlotPress }: WeeklyScheduleGridProps) {
-    const { schedule, loading, getScheduleByDay } = useSchedule();
+    const { schedule, getScheduleByDay } = useSchedule();
     const [currentTimePosition, setCurrentTimePosition] = useState<number | null>(null);
 
     const scheduleByDay = useMemo(() => getScheduleByDay(), [schedule]);
 
-    // Debug log
+    // Debug: Log schedule data
     useEffect(() => {
-        console.log('📅 WeeklyScheduleGrid mounted, schedule count:', schedule.length);
-    }, [schedule.length]);
+        if (schedule.length > 0) {
+            console.log('📅 WeeklyScheduleGrid - Schedule loaded:');
+            schedule.forEach((s) => {
+                console.log(`  - ${s.subject.name}: day=${s.day_of_week}, start=${s.start_time}, end=${s.end_time}`);
+            });
+        }
+    }, [schedule]);
 
-    // Update current time indicator
     useEffect(() => {
-        const updateTime = () => {
-            setCurrentTimePosition(getCurrentTimePosition());
-        };
-
+        const updateTime = () => setCurrentTimePosition(getCurrentTimePosition());
         updateTime();
-        const interval = setInterval(updateTime, 60000); // Update every minute
-
+        const interval = setInterval(updateTime, 60000);
         return () => clearInterval(interval);
     }, []);
-
-    // Note: Always show the grid so users can tap on empty slots to add classes
-    // The empty state is only shown inside the grid as an overlay if needed
 
     return (
         <View style={styles.container}>
@@ -130,157 +148,110 @@ export function WeeklyScheduleGrid({ onClassPress, onEmptySlotPress }: WeeklySch
             <View style={styles.headerRow}>
                 <View style={styles.timeColumnHeader} />
                 {DAYS.map((day, index) => (
-                    <View
-                        key={day}
-                        style={[
-                            styles.dayHeader,
-                            isToday(day) && styles.dayHeaderToday,
-                        ]}
-                    >
-                        <Text style={[
-                            styles.dayLabel,
-                            isToday(day) && styles.dayLabelToday,
-                        ]}>
+                    <View key={day} style={[styles.dayHeader, isToday(day) && styles.dayHeaderToday]}>
+                        <Text style={[styles.dayLabel, isToday(day) && styles.dayLabelToday]}>
                             {DAY_LABELS[index]}
                         </Text>
-                        {isToday(day) && (
-                            <View style={styles.todayDot} />
-                        )}
+                        {isToday(day) && <View style={styles.todayDot} />}
                     </View>
                 ))}
             </View>
 
             {/* Scrollable grid */}
-            <ScrollView
-                style={styles.scrollView}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
-            >
+            <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                 <View style={styles.gridContainer}>
                     {/* Time column */}
                     <View style={styles.timeColumn}>
                         {HOURS.map((hour) => (
                             <View key={hour} style={styles.timeSlot}>
-                                <Text style={styles.timeText}>
-                                    {hour.toString().padStart(2, '0')}:00
-                                </Text>
+                                <Text style={styles.timeText}>{hour.toString().padStart(2, '0')}:00</Text>
                             </View>
                         ))}
                     </View>
 
                     {/* Day columns with grid lines */}
                     <View style={styles.daysContainer}>
-                        {/* Grid lines (horizontal) */}
+                        {/* Grid lines */}
                         {HOURS.map((hour) => (
-                            <View
-                                key={`line-${hour}`}
-                                style={[
-                                    styles.gridLine,
-                                    { top: (hour - START_HOUR) * HOUR_HEIGHT },
-                                ]}
-                            />
+                            <View key={`line-${hour}`} style={[styles.gridLine, { top: (hour - START_HOUR) * HOUR_HEIGHT }]} />
                         ))}
 
                         {/* Current time indicator */}
                         {currentTimePosition !== null && (
-                            <View
-                                style={[
-                                    styles.currentTimeIndicator,
-                                    { top: currentTimePosition },
-                                ]}
-                            >
+                            <View style={[styles.currentTimeIndicator, { top: currentTimePosition }]}>
                                 <View style={styles.currentTimeDot} />
                                 <View style={styles.currentTimeLine} />
                             </View>
                         )}
 
                         {/* Day columns */}
-                        {DAYS.map((day, dayIndex) => {
+                        {DAYS.map((day) => {
                             const sessions = scheduleByDay[day] || [];
                             return (
-                                <View
-                                    key={day}
-                                    style={[
-                                        styles.dayColumn,
-                                        isToday(day) && styles.dayColumnToday,
-                                    ]}
-                                >
-                                    {/* Tappable hour slots - using flex layout */}
+                                <View key={day} style={[styles.dayColumn, isToday(day) && styles.dayColumnToday]}>
+                                    {/* Tappable hour slots */}
                                     {HOURS.map((hour) => (
                                         <TouchableOpacity
                                             key={`slot-${day}-${hour}`}
-                                            style={styles.hourSlot}
+                                            style={[
+                                                styles.hourSlot,
+                                                { transform: [{ translateY: (hour - START_HOUR) * HOUR_HEIGHT }] }
+                                            ]}
                                             activeOpacity={0.7}
-                                            onPress={() => {
-                                                console.log(`🕐 Slot pressed: Day ${day}, Hour ${hour}`);
-                                                onEmptySlotPress?.(day, hour);
-                                            }}
+                                            onPress={() => onEmptySlotPress?.(day, hour)}
                                         >
                                             <View style={styles.hourSlotInner} />
                                         </TouchableOpacity>
                                     ))}
 
-                                    {/* Absolute overlay for class blocks */}
-                                    <View style={styles.classBlocksOverlay} pointerEvents="box-none">
-                                        {sessions.map((session) => {
-                                            const { top, height } = getClassPosition(
-                                                session.start_time,
-                                                session.end_time
-                                            );
-                                            const isCompact = height < 50;
+                                    {/* Class blocks - use transform for Android compatibility */}
+                                    {sessions.map((session) => {
+                                        const { top, height } = getClassPosition(session.start_time, session.end_time);
+                                        const isCompact = height < 45;
 
-                                            return (
+                                        return (
+                                            <View
+                                                key={session.id}
+                                                style={[
+                                                    styles.classBlock,
+                                                    {
+                                                        height,
+                                                        transform: [{ translateY: top }],
+                                                        backgroundColor: `${session.subject.color}25`,
+                                                        borderLeftColor: session.subject.color,
+                                                    },
+                                                ]}
+                                            >
                                                 <Pressable
-                                                    key={session.id}
                                                     style={({ pressed }) => [
-                                                        styles.classBlock,
-                                                        {
-                                                            top,
-                                                            height,
-                                                            backgroundColor: session.subject.color + '20',
-                                                            borderLeftColor: session.subject.color,
-                                                        },
+                                                        styles.classBlockInner,
                                                         pressed && styles.classBlockPressed,
                                                     ]}
                                                     onPress={() => onClassPress?.(session)}
                                                 >
                                                     <Text
-                                                        style={[
-                                                            styles.classTitle,
-                                                            { color: session.subject.color },
-                                                            isCompact && styles.classTitleCompact,
-                                                        ]}
+                                                        style={[styles.classTitle, { color: session.subject.color }, isCompact && styles.classTitleCompact]}
                                                         numberOfLines={isCompact ? 1 : 2}
                                                     >
                                                         {session.subject.name}
                                                     </Text>
                                                     {!isCompact && (
                                                         <View style={styles.classDetails}>
-                                                            <Text style={styles.classTime}>
-                                                                {session.start_time.slice(0, 5)}
-                                                            </Text>
-                                                            <View style={[
-                                                                styles.classTypeBadge,
-                                                                { backgroundColor: session.subject.color + '30' }
-                                                            ]}>
-                                                                <Text style={[
-                                                                    styles.classTypeText,
-                                                                    { color: session.subject.color }
-                                                                ]}>
+                                                            <Text style={styles.classTime}>{session.start_time.slice(0, 5)}</Text>
+                                                            <View style={[styles.classTypeBadge, { backgroundColor: `${session.subject.color}40` }]}>
+                                                                <Text style={[styles.classTypeText, { color: session.subject.color }]}>
                                                                     {CLASS_TYPE_SHORT[session.type]}
                                                                 </Text>
                                                             </View>
                                                         </View>
                                                     )}
                                                     {!isCompact && session.room && (
-                                                        <Text style={styles.classRoom} numberOfLines={1}>
-                                                            📍 {session.room}
-                                                        </Text>
+                                                        <Text style={styles.classRoom} numberOfLines={1}>📍 {session.room}</Text>
                                                     )}
                                                 </Pressable>
-                                            );
-                                        })}
-                                    </View>
+                                            </View>
+                                        );
+                                    })}
                                 </View>
                             );
                         })}
@@ -292,50 +263,24 @@ export function WeeklyScheduleGrid({ onClassPress, onEmptySlotPress }: WeeklySch
 }
 
 // ============================================
-// STYLES
+// STYLES - PREMIUM DARK THEME
 // ============================================
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
-    },
-
-    // Empty State
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: spacing.xl,
-    },
-    emptyIconContainer: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        backgroundColor: colors.surfaceSubtle,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.lg,
-    },
-    emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
-    },
-    emptyText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        textAlign: 'center',
-        lineHeight: 20,
+        backgroundColor: COLORS.background,
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+        ...SHADOWS.sm,
     },
 
     // Header
     headerRow: {
         flexDirection: 'row',
         borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-        backgroundColor: colors.surface,
+        borderBottomColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: COLORS.surface,
     },
     timeColumnHeader: {
         width: TIME_COLUMN_WIDTH,
@@ -346,26 +291,26 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderLeftWidth: 1,
-        borderLeftColor: colors.divider,
+        borderLeftColor: 'rgba(255,255,255,0.05)',
     },
     dayHeaderToday: {
-        backgroundColor: colors.accent.light,
+        backgroundColor: 'rgba(99, 102, 241, 0.15)',
     },
     dayLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
     },
     dayLabelToday: {
-        color: colors.accent.primary,
-        fontWeight: typography.weight.bold,
+        color: '#6366F1',
+        fontWeight: TYPOGRAPHY.weight.bold,
     },
     todayDot: {
         width: 6,
         height: 6,
         borderRadius: 3,
-        backgroundColor: colors.accent.primary,
-        marginTop: 2,
+        backgroundColor: '#6366F1',
+        marginTop: 3,
     },
 
     // Scroll
@@ -373,7 +318,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: spacing.xl,
+        paddingBottom: SPACING.xl,
     },
 
     // Grid
@@ -384,17 +329,18 @@ const styles = StyleSheet.create({
     // Time column
     timeColumn: {
         width: TIME_COLUMN_WIDTH,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     timeSlot: {
         height: HOUR_HEIGHT,
         justifyContent: 'flex-start',
         paddingTop: 2,
-        paddingRight: spacing.sm,
+        paddingRight: SPACING.sm,
     },
     timeText: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: 11,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.tertiary,
         textAlign: 'right',
     },
 
@@ -411,7 +357,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         height: 1,
-        backgroundColor: colors.divider,
+        backgroundColor: 'rgba(255,255,255,0.05)',
     },
 
     // Current time indicator
@@ -427,13 +373,13 @@ const styles = StyleSheet.create({
         width: 10,
         height: 10,
         borderRadius: 5,
-        backgroundColor: colors.danger.primary,
+        backgroundColor: '#EF4444',
         marginLeft: -5,
     },
     currentTimeLine: {
         flex: 1,
         height: 2,
-        backgroundColor: colors.danger.primary,
+        backgroundColor: '#EF4444',
     },
 
     // Day column
@@ -441,19 +387,21 @@ const styles = StyleSheet.create({
         width: DAY_COLUMN_WIDTH,
         height: HOURS.length * HOUR_HEIGHT,
         borderLeftWidth: 1,
-        borderLeftColor: colors.divider,
+        borderLeftColor: 'rgba(255,255,255,0.05)',
         position: 'relative',
     },
     dayColumnToday: {
-        backgroundColor: colors.accent.light + '30',
+        backgroundColor: 'rgba(99, 102, 241, 0.05)',
     },
 
-    // Hour slot (tappable cells - using flex layout, NOT absolute)
+    // Hour slot - now positioned absolutely for Android compatibility
     hourSlot: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
         height: HOUR_HEIGHT,
-        width: '100%',
         borderBottomWidth: 1,
-        borderBottomColor: colors.divider + '50',
+        borderBottomColor: 'rgba(255,255,255,0.03)',
         backgroundColor: 'transparent',
     },
     hourSlotInner: {
@@ -461,35 +409,30 @@ const styles = StyleSheet.create({
         width: '100%',
     },
 
-    // Overlay container for class blocks - absolute positioned to cover entire column
-    classBlocksOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-    },
-
-    // Class block (absolute positioned on top of flex slots)
+    // Class block - outer container uses transform
     classBlock: {
         position: 'absolute',
+        top: 0, // Start from top, translateY moves it
         left: 2,
         right: 2,
-        borderRadius: borderRadius.sm,
+        borderRadius: RADIUS.md,
         borderLeftWidth: 3,
-        padding: spacing.xs,
         overflow: 'hidden',
-        zIndex: 100, // High z-index to be above hour slots
-        elevation: 5, // Android elevation for proper stacking
+        zIndex: 100,
+        elevation: 5,
+    },
+    // Inner pressable fills the container
+    classBlockInner: {
+        flex: 1,
+        padding: SPACING.xs,
     },
     classBlockPressed: {
         opacity: 0.8,
-        transform: [{ scale: 0.98 }],
     },
     classTitle: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
-        lineHeight: 14,
+        fontSize: 11,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        lineHeight: 13,
     },
     classTitleCompact: {
         fontSize: 10,
@@ -498,11 +441,11 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 2,
-        gap: spacing.xs,
+        gap: SPACING.xs,
     },
     classTime: {
         fontSize: 9,
-        color: colors.text.tertiary,
+        color: COLORS.text.tertiary,
     },
     classTypeBadge: {
         paddingHorizontal: 4,
@@ -511,11 +454,11 @@ const styles = StyleSheet.create({
     },
     classTypeText: {
         fontSize: 8,
-        fontWeight: typography.weight.bold,
+        fontWeight: TYPOGRAPHY.weight.bold,
     },
     classRoom: {
         fontSize: 9,
-        color: colors.text.tertiary,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
 });

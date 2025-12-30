@@ -1,10 +1,9 @@
 /**
- * QuickAddModal Component
+ * QuickAddModal Component - Premium Dark Theme
  * Action sheet para adicionar rapidamente aulas, reuniões ou eventos
- * Aparece quando o utilizador clica num slot vazio do horário
  */
 
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { DAY_NAMES, DayOfWeek } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +14,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 
 // ============================================
 // TYPES
@@ -27,41 +27,36 @@ interface QuickAddOption {
     icon: keyof typeof Ionicons.glyphMap;
     title: string;
     subtitle: string;
-    color: string;
     gradient: [string, string];
 }
 
 const OPTIONS: QuickAddOption[] = [
     {
         type: 'class',
-        icon: 'book-outline',
+        icon: 'book',
         title: 'Aula',
         subtitle: 'Adicionar aula ao horário',
-        color: colors.accent.primary,
         gradient: ['#6366F1', '#4F46E5'],
     },
     {
         type: 'study',
-        icon: 'library-outline',
+        icon: 'library',
         title: 'Sessão de Estudo',
         subtitle: 'Bloquear tempo para estudar',
-        color: colors.success.primary,
         gradient: ['#10B981', '#059669'],
     },
     {
         type: 'meeting',
-        icon: 'people-outline',
+        icon: 'people',
         title: 'Reunião',
         subtitle: 'Reunião de grupo ou projeto',
-        color: colors.warning.primary,
         gradient: ['#F59E0B', '#D97706'],
     },
     {
         type: 'event',
-        icon: 'calendar-outline',
+        icon: 'calendar',
         title: 'Evento',
         subtitle: 'Outro compromisso',
-        color: '#8B5CF6',
         gradient: ['#8B5CF6', '#7C3AED'],
     },
 ];
@@ -83,20 +78,16 @@ interface QuickAddModalProps {
 // ============================================
 
 export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAddModalProps) {
-    if (day === null || hour === null) return null;
+    // Early return if no valid day/hour
+    if (!visible) return null;
 
-    const dayName = DAY_NAMES[day];
-    const timeString = `${hour.toString().padStart(2, '0')}:00`;
+    const dayName = day !== null && day !== undefined ? (DAY_NAMES[day] || 'Dia') : 'Dia';
+    const timeString = hour !== null && hour !== undefined ? `${hour.toString().padStart(2, '0')}:00` : '--:--';
 
     return (
-        <Modal
-            visible={visible}
-            transparent
-            animationType="slide"
-            onRequestClose={onClose}
-        >
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
             <Pressable style={styles.overlay} onPress={onClose}>
-                <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+                <Animated.View entering={FadeInUp.springify()} style={styles.sheet}>
                     {/* Handle */}
                     <View style={styles.handle} />
 
@@ -105,11 +96,11 @@ export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAd
                         <Text style={styles.title}>Adicionar em</Text>
                         <View style={styles.timeInfo}>
                             <View style={styles.timeBadge}>
-                                <Ionicons name="calendar" size={14} color={colors.accent.primary} />
+                                <Ionicons name="calendar" size={14} color="#6366F1" />
                                 <Text style={styles.timeBadgeText}>{dayName}</Text>
                             </View>
                             <View style={styles.timeBadge}>
-                                <Ionicons name="time" size={14} color={colors.accent.primary} />
+                                <Ionicons name="time" size={14} color="#6366F1" />
                                 <Text style={styles.timeBadgeText}>{timeString}</Text>
                             </View>
                         </View>
@@ -117,30 +108,27 @@ export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAd
 
                     {/* Options */}
                     <View style={styles.options}>
-                        {OPTIONS.map((option) => (
-                            <Pressable
-                                key={option.type}
-                                style={({ pressed }) => [
-                                    styles.option,
-                                    pressed && styles.optionPressed,
-                                ]}
-                                onPress={() => {
-                                    onSelect(option.type, day, hour);
-                                    onClose();
-                                }}
-                            >
-                                <LinearGradient
-                                    colors={option.gradient}
-                                    style={styles.optionIcon}
+                        {OPTIONS.map((option, index) => (
+                            <Animated.View key={option.type} entering={FadeInUp.delay(50 * index).springify()}>
+                                <Pressable
+                                    style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+                                    onPress={() => {
+                                        if (day !== null && hour !== null) {
+                                            onSelect(option.type, day, hour);
+                                        }
+                                        onClose();
+                                    }}
                                 >
-                                    <Ionicons name={option.icon} size={24} color="#FFFFFF" />
-                                </LinearGradient>
-                                <View style={styles.optionText}>
-                                    <Text style={styles.optionTitle}>{option.title}</Text>
-                                    <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
-                                </View>
-                                <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-                            </Pressable>
+                                    <LinearGradient colors={option.gradient} style={styles.optionIcon}>
+                                        <Ionicons name={option.icon} size={22} color="#FFF" />
+                                    </LinearGradient>
+                                    <View style={styles.optionText}>
+                                        <Text style={styles.optionTitle}>{option.title}</Text>
+                                        <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />
+                                </Pressable>
+                            </Animated.View>
                         ))}
                     </View>
 
@@ -148,77 +136,77 @@ export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAd
                     <Pressable style={styles.cancelButton} onPress={onClose}>
                         <Text style={styles.cancelText}>Cancelar</Text>
                     </Pressable>
-                </Pressable>
+                </Animated.View>
             </Pressable>
         </Modal>
     );
 }
 
 // ============================================
-// STYLES
+// STYLES - PREMIUM DARK THEME
 // ============================================
 
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
         justifyContent: 'flex-end',
     },
     sheet: {
-        backgroundColor: colors.surface,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        paddingBottom: spacing['3xl'],
-        ...shadows.lg,
+        backgroundColor: COLORS.surface,
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        paddingBottom: 40,
+        ...SHADOWS.lg,
     },
     handle: {
         width: 40,
         height: 4,
-        backgroundColor: colors.divider,
+        backgroundColor: 'rgba(255,255,255,0.2)',
         borderRadius: 2,
         alignSelf: 'center',
-        marginTop: spacing.md,
-        marginBottom: spacing.lg,
+        marginTop: SPACING.md,
+        marginBottom: SPACING.lg,
     },
     header: {
-        paddingHorizontal: spacing.xl,
-        marginBottom: spacing.lg,
+        paddingHorizontal: SPACING.xl,
+        marginBottom: SPACING.lg,
     },
     title: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.sm,
     },
     timeInfo: {
         flexDirection: 'row',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     timeBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
-        backgroundColor: colors.accent.light,
-        paddingVertical: spacing.xs,
-        paddingHorizontal: spacing.sm,
-        borderRadius: borderRadius.full,
+        gap: SPACING.xs,
+        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+        paddingVertical: SPACING.xs,
+        paddingHorizontal: SPACING.md,
+        borderRadius: RADIUS.full,
     },
     timeBadgeText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: '#6366F1',
     },
     options: {
-        paddingHorizontal: spacing.lg,
-        gap: spacing.sm,
+        paddingHorizontal: SPACING.lg,
+        gap: SPACING.sm,
     },
     option: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        gap: spacing.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        gap: SPACING.md,
     },
     optionPressed: {
         opacity: 0.8,
@@ -227,7 +215,7 @@ const styles = StyleSheet.create({
     optionIcon: {
         width: 48,
         height: 48,
-        borderRadius: borderRadius.md,
+        borderRadius: RADIUS.lg,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -235,26 +223,26 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     optionTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
     },
     optionSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
     cancelButton: {
-        marginTop: spacing.lg,
-        marginHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.lg,
+        marginTop: SPACING.lg,
+        marginHorizontal: SPACING.lg,
+        paddingVertical: SPACING.lg,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.xl,
         alignItems: 'center',
     },
     cancelText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
 });

@@ -1,12 +1,13 @@
 /**
- * Badges Screen - Galeria de Conquistas
- * Grid 3 colunas, confetti ao desbloquear, modal de detalhes
+ * Badges Screen - ABSURDAMENTE PREMIUM
+ * Design épico com efeitos 3D, glows, auras por raridade e animações
  */
 
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
-import { Badge, checkAndAwardBadges, getAllBadges, getUserBadges, RARITY_COLORS, RARITY_LABELS, UserBadge } from '@/services/badgeService';
+import { Badge, checkAndAwardBadges, getAllBadges, getUserBadges, UserBadge } from '@/services/badgeService';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -26,7 +27,7 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ============================================
-// TYPES
+// TYPES & CONSTANTS
 // ============================================
 
 interface DisplayBadge extends Badge {
@@ -34,12 +35,41 @@ interface DisplayBadge extends Badge {
     unlocked_at?: string;
 }
 
-// ============================================
-// CONSTANTS
-// ============================================
-
 const { width } = Dimensions.get('window');
-const CARD_SIZE = (width - spacing.md * 4) / 3;
+const CARD_SIZE = (width - SPACING.lg * 2 - SPACING.md * 2) / 3;
+
+// RARITY com cores ABSURDAS
+const RARITY_CONFIG = {
+    common: {
+        gradient: ['#6B7280', '#4B5563'] as const,
+        glow: 'rgba(107, 114, 128, 0.4)',
+        label: 'Comum',
+        emoji: '⚪',
+        stars: 1,
+    },
+    rare: {
+        gradient: ['#3B82F6', '#2563EB'] as const,
+        glow: 'rgba(59, 130, 246, 0.5)',
+        label: 'Raro',
+        emoji: '🔵',
+        stars: 2,
+    },
+    epic: {
+        gradient: ['#A855F7', '#7C3AED'] as const,
+        glow: 'rgba(168, 85, 247, 0.6)',
+        label: 'Épico',
+        emoji: '🟣',
+        stars: 3,
+    },
+    legendary: {
+        gradient: ['#F59E0B', '#D97706'] as const,
+        glow: 'rgba(245, 158, 11, 0.7)',
+        label: 'Lendário',
+        emoji: '🌟',
+        stars: 4,
+    },
+};
+
 
 // ============================================
 // MAIN COMPONENT
@@ -54,10 +84,10 @@ export default function BadgesScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedBadge, setSelectedBadge] = useState<DisplayBadge | null>(null);
     const [showConfetti, setShowConfetti] = useState(false);
-    const [newBadges, setNewBadges] = useState<string[]>([]);
 
     const confettiRef = useRef<any>(null);
-    const scaleAnim = useRef(new Animated.Value(0)).current;
+    const modalScale = useRef(new Animated.Value(0)).current;
+    const progressAnim = useRef(new Animated.Value(0)).current;
 
     // ============================================
     // LOAD DATA
@@ -67,11 +97,7 @@ export default function BadgesScreen() {
         if (!user?.id) return;
 
         try {
-            const [badges, owned] = await Promise.all([
-                getAllBadges(),
-                getUserBadges(user.id),
-            ]);
-
+            const [badges, owned] = await Promise.all([getAllBadges(), getUserBadges(user.id)]);
             setAllBadges(badges);
             setUserBadges(owned);
         } catch (err) {
@@ -82,65 +108,52 @@ export default function BadgesScreen() {
         }
     }, [user?.id]);
 
-    // Verificar badges ao montar
     useEffect(() => {
         const checkBadges = async () => {
             if (!user?.id) return;
-
             await loadBadges();
 
-            // Verificar novos badges
             const result = await checkAndAwardBadges(user.id);
-
             if (result && result.badges_awarded.length > 0) {
-                // Novos badges desbloqueados!
-                const newBadgeNames = result.badges_awarded.map(b => `${b.icon} ${b.name}`);
-                setNewBadges(newBadgeNames);
                 setShowConfetti(true);
-
-                // Recarregar para mostrar os novos
                 await loadBadges();
 
-                // Mostrar alerta
                 setTimeout(() => {
-                    Alert.alert(
-                        '🎉 NOVA CONQUISTA!',
-                        `Desbloqueaste:\n\n${newBadgeNames.join('\n')}\n\n+${result.total_xp_gained} XP bónus!`,
-                        [{ text: 'Incrível!' }]
-                    );
+                    const names = result.badges_awarded.map((b) => `${b.icon} ${b.name}`);
+                    Alert.alert('🎉 NOVA CONQUISTA!', `Desbloqueaste:\n\n${names.join('\n')}\n\n+${result.total_xp_gained} XP!`, [
+                        { text: 'ÉPICO!' },
+                    ]);
                 }, 1500);
             }
         };
-
         checkBadges();
     }, [user?.id]);
-
-    const handleRefresh = () => {
-        setRefreshing(true);
-        loadBadges();
-    };
 
     // ============================================
     // PROCESS DATA
     // ============================================
 
-    const ownedBadgeIds = new Set(userBadges.map(ub => ub.badge_id));
+    const ownedIds = new Set(userBadges.map((ub) => ub.badge_id));
 
-    const displayBadges: DisplayBadge[] = allBadges.map(badge => ({
+    const displayBadges: DisplayBadge[] = allBadges.map((badge) => ({
         ...badge,
-        unlocked: ownedBadgeIds.has(badge.id),
-        unlocked_at: userBadges.find(ub => ub.badge_id === badge.id)?.unlocked_at,
+        unlocked: ownedIds.has(badge.id),
+        unlocked_at: userBadges.find((ub) => ub.badge_id === badge.id)?.unlocked_at,
     }));
 
-    // Ordenar: desbloqueados primeiro
     const sortedBadges = [...displayBadges].sort((a, b) => {
         if (a.unlocked !== b.unlocked) return a.unlocked ? -1 : 1;
-        return 0;
+        const rarityOrder = { legendary: 0, epic: 1, rare: 2, common: 3 };
+        return rarityOrder[a.rarity] - rarityOrder[b.rarity];
     });
 
-    const unlockedCount = displayBadges.filter(b => b.unlocked).length;
+    const unlockedCount = displayBadges.filter((b) => b.unlocked).length;
     const totalCount = displayBadges.length;
     const progressPercent = totalCount > 0 ? (unlockedCount / totalCount) * 100 : 0;
+
+    useEffect(() => {
+        Animated.timing(progressAnim, { toValue: progressPercent, duration: 1500, useNativeDriver: false }).start();
+    }, [progressPercent]);
 
     // ============================================
     // MODAL ANIMATION
@@ -148,277 +161,254 @@ export default function BadgesScreen() {
 
     useEffect(() => {
         if (selectedBadge) {
-            Animated.spring(scaleAnim, {
-                toValue: 1,
-                tension: 50,
-                friction: 7,
-                useNativeDriver: true,
-            }).start();
+            Animated.spring(modalScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }).start();
         } else {
-            scaleAnim.setValue(0);
+            modalScale.setValue(0);
         }
     }, [selectedBadge]);
 
     // ============================================
-    // RENDER BADGE CARD
-    // ============================================
-
-    const renderBadge = ({ item }: { item: DisplayBadge }) => {
-        const rarityStyle = RARITY_COLORS[item.rarity];
-
-        return (
-            <Pressable
-                style={[
-                    styles.badgeCard,
-                    item.unlocked && { borderColor: rarityStyle.border },
-                ]}
-                onPress={() => setSelectedBadge(item)}
-            >
-                {/* Icon Container */}
-                <View style={[
-                    styles.badgeIconContainer,
-                    item.unlocked
-                        ? { backgroundColor: rarityStyle.bg }
-                        : { backgroundColor: colors.surfaceSubtle },
-                ]}>
-                    <Text style={[
-                        styles.badgeIcon,
-                        !item.unlocked && styles.badgeIconLocked,
-                    ]}>
-                        {item.icon}
-                    </Text>
-
-                    {/* Lock overlay for locked badges */}
-                    {!item.unlocked && (
-                        <View style={styles.lockBadge}>
-                            <Ionicons name="lock-closed" size={10} color="#FFF" />
-                        </View>
-                    )}
-
-                    {/* Shine effect for unlocked */}
-                    {item.unlocked && (
-                        <View style={styles.shineBadge} />
-                    )}
-                </View>
-
-                {/* Name */}
-                <Text
-                    style={[
-                        styles.badgeName,
-                        !item.unlocked && styles.badgeNameLocked,
-                    ]}
-                    numberOfLines={2}
-                >
-                    {item.name.replace(/^[^\s]+\s/, '')}
-                </Text>
-            </Pressable>
-        );
-    };
-
-    // ============================================
-    // DETAIL MODAL
-    // ============================================
-
-    const renderDetailModal = () => {
-        if (!selectedBadge) return null;
-
-        const rarityStyle = RARITY_COLORS[selectedBadge.rarity];
-
-        return (
-            <Modal
-                visible={!!selectedBadge}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setSelectedBadge(null)}
-            >
-                <Pressable
-                    style={styles.modalOverlay}
-                    onPress={() => setSelectedBadge(null)}
-                >
-                    <Animated.View
-                        style={[
-                            styles.modalContent,
-                            { transform: [{ scale: scaleAnim }] },
-                        ]}
-                    >
-                        {/* Badge Icon */}
-                        <View style={[
-                            styles.modalIconContainer,
-                            {
-                                backgroundColor: selectedBadge.unlocked
-                                    ? rarityStyle.bg
-                                    : colors.surfaceSubtle,
-                                borderColor: selectedBadge.unlocked
-                                    ? rarityStyle.border
-                                    : colors.divider,
-                            },
-                        ]}>
-                            <Text style={[
-                                styles.modalIcon,
-                                !selectedBadge.unlocked && styles.badgeIconLocked,
-                            ]}>
-                                {selectedBadge.icon}
-                            </Text>
-                        </View>
-
-                        {/* Name & Rarity */}
-                        <Text style={styles.modalTitle}>{selectedBadge.name}</Text>
-                        <View style={[styles.rarityBadge, { backgroundColor: rarityStyle.bg }]}>
-                            <Text style={[styles.rarityText, { color: rarityStyle.text }]}>
-                                {RARITY_LABELS[selectedBadge.rarity]}
-                            </Text>
-                        </View>
-
-                        {/* Description */}
-                        <Text style={styles.modalDescription}>
-                            {selectedBadge.description}
-                        </Text>
-
-                        {/* XP Reward */}
-                        {selectedBadge.xp_reward > 0 && (
-                            <View style={styles.xpReward}>
-                                <Ionicons name="flash" size={18} color={colors.accent.primary} />
-                                <Text style={styles.xpRewardText}>
-                                    +{selectedBadge.xp_reward} XP
-                                </Text>
-                            </View>
-                        )}
-
-                        {/* Status */}
-                        <View style={[
-                            styles.statusBar,
-                            {
-                                backgroundColor: selectedBadge.unlocked
-                                    ? `${colors.success.primary}15`
-                                    : `${colors.text.tertiary}15`,
-                            },
-                        ]}>
-                            <Ionicons
-                                name={selectedBadge.unlocked ? 'checkmark-circle' : 'lock-closed'}
-                                size={18}
-                                color={selectedBadge.unlocked ? colors.success.primary : colors.text.tertiary}
-                            />
-                            <Text style={[
-                                styles.statusText,
-                                { color: selectedBadge.unlocked ? colors.success.primary : colors.text.tertiary },
-                            ]}>
-                                {selectedBadge.unlocked
-                                    ? `Conquistado em ${new Date(selectedBadge.unlocked_at!).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                                    : 'Continua a estudar para desbloquear!'
-                                }
-                            </Text>
-                        </View>
-
-                        {/* Close button */}
-                        <Pressable
-                            style={styles.closeButton}
-                            onPress={() => setSelectedBadge(null)}
-                        >
-                            <Text style={styles.closeButtonText}>Fechar</Text>
-                        </Pressable>
-                    </Animated.View>
-                </Pressable>
-            </Modal>
-        );
-    };
-
-    // ============================================
-    // LOADING
+    // RENDER
     // ============================================
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
                     <Text style={styles.loadingText}>A carregar conquistas...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    // ============================================
-    // MAIN RENDER
-    // ============================================
+    return (
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Confetti */}
+                {showConfetti && (
+                    <ConfettiCannon
+                        ref={confettiRef}
+                        count={300}
+                        origin={{ x: width / 2, y: -20 }}
+                        autoStart
+                        fadeOut
+                        onAnimationEnd={() => setShowConfetti(false)}
+                    />
+                )}
+
+                {/* Epic Header */}
+                <LinearGradient colors={['rgba(99, 102, 241, 0.15)', 'transparent']} style={styles.headerGradient}>
+                    <View style={styles.header}>
+                        <Pressable style={styles.backButton} onPress={() => router.back()}>
+                            <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                        </Pressable>
+                        <View style={styles.headerContent}>
+                            <Text style={styles.headerTitle}>🏆 Conquistas</Text>
+                            <Text style={styles.headerSubtitle}>
+                                {unlockedCount} de {totalCount} desbloqueadas
+                            </Text>
+                        </View>
+                        <View style={styles.headerBadge}>
+                            <Text style={styles.headerBadgeText}>{Math.round(progressPercent)}%</Text>
+                        </View>
+                    </View>
+
+                    {/* Epic Progress Bar */}
+                    <View style={styles.progressContainer}>
+                        <View style={styles.progressBar}>
+                            <Animated.View
+                                style={[
+                                    styles.progressFill,
+                                    { width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) },
+                                ]}
+                            >
+                                <LinearGradient colors={['#6366F1', '#A855F7', '#EC4899']} style={styles.progressGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+                            </Animated.View>
+                        </View>
+                        <View style={styles.progressStars}>
+                            {[25, 50, 75, 100].map((milestone) => (
+                                <View key={milestone} style={[styles.progressMilestone, progressPercent >= milestone && styles.progressMilestoneActive]}>
+                                    <Ionicons name="star" size={14} color={progressPercent >= milestone ? '#FFD700' : COLORS.text.tertiary} />
+                                </View>
+                            ))}
+                        </View>
+                    </View>
+                </LinearGradient>
+
+                {/* Rarity Legend */}
+                <View style={styles.legendContainer}>
+                    {(['common', 'rare', 'epic', 'legendary'] as const).map((rarity) => (
+                        <View key={rarity} style={styles.legendItem}>
+                            <View style={[styles.legendDot, { backgroundColor: RARITY_CONFIG[rarity].gradient[0] }]} />
+                            <Text style={styles.legendText}>{RARITY_CONFIG[rarity].label}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Badges Grid */}
+                <FlatList
+                    data={sortedBadges}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => <BadgeCard badge={item} onPress={() => setSelectedBadge(item)} />}
+                    numColumns={3}
+                    columnWrapperStyle={styles.gridRow}
+                    contentContainerStyle={styles.gridContent}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadBadges(); }} tintColor="#6366F1" />}
+                />
+
+                {/* Detail Modal */}
+                <Modal visible={!!selectedBadge} transparent animationType="fade" onRequestClose={() => setSelectedBadge(null)}>
+                    <Pressable style={styles.modalOverlay} onPress={() => setSelectedBadge(null)}>
+                        <Animated.View style={[styles.modalContent, { transform: [{ scale: modalScale }] }]}>
+                            {selectedBadge && <BadgeDetail badge={selectedBadge} onClose={() => setSelectedBadge(null)} />}
+                        </Animated.View>
+                    </Pressable>
+                </Modal>
+            </SafeAreaView>
+        </View>
+    );
+}
+
+// ============================================
+// BADGE CARD COMPONENT
+// ============================================
+
+function BadgeCard({ badge, onPress }: { badge: DisplayBadge; onPress: () => void }) {
+    const scale = useRef(new Animated.Value(1)).current;
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+    const rarity = RARITY_CONFIG[badge.rarity];
+
+    // Pulse animation for unlocked legendary/epic
+    useEffect(() => {
+        if (badge.unlocked && (badge.rarity === 'legendary' || badge.rarity === 'epic')) {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(pulseAnim, { toValue: 1.05, duration: 1500, useNativeDriver: true }),
+                    Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+                ])
+            ).start();
+        }
+    }, [badge.unlocked, badge.rarity]);
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Confetti */}
-            {showConfetti && (
-                <ConfettiCannon
-                    ref={confettiRef}
-                    count={200}
-                    origin={{ x: width / 2, y: -10 }}
-                    autoStart={true}
-                    fadeOut={true}
-                    onAnimationEnd={() => setShowConfetti(false)}
-                />
+        <Pressable
+            onPress={onPress}
+            onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+        >
+            <Animated.View
+                style={[
+                    styles.badgeCard,
+                    { transform: [{ scale: Animated.multiply(scale, pulseAnim) }] },
+                    badge.unlocked && { shadowColor: rarity.gradient[0], shadowOpacity: 0.4, shadowRadius: 12 },
+                ]}
+            >
+                {/* Glow Effect */}
+                {badge.unlocked && <View style={[styles.badgeGlow, { backgroundColor: rarity.glow }]} />}
+
+                {/* Icon Container */}
+                <View style={[styles.badgeIconWrap, !badge.unlocked && styles.badgeIconLocked]}>
+                    {badge.unlocked ? (
+                        <LinearGradient colors={rarity.gradient} style={styles.badgeIconGradient}>
+                            <Text style={styles.badgeEmoji}>{badge.icon}</Text>
+                        </LinearGradient>
+                    ) : (
+                        <View style={styles.badgeIconGradientLocked}>
+                            <Text style={[styles.badgeEmoji, styles.badgeEmojiLocked]}>{badge.icon}</Text>
+                            <View style={styles.lockOverlay}>
+                                <Ionicons name="lock-closed" size={16} color="#FFF" />
+                            </View>
+                        </View>
+                    )}
+                </View>
+
+                {/* Name */}
+                <Text style={[styles.badgeName, !badge.unlocked && styles.badgeNameLocked]} numberOfLines={2}>
+                    {badge.name.replace(/^[^\s]+\s/, '')}
+                </Text>
+
+                {/* Rarity Stars */}
+                <View style={styles.starsRow}>
+                    {Array.from({ length: rarity.stars }).map((_, i) => (
+                        <Ionicons key={i} name="star" size={10} color={badge.unlocked ? rarity.gradient[0] : COLORS.text.tertiary} />
+                    ))}
+                </View>
+            </Animated.View>
+        </Pressable>
+    );
+}
+
+// ============================================
+// BADGE DETAIL COMPONENT
+// ============================================
+
+function BadgeDetail({ badge, onClose }: { badge: DisplayBadge; onClose: () => void }) {
+    const rarity = RARITY_CONFIG[badge.rarity];
+
+    return (
+        <View style={styles.detailContainer}>
+            {/* Epic Icon */}
+            <View style={styles.detailIconWrap}>
+                {badge.unlocked ? (
+                    <LinearGradient colors={rarity.gradient} style={styles.detailIconGradient}>
+                        <Text style={styles.detailEmoji}>{badge.icon}</Text>
+                    </LinearGradient>
+                ) : (
+                    <View style={styles.detailIconLocked}>
+                        <Text style={[styles.detailEmoji, { opacity: 0.3 }]}>{badge.icon}</Text>
+                    </View>
+                )}
+            </View>
+
+            {/* Title */}
+            <Text style={styles.detailTitle}>{badge.name}</Text>
+
+            {/* Rarity Badge */}
+            <LinearGradient colors={rarity.gradient} style={styles.rarityBadge}>
+                <Text style={styles.rarityEmoji}>{rarity.emoji}</Text>
+                <Text style={styles.rarityLabel}>{rarity.label}</Text>
+                <View style={styles.rarityStars}>
+                    {Array.from({ length: rarity.stars }).map((_, i) => (
+                        <Ionicons key={i} name="star" size={12} color="#FFF" />
+                    ))}
+                </View>
+            </LinearGradient>
+
+            {/* Description */}
+            <Text style={styles.detailDescription}>{badge.description}</Text>
+
+            {/* XP Reward */}
+            {badge.xp_reward > 0 && (
+                <View style={styles.xpReward}>
+                    <Ionicons name="flash" size={20} color="#FFD700" />
+                    <Text style={styles.xpRewardText}>+{badge.xp_reward} XP</Text>
+                </View>
             )}
 
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>🏅 As Minhas Conquistas</Text>
-                    <Text style={styles.headerSubtitle}>
-                        {unlockedCount}/{totalCount} Desbloqueados
+            {/* Status */}
+            <View style={[styles.statusCard, badge.unlocked ? styles.statusUnlocked : styles.statusLocked]}>
+                <Ionicons name={badge.unlocked ? 'checkmark-circle' : 'lock-closed'} size={24} color={badge.unlocked ? '#22C55E' : COLORS.text.tertiary} />
+                <View style={styles.statusContent}>
+                    <Text style={[styles.statusTitle, badge.unlocked && { color: '#22C55E' }]}>
+                        {badge.unlocked ? 'Desbloqueado!' : 'Bloqueado'}
+                    </Text>
+                    <Text style={styles.statusSubtitle}>
+                        {badge.unlocked
+                            ? new Date(badge.unlocked_at!).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })
+                            : 'Continua a progredir para desbloquear'}
                     </Text>
                 </View>
             </View>
 
-            {/* Progress Bar */}
-            <View style={styles.progressCard}>
-                <View style={styles.progressHeader}>
-                    <Text style={styles.progressTitle}>Progresso</Text>
-                    <Text style={styles.progressPercent}>
-                        {Math.round(progressPercent)}%
-                    </Text>
-                </View>
-                <View style={styles.progressBar}>
-                    <View
-                        style={[
-                            styles.progressFill,
-                            { width: `${progressPercent}%` }
-                        ]}
-                    />
-                </View>
-                <Text style={styles.progressHint}>
-                    {totalCount - unlockedCount > 0
-                        ? `Faltam ${totalCount - unlockedCount} conquistas!`
-                        : '🎉 Todas as conquistas desbloqueadas!'
-                    }
-                </Text>
-            </View>
-
-            {/* Badges Grid */}
-            <FlatList
-                data={sortedBadges}
-                keyExtractor={(item) => item.id}
-                renderItem={renderBadge}
-                numColumns={3}
-                columnWrapperStyle={styles.gridRow}
-                contentContainerStyle={styles.gridContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={colors.accent.primary}
-                    />
-                }
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Ionicons name="medal-outline" size={64} color={colors.text.tertiary} />
-                        <Text style={styles.emptyTitle}>Nenhuma conquista disponível</Text>
-                    </View>
-                }
-            />
-
-            {/* Detail Modal */}
-            {renderDetailModal()}
-        </SafeAreaView>
+            {/* Close Button */}
+            <Pressable onPress={onClose}>
+                <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.closeButton}>
+                    <Text style={styles.closeButtonText}>Fechar</Text>
+                </LinearGradient>
+            </Pressable>
+        </View>
     );
 }
 
@@ -427,268 +417,77 @@ export default function BadgesScreen() {
 // ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.md,
-    },
-    loadingText: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
+    loadingText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    headerContent: {
-        flex: 1,
-        marginLeft: spacing.sm,
-    },
-    headerTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
+    headerGradient: { paddingBottom: SPACING.lg },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
+    backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    headerContent: { flex: 1, marginLeft: SPACING.md },
+    headerTitle: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    headerSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.secondary },
+    headerBadge: { backgroundColor: 'rgba(99, 102, 241, 0.2)', paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.full },
+    headerBadgeText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#6366F1' },
 
     // Progress
-    progressCard: {
-        backgroundColor: colors.surface,
-        marginHorizontal: spacing.md,
-        marginTop: spacing.md,
-        padding: spacing.lg,
-        borderRadius: borderRadius.xl,
-        ...shadows.sm,
-    },
-    progressHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: spacing.sm,
-    },
-    progressTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    progressPercent: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    progressBar: {
-        height: 10,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.full,
-        overflow: 'hidden',
-    },
-    progressFill: {
-        height: '100%',
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.full,
-    },
-    progressHint: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: spacing.sm,
-        textAlign: 'center',
-    },
+    progressContainer: { paddingHorizontal: SPACING.lg },
+    progressBar: { height: 12, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.full, overflow: 'hidden' },
+    progressFill: { height: '100%', borderRadius: RADIUS.full, overflow: 'hidden' },
+    progressGradient: { flex: 1 },
+    progressStars: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.sm, paddingHorizontal: SPACING.sm },
+    progressMilestone: { width: 24, height: 24, borderRadius: 12, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    progressMilestoneActive: { backgroundColor: 'rgba(255, 215, 0, 0.2)' },
+
+    // Legend
+    legendContainer: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.lg, paddingVertical: SPACING.md },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    legendDot: { width: 10, height: 10, borderRadius: 5 },
+    legendText: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
 
     // Grid
-    gridContent: {
-        padding: spacing.md,
-    },
-    gridRow: {
-        justifyContent: 'flex-start',
-        gap: spacing.sm,
-        marginBottom: spacing.sm,
-    },
+    gridContent: { paddingHorizontal: SPACING.lg, paddingBottom: 100 },
+    gridRow: { gap: SPACING.md, marginBottom: SPACING.md },
 
     // Badge Card
-    badgeCard: {
-        width: CARD_SIZE,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.sm,
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: colors.divider,
-        ...shadows.sm,
-    },
-    badgeIconContainer: {
-        width: CARD_SIZE - spacing.lg,
-        height: CARD_SIZE - spacing.lg,
-        borderRadius: (CARD_SIZE - spacing.lg) / 2,
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        marginBottom: spacing.xs,
-    },
-    badgeIcon: {
-        fontSize: 32,
-    },
-    badgeIconLocked: {
-        opacity: 0.3,
-        // Grayscale effect via opacity
-    },
-    lockBadge: {
-        position: 'absolute',
-        bottom: 0,
-        right: 0,
-        width: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: colors.text.tertiary,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    shineBadge: {
-        position: 'absolute',
-        top: 4,
-        right: 8,
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: 'rgba(255,255,255,0.6)',
-    },
-    badgeName: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        textAlign: 'center',
-        marginTop: 2,
-    },
-    badgeNameLocked: {
-        color: colors.text.tertiary,
-    },
+    badgeCard: { width: CARD_SIZE, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['2xl'], padding: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', position: 'relative', overflow: 'hidden' },
+    badgeGlow: { position: 'absolute', top: -20, left: -20, right: -20, bottom: -20, borderRadius: 100 },
+    badgeIconWrap: { marginBottom: SPACING.xs },
+    badgeIconLocked: { opacity: 0.5 },
+    badgeIconGradient: { width: CARD_SIZE - 32, height: CARD_SIZE - 32, borderRadius: (CARD_SIZE - 32) / 2, alignItems: 'center', justifyContent: 'center' },
+    badgeIconGradientLocked: { width: CARD_SIZE - 32, height: CARD_SIZE - 32, borderRadius: (CARD_SIZE - 32) / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceMuted, position: 'relative' },
+    badgeEmoji: { fontSize: 32 },
+    badgeEmojiLocked: { opacity: 0.3 },
+    lockOverlay: { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+    badgeName: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium, color: COLORS.text.primary, textAlign: 'center', marginTop: 4 },
+    badgeNameLocked: { color: COLORS.text.tertiary },
+    starsRow: { flexDirection: 'row', gap: 2, marginTop: 4 },
 
     // Modal
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: spacing.xl,
-    },
-    modalContent: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius['2xl'],
-        padding: spacing.xl,
-        alignItems: 'center',
-        width: '100%',
-        maxWidth: 320,
-        ...shadows.lg,
-    },
-    modalIconContainer: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 4,
-        marginBottom: spacing.md,
-    },
-    modalIcon: {
-        fontSize: 48,
-    },
-    modalTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        textAlign: 'center',
-    },
-    rarityBadge: {
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
-        marginTop: spacing.sm,
-    },
-    rarityText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-    },
-    modalDescription: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-        textAlign: 'center',
-        marginTop: spacing.lg,
-        lineHeight: 22,
-    },
-    xpReward: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        marginTop: spacing.lg,
-        backgroundColor: colors.accent.subtle,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
-    },
-    xpRewardText: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    statusBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        marginTop: spacing.lg,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        width: '100%',
-    },
-    statusText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        flex: 1,
-    },
-    closeButton: {
-        marginTop: spacing.xl,
-        paddingHorizontal: spacing['3xl'],
-        paddingVertical: spacing.md,
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-    },
-    closeButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
+    modalContent: { backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['3xl'], width: '100%', maxWidth: 340, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
 
-    // Empty
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing['5xl'],
-    },
-    emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginTop: spacing.md,
-    },
+    // Detail
+    detailContainer: { alignItems: 'center', padding: SPACING.xl },
+    detailIconWrap: { marginBottom: SPACING.lg },
+    detailIconGradient: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', shadowColor: '#6366F1', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16 },
+    detailIconLocked: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceMuted },
+    detailEmoji: { fontSize: 56 },
+    detailTitle: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary, textAlign: 'center' },
+    rarityBadge: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, marginTop: SPACING.md },
+    rarityEmoji: { fontSize: 14 },
+    rarityLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    rarityStars: { flexDirection: 'row', gap: 2 },
+    detailDescription: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary, textAlign: 'center', marginTop: SPACING.lg, lineHeight: 24, paddingHorizontal: SPACING.md },
+    xpReward: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, backgroundColor: 'rgba(255, 215, 0, 0.15)', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, marginTop: SPACING.lg },
+    xpRewardText: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFD700' },
+    statusCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.lg, borderRadius: RADIUS.xl, marginTop: SPACING.lg, width: '100%' },
+    statusUnlocked: { backgroundColor: 'rgba(34, 197, 94, 0.1)' },
+    statusLocked: { backgroundColor: COLORS.surfaceMuted },
+    statusContent: { flex: 1 },
+    statusTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    statusSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
+    closeButton: { paddingHorizontal: SPACING['3xl'], paddingVertical: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.xl },
+    closeButtonText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFF' },
 });

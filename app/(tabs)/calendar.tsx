@@ -1,410 +1,666 @@
-import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, getQuestStyle, shadows, spacing, typography } from '@/lib/theme';
-import { useAuthContext } from '@/providers/AuthProvider';
+/**
+ * Premium Calendar Screen
+ * Design TripGlide: Dark, Rounded, Elegant
+ */
+
+import CreateEventModal from '@/components/CreateEventModal';
+import ItemDetailsModal from '@/components/ItemDetailsModal';
+import {
+    AgendaItem,
+    formatTimeRange,
+    getItemColor,
+    getItemTypeIcon,
+    useCalendarItems,
+} from '@/hooks/useCalendarItems';
+import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useProfile } from '@/providers/ProfileProvider';
-import { Task, TaskType } from '@/types/database.types';
-import { useCalendar, CalendarEvent } from '@/hooks/useCalendar';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState, useMemo } from 'react';
-import { Calendar, LocaleConfig } from 'react-native-calendars';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
+    Dimensions,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    FlatList
+    View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
+import Animated, {
+    FadeInDown
+} from 'react-native-reanimated';
 
-// Configurar idioma PT
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ============================================
+// LOCALE CONFIG
+// ============================================
+
 LocaleConfig.locales['pt'] = {
-  monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
-  monthNamesShort: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
-  dayNames: ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
-  dayNamesShort: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
-  today: 'Hoje'
+    monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
+    monthNamesShort: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+    dayNames: ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
+    dayNamesShort: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+    today: 'Hoje'
 };
 LocaleConfig.defaultLocale = 'pt';
 
-const QUEST_CONFIG: Record<TaskType, { icon: keyof typeof Ionicons.glyphMap; label: string; xp: number }> = {
-    study: { icon: 'book-outline', label: 'Estudo', xp: 30 },
-    assignment: { icon: 'document-text-outline', label: 'Trabalho', xp: 50 },
-    exam: { icon: 'school-outline', label: 'Exame', xp: 100 },
-};
+// ============================================
+// TYPES
+// ============================================
 
-type MixedEvent = 
-  | { type: 'google'; data: CalendarEvent }
-  | { type: 'task'; data: Task };
+type FilterType = 'all' | 'class' | 'event' | 'task' | 'todo';
+
+const FILTERS: { id: FilterType; label: string; icon: string }[] = [
+    { id: 'all', label: 'Tudo', icon: 'apps' },
+    { id: 'class', label: 'Aulas', icon: 'school' },
+    { id: 'event', label: 'Eventos', icon: 'calendar' },
+    { id: 'task', label: 'Tarefas', icon: 'checkbox' },
+];
+
+// ============================================
+// ANIMATED PRESSABLE
+// ============================================
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// ============================================
+// COMPONENT
+// ============================================
 
 export default function CalendarScreen() {
-    const { user } = useAuthContext();
-    const { addXPWithSync } = useProfile();
-    
-    // Hooks
-    const { events: calendarEvents, loading: calendarLoading, refresh: refreshCalendar } = useCalendar();
-    
-    // Estado
-    const [tasks, setTasks] = useState<Task[]>([]);
+    const { refetchProfile } = useProfile();
+
+    // State
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [modalVisible, setModalVisible] = useState(false);
-    const [creating, setCreating] = useState(false);
+    const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+    const [selectedItem, setSelectedItem] = useState<AgendaItem | null>(null);
+    const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
-    // Form
-    const [newTitle, setNewTitle] = useState('');
-    const [newType, setNewType] = useState<TaskType>('study');
+    // Focused month for data fetching
+    const focusedMonth = useMemo(() => new Date(selectedDate), [selectedDate]);
 
-    // 1. Carregar Tarefas
-    const loadTasks = useCallback(async () => {
-        if (!user?.id) return;
-        const { data, error } = await supabase
-            .from('tasks')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('due_date', { ascending: true });
-        
-        if (!error && data) setTasks(data as Task[]);
-    }, [user?.id]);
+    // Calendar data
+    const { agendaItems, markedDates, loading, refetch } = useCalendarItems(focusedMonth);
 
-    useEffect(() => {
-        loadTasks();
-    }, [loadTasks]);
+    // Items for selected date (filtered)
+    const selectedDayItems = useMemo(() => {
+        const items = agendaItems[selectedDate] || [];
+        if (activeFilter === 'all') return items;
+        return items.filter(item => item.item_type === activeFilter);
+    }, [agendaItems, selectedDate, activeFilter]);
 
-    // 2. Preparar os "Pontinhos" para o Calendário (Marked Dates)
-    const markedDates = useMemo(() => {
-        const marks: any = {};
-
-        // Marcar Eventos Google (Ponto Cinzento)
-        calendarEvents.forEach(evt => {
-            const date = evt.startDate.split('T')[0];
-            if (!marks[date]) marks[date] = { dots: [] };
-            // Evitar duplicados
-            if (!marks[date].dots.find((d: any) => d.key === 'google')) {
-                marks[date].dots.push({ key: 'google', color: '#9CA3AF' });
-            }
-        });
-
-        // Marcar Tarefas App (Ponto Roxo)
-        tasks.forEach(task => {
-            if (task.due_date) {
-                const date = task.due_date.split('T')[0];
-                if (!marks[date]) marks[date] = { dots: [] };
-                if (!marks[date].dots.find((d: any) => d.key === 'task')) {
-                    marks[date].dots.push({ key: 'task', color: colors.accent.primary });
-                }
-            }
-        });
-
-        // Marcar o dia selecionado
+    // Marked dates with selected highlight
+    const markedDatesWithSelection = useMemo(() => {
+        const marks = { ...markedDates };
         marks[selectedDate] = {
             ...(marks[selectedDate] || {}),
             selected: true,
-            selectedColor: colors.accent.primary,
-            selectedTextColor: 'white'
+            selectedColor: '#6366F1',
         };
-
         return marks;
-    }, [calendarEvents, tasks, selectedDate]);
+    }, [markedDates, selectedDate]);
 
-    // 3. Filtrar a Lista para o dia Selecionado
-    const dailyItems: MixedEvent[] = useMemo(() => {
-        const items: MixedEvent[] = [];
+    // Handle refresh
+    const handleRefresh = useCallback(async () => {
+        await refetch();
+        await refetchProfile();
+    }, [refetch, refetchProfile]);
 
-        // Adicionar Google Events do dia
-        calendarEvents.forEach(evt => {
-            if (evt.startDate.startsWith(selectedDate)) {
-                items.push({ type: 'google', data: evt });
-            }
-        });
+    // Format date header
+    const formatDateHeader = (dateString: string) => {
+        const date = new Date(dateString);
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
 
-        // Adicionar Tasks do dia
-        tasks.forEach(task => {
-            if (task.due_date?.startsWith(selectedDate)) {
-                items.push({ type: 'task', data: task });
-            }
-        });
-
-        return items;
-    }, [selectedDate, calendarEvents, tasks]);
-
-
-    // Ações
-    const handleCreateTask = async () => {
-        if (!user?.id || !newTitle.trim()) return;
-        try {
-            setCreating(true);
-            const xp = QUEST_CONFIG[newType].xp;
-            
-            const { data, error } = await supabase
-                .from('tasks')
-                .insert({
-                    user_id: user.id,
-                    title: newTitle.trim(),
-                    type: newType,
-                    due_date: selectedDate, 
-                    is_completed: false,
-                    xp_reward: xp,
-                })
-                .select()
-                .single();
-
-            if (error) throw error;
-            
-            setTasks(prev => [...prev, data as Task]);
-            setModalVisible(false);
-            setNewTitle('');
-            Alert.alert('Sucesso', 'Tarefa adicionada ao calendário!');
-        } catch (err) {
-            Alert.alert('Erro', 'Não foi possível criar');
-        } finally {
-            setCreating(false);
+        if (dateString === today.toISOString().split('T')[0]) {
+            return 'Hoje';
+        } else if (dateString === tomorrow.toISOString().split('T')[0]) {
+            return 'Amanhã';
         }
+        return date.toLocaleDateString('pt-PT', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+        });
     };
 
-    const handleCompleteTask = async (task: Task) => {
-        if (task.is_completed) return;
-        // Update Local
-        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, is_completed: true } : t));
-        // Update Remoto
-        await supabase.from('tasks').update({ is_completed: true }).eq('id', task.id);
-        await addXPWithSync(task.xp_reward || 30);
-    };
+    // ============================================
+    // RENDER ITEM
+    // ============================================
 
-    // Render Items da Lista
-    const renderItem = ({ item }: { item: MixedEvent }) => {
-        if (item.type === 'google') {
-            const evt = item.data;
-            return (
-                <View style={styles.eventCard}>
-                    <View style={styles.eventTimeBar} />
-                    <View style={styles.eventContent}>
-                        <Text style={styles.eventTime}>
-                            {new Date(evt.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                        <Text style={styles.eventTitle}>{evt.title}</Text>
-                        <View style={styles.googleBadge}>
-                            <Ionicons name="logo-google" size={10} color="#6B7280" />
-                            <Text style={styles.googleText}>Calendário</Text>
-                        </View>
-                    </View>
-                </View>
-            );
-        }
-
-        const task = item.data;
-        const config = QUEST_CONFIG[task.type];
-        const style = getQuestStyle(task.type);
+    const renderItem = useCallback(({ item, index }: { item: AgendaItem; index: number }) => {
+        const itemColor = item.color || getItemColor(item.item_type, item.category);
+        const iconName = getItemTypeIcon(item.item_type, item.category) as keyof typeof Ionicons.glyphMap;
+        const timeRange = formatTimeRange(item.start_at, item.end_at);
 
         return (
-            <Pressable style={[styles.taskCard, task.is_completed && styles.taskCompleted]} onPress={() => handleCompleteTask(task)}>
-                 <View style={[styles.checkbox, task.is_completed && styles.checkboxDone]}>
-                    {task.is_completed && <Ionicons name="checkmark" size={12} color="white" />}
-                </View>
-                <View style={styles.taskContent}>
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-                    <View style={styles.taskMeta}>
-                        <View style={[styles.tag, { backgroundColor: style.bg }]}>
-                            <Ionicons name={config.icon} size={10} color={style.icon} />
-                            <Text style={[styles.tagText, { color: style.text }]}>{config.label}</Text>
+            <AnimatedPressable
+                entering={FadeInDown.delay(index * 50).springify()}
+                style={styles.itemCard}
+                onPress={() => {
+                    setSelectedItem(item);
+                    setDetailsModalVisible(true);
+                }}
+            >
+                {/* Gradient Accent */}
+                <LinearGradient
+                    colors={[itemColor, `${itemColor}80`]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.itemAccent}
+                />
+
+                {/* Content */}
+                <View style={styles.itemContent}>
+                    {/* Header Row */}
+                    <View style={styles.itemHeaderRow}>
+                        <View style={[styles.itemIconContainer, { backgroundColor: `${itemColor}20` }]}>
+                            <Ionicons name={iconName} size={18} color={itemColor} />
                         </View>
-                        <Text style={styles.xpText}>+{task.xp_reward} XP</Text>
+                        <View style={styles.itemTimeContainer}>
+                            <Ionicons name="time-outline" size={14} color={COLORS.text.tertiary} />
+                            <Text style={styles.itemTime}>{timeRange}</Text>
+                        </View>
+                    </View>
+
+                    {/* Title */}
+                    <Text style={[styles.itemTitle, item.is_completed && styles.itemTitleCompleted]} numberOfLines={2}>
+                        {item.title}
+                    </Text>
+
+                    {/* Footer Row */}
+                    <View style={styles.itemFooterRow}>
+                        {/* Type Badge */}
+                        <View style={[styles.itemBadge, { backgroundColor: `${itemColor}15` }]}>
+                            <Text style={[styles.itemBadgeText, { color: itemColor }]}>
+                                {getItemTypeLabel(item.item_type)}
+                            </Text>
+                        </View>
+
+                        {/* Room */}
+                        {item.room && (
+                            <View style={styles.itemRoom}>
+                                <Ionicons name="location-outline" size={12} color={COLORS.text.tertiary} />
+                                <Text style={styles.itemRoomText}>{item.room}</Text>
+                            </View>
+                        )}
+
+                        {/* Completed */}
+                        {item.is_completed && (
+                            <View style={styles.completedBadge}>
+                                <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                            </View>
+                        )}
                     </View>
                 </View>
-            </Pressable>
+
+                {/* Chevron */}
+                <View style={styles.itemChevron}>
+                    <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />
+                </View>
+            </AnimatedPressable>
         );
-    };
+    }, []);
+
+    // ============================================
+    // RENDER EMPTY
+    // ============================================
+
+    const renderEmpty = useCallback(() => {
+        return (
+            <View style={styles.emptyState}>
+                <View style={styles.emptyIconContainer}>
+                    <Ionicons name="sunny-outline" size={48} color={COLORS.text.tertiary} />
+                </View>
+                <Text style={styles.emptyTitle}>Dia livre!</Text>
+                <Text style={styles.emptySubtitle}>Aproveita para descansar ou estudar</Text>
+                <Pressable style={styles.emptyButton} onPress={() => setModalVisible(true)}>
+                    <Ionicons name="add" size={20} color="#FFF" />
+                    <Text style={styles.emptyButtonText}>Adicionar Evento</Text>
+                </Pressable>
+            </View>
+        );
+    }, []);
+
+    // ============================================
+    // LOADING STATE
+    // ============================================
+
+    if (loading) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#6366F1" />
+                    <Text style={styles.loadingText}>A carregar calendário...</Text>
+                </View>
+            </View>
+        );
+    }
+
+    // ============================================
+    // RENDER
+    // ============================================
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            <View style={styles.calendarContainer}>
-                <Calendar
-                    current={selectedDate}
-                    onDayPress={(day: any) => setSelectedDate(day.dateString)}
-                    markingType={'multi-dot'}
-                    markedDates={markedDates}
-                    theme={{
-                        backgroundColor: colors.surface,
-                        calendarBackground: colors.surface,
-                        textSectionTitleColor: colors.text.secondary,
-                        selectedDayBackgroundColor: colors.accent.primary,
-                        selectedDayTextColor: '#ffffff',
-                        todayTextColor: colors.accent.primary,
-                        dayTextColor: colors.text.primary,
-                        textDisabledColor: colors.text.tertiary,
-                        dotColor: colors.accent.primary,
-                        selectedDotColor: '#ffffff',
-                        arrowColor: colors.accent.primary,
-                        monthTextColor: colors.text.primary,
-                        indicatorColor: colors.accent.primary,
-                        textDayFontWeight: '400',
-                        textMonthFontWeight: 'bold',
-                        textDayHeaderFontWeight: '500',
-                        textDayFontSize: 14,
-                        textMonthFontSize: 16,
-                        textDayHeaderFontSize: 13
-                    }}
-                />
-            </View>
-
-            <View style={styles.listContainer}>
-                <View style={styles.listHeader}>
-                    <Text style={styles.listTitle}>
-                        {new Date(selectedDate).toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' })}
-                    </Text>
-                    <TouchableOpacity onPress={() => refreshCalendar()}>
-                        <Ionicons name="refresh" size={20} color={colors.text.tertiary} />
-                    </TouchableOpacity>
+        <View style={styles.container}>
+            <ScrollView
+                style={styles.scrollView}
+                showsVerticalScrollIndicator={false}
+                stickyHeaderIndices={[0]}
+            >
+                {/* ========== HEADER ========== */}
+                <View style={styles.header}>
+                    <View style={styles.headerTop}>
+                        <Text style={styles.headerTitle}>Calendário</Text>
+                        <Pressable style={styles.headerButton} onPress={handleRefresh}>
+                            <Ionicons name="refresh" size={20} color={COLORS.text.secondary} />
+                        </Pressable>
+                    </View>
                 </View>
 
-                <FlatList
-                    data={dailyItems}
-                    renderItem={renderItem}
-                    keyExtractor={(item, index) => index.toString()}
-                    contentContainerStyle={styles.listContent}
-                    ListEmptyComponent={
-                        <View style={styles.emptyState}>
-                            <Text style={styles.emptyText}>Nada agendado para hoje.</Text>
-                            <Text style={styles.emptySubtext}>Aproveita para estudar! 📚</Text>
-                        </View>
-                    }
-                />
-            </View>
+                {/* ========== CALENDAR ========== */}
+                <View style={styles.calendarContainer}>
+                    <Calendar
+                        current={selectedDate}
+                        onDayPress={(day) => setSelectedDate(day.dateString)}
+                        onMonthChange={(month) => {
+                            const newDate = `${month.year}-${String(month.month).padStart(2, '0')}-01`;
+                            if (!selectedDate.startsWith(`${month.year}-${String(month.month).padStart(2, '0')}`)) {
+                                setSelectedDate(newDate);
+                            }
+                        }}
+                        markingType="multi-dot"
+                        markedDates={markedDatesWithSelection}
+                        theme={{
+                            backgroundColor: 'transparent',
+                            calendarBackground: 'transparent',
+                            textSectionTitleColor: COLORS.text.tertiary,
+                            selectedDayBackgroundColor: '#6366F1',
+                            selectedDayTextColor: '#ffffff',
+                            todayTextColor: '#6366F1',
+                            todayBackgroundColor: 'rgba(99, 102, 241, 0.15)',
+                            dayTextColor: COLORS.text.primary,
+                            textDisabledColor: COLORS.text.tertiary,
+                            dotColor: '#6366F1',
+                            selectedDotColor: '#ffffff',
+                            arrowColor: COLORS.text.primary,
+                            monthTextColor: COLORS.text.primary,
+                            indicatorColor: '#6366F1',
+                            textDayFontWeight: '500',
+                            textMonthFontWeight: '700',
+                            textDayHeaderFontWeight: '600',
+                            textDayFontSize: 15,
+                            textMonthFontSize: 18,
+                            textDayHeaderFontSize: 12,
+                        }}
+                        style={styles.calendar}
+                    />
+                </View>
 
-            {/* FAB */}
-            <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
-                <Ionicons name="add" size={30} color="white" />
-            </TouchableOpacity>
-
-            {/* Modal Simples */}
-            <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
-                    <Pressable style={styles.backdrop} onPress={() => setModalVisible(false)} />
-                    <View style={styles.modalContent}>
-                        <View style={styles.handle} />
-                        <Text style={styles.modalTitle}>Novo Evento</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholder="Título da tarefa..." 
-                            placeholderTextColor={colors.text.tertiary}
-                            value={newTitle} 
-                            onChangeText={setNewTitle} 
-                        />
-                        <View style={styles.typeRow}>
-                            {Object.entries(QUEST_CONFIG).map(([key, conf]) => (
-                                <TouchableOpacity 
-                                    key={key} 
-                                    style={[styles.typeBtn, newType === key && styles.typeBtnActive]}
-                                    onPress={() => setNewType(key as TaskType)}
+                {/* ========== FILTERS ========== */}
+                <View style={styles.filtersContainer}>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.filtersContent}
+                    >
+                        {FILTERS.map((filter) => (
+                            <Pressable
+                                key={filter.id}
+                                style={[
+                                    styles.filterChip,
+                                    activeFilter === filter.id && styles.filterChipActive,
+                                ]}
+                                onPress={() => setActiveFilter(filter.id)}
+                            >
+                                <Ionicons
+                                    name={filter.icon as any}
+                                    size={16}
+                                    color={activeFilter === filter.id ? '#FFF' : COLORS.text.secondary}
+                                />
+                                <Text
+                                    style={[
+                                        styles.filterChipText,
+                                        activeFilter === filter.id && styles.filterChipTextActive,
+                                    ]}
                                 >
-                                    <Ionicons name={conf.icon} size={16} color={newType === key ? 'white' : colors.text.secondary} />
-                                    <Text style={[styles.typeText, newType === key && { color: 'white' }]}>{conf.label}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                        <TouchableOpacity style={styles.saveBtn} onPress={handleCreateTask} disabled={creating}>
-                            {creating ? <ActivityIndicator color="white" /> : <Text style={styles.saveText}>Guardar</Text>}
-                        </TouchableOpacity>
+                                    {filter.label}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </ScrollView>
+                </View>
+
+                {/* ========== DATE HEADER ========== */}
+                <View style={styles.dateHeader}>
+                    <Text style={styles.dateHeaderText}>{formatDateHeader(selectedDate)}</Text>
+                    <View style={styles.dateHeaderBadge}>
+                        <Text style={styles.dateHeaderBadgeText}>{selectedDayItems.length}</Text>
                     </View>
-                </KeyboardAvoidingView>
-            </Modal>
-        </SafeAreaView>
+                </View>
+
+                {/* ========== ITEMS LIST ========== */}
+                <View style={styles.listContainer}>
+                    {selectedDayItems.length > 0 ? (
+                        selectedDayItems.map((item, index) => (
+                            <View key={item.id}>{renderItem({ item, index })}</View>
+                        ))
+                    ) : (
+                        renderEmpty()
+                    )}
+                </View>
+
+                {/* Bottom Padding */}
+                <View style={{ height: 150 }} />
+            </ScrollView>
+
+            {/* ========== FAB ========== */}
+            <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
+                <LinearGradient
+                    colors={['#6366F1', '#8B5CF6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.fabGradient}
+                >
+                    <Ionicons name="add" size={28} color="#FFF" />
+                </LinearGradient>
+            </Pressable>
+
+            {/* ========== MODALS ========== */}
+            <CreateEventModal
+                visible={modalVisible}
+                onClose={() => setModalVisible(false)}
+                onSuccess={() => refetch()}
+                initialDate={new Date(selectedDate)}
+            />
+
+            <ItemDetailsModal
+                visible={detailsModalVisible}
+                item={selectedItem}
+                onClose={() => {
+                    setDetailsModalVisible(false);
+                    setSelectedItem(null);
+                }}
+                onUpdate={() => refetch()}
+            />
+        </View>
     );
 }
 
+// ============================================
+// HELPERS
+// ============================================
+
+function getItemTypeLabel(itemType: string): string {
+    switch (itemType) {
+        case 'class': return 'Aula';
+        case 'event': return 'Evento';
+        case 'task': return 'Tarefa';
+        case 'todo': return 'Lembrete';
+        default: return 'Item';
+    }
+}
+
+// ============================================
+// STYLES
+// ============================================
+
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    
-    // Calendar Area
-    calendarContainer: {
-        backgroundColor: colors.surface,
-        borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24,
-        ...shadows.sm,
-        paddingBottom: 10,
-        zIndex: 10,
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+    scrollView: {
+        flex: 1,
+    },
+    loadingContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.md,
+    },
+    loadingText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
     },
 
-    // List Area
-    listContainer: { flex: 1, paddingTop: 20 },
-    listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 },
-    listTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text.primary, textTransform: 'capitalize' },
-    listContent: { paddingHorizontal: 20, paddingBottom: 80 },
-
-    // Cards - Google Event
-    eventCard: {
+    // Header
+    header: {
+        backgroundColor: COLORS.background,
+        paddingTop: 60,
+        paddingHorizontal: LAYOUT.screenPadding,
+        paddingBottom: SPACING.lg,
+    },
+    headerTop: {
         flexDirection: 'row',
-        backgroundColor: 'white',
-        borderRadius: 12,
-        marginBottom: 12,
-        padding: 12,
-        ...shadows.sm,
-        borderWidth: 1,
-        borderColor: colors.border
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
-    eventTimeBar: { width: 4, backgroundColor: '#9CA3AF', borderRadius: 2, marginRight: 12 },
-    eventContent: { flex: 1 },
-    eventTime: { fontSize: 12, color: colors.text.secondary, marginBottom: 2 },
-    eventTitle: { fontSize: 16, fontWeight: '600', color: colors.text.primary },
-    googleBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
-    googleText: { fontSize: 10, color: '#6B7280' },
+    headerTitle: {
+        fontSize: TYPOGRAPHY.size['3xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    headerButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: COLORS.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 
-    // Cards - App Task
-    taskCard: {
+    // Calendar
+    calendarContainer: {
+        marginHorizontal: LAYOUT.screenPadding,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.md,
+        marginBottom: SPACING.xl,
+        ...SHADOWS.md,
+    },
+    calendar: {
+        borderRadius: RADIUS.xl,
+    },
+
+    // Filters
+    filtersContainer: {
+        marginBottom: SPACING.lg,
+    },
+    filtersContent: {
+        paddingHorizontal: LAYOUT.screenPadding,
+        gap: SPACING.sm,
+    },
+    filterChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: 12,
-        marginBottom: 12,
-        padding: 12,
-        ...shadows.sm,
-        borderLeftWidth: 4,
-        borderLeftColor: colors.accent.primary
+        gap: SPACING.xs,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.full,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    taskCompleted: { opacity: 0.6 },
-    checkbox: {
-        width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border,
-        alignItems: 'center', justifyContent: 'center', marginRight: 12
+    filterChipActive: {
+        backgroundColor: '#6366F1',
+        borderColor: '#6366F1',
     },
-    checkboxDone: { backgroundColor: colors.success.primary, borderColor: colors.success.primary },
-    taskContent: { flex: 1 },
-    taskTitle: { fontSize: 16, fontWeight: '500', color: colors.text.primary, marginBottom: 6 },
-    taskMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    tag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
-    tagText: { fontSize: 10, fontWeight: 'bold' },
-    xpText: { fontSize: 12, fontWeight: 'bold', color: colors.accent.primary },
+    filterChipText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
+    },
+    filterChipTextActive: {
+        color: '#FFF',
+    },
+
+    // Date Header
+    dateHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
+        paddingHorizontal: LAYOUT.screenPadding,
+        marginBottom: SPACING.lg,
+    },
+    dateHeaderText: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        textTransform: 'capitalize',
+    },
+    dateHeaderBadge: {
+        backgroundColor: '#6366F1',
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
+    },
+    dateHeaderBadgeText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+
+    // List
+    listContainer: {
+        paddingHorizontal: LAYOUT.screenPadding,
+        gap: SPACING.md,
+    },
+
+    // Item Card
+    itemCard: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+        ...SHADOWS.sm,
+    },
+    itemAccent: {
+        width: 4,
+    },
+    itemContent: {
+        flex: 1,
+        padding: SPACING.lg,
+        gap: SPACING.sm,
+    },
+    itemHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    itemIconContainer: {
+        width: 36,
+        height: 36,
+        borderRadius: RADIUS.lg,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    itemTimeContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.xs,
+    },
+    itemTime: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+    },
+    itemTitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+    },
+    itemTitleCompleted: {
+        textDecorationLine: 'line-through',
+        color: COLORS.text.tertiary,
+    },
+    itemFooterRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
+        marginTop: SPACING.xs,
+    },
+    itemBadge: {
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
+    },
+    itemBadgeText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    itemRoom: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    itemRoomText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+    },
+    completedBadge: {
+        marginLeft: 'auto',
+    },
+    itemChevron: {
+        justifyContent: 'center',
+        paddingRight: SPACING.md,
+    },
 
     // Empty State
-    emptyState: { alignItems: 'center', marginTop: 40 },
-    emptyText: { fontSize: 16, color: colors.text.secondary, marginBottom: 4 },
-    emptySubtext: { fontSize: 14, color: colors.text.tertiary },
+    emptyState: {
+        alignItems: 'center',
+        paddingVertical: SPACING['3xl'],
+        gap: SPACING.md,
+    },
+    emptyIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: COLORS.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: SPACING.sm,
+    },
+    emptyTitle: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    emptySubtitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
+    },
+    emptyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.xs,
+        backgroundColor: '#6366F1',
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.full,
+        marginTop: SPACING.lg,
+    },
+    emptyButtonText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
+    },
 
     // FAB
     fab: {
-        position: 'absolute', bottom: 20, right: 20,
-        width: 56, height: 56, borderRadius: 28,
-        backgroundColor: colors.accent.primary,
-        justifyContent: 'center', alignItems: 'center',
-        ...shadows.lg
+        position: 'absolute',
+        bottom: 120,
+        right: LAYOUT.screenPadding,
+        ...SHADOWS.lg,
     },
-
-    // Modal
-    modalWrapper: { flex: 1, justifyContent: 'flex-end' },
-    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
-    modalContent: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
-    handle: { width: 40, height: 4, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 20, borderRadius: 2 },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, color: colors.text.primary },
-    input: { backgroundColor: '#F3F4F6', padding: 14, borderRadius: 12, fontSize: 16, marginBottom: 20 },
-    typeRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-    typeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, borderRadius: 10, backgroundColor: '#F3F4F6', gap: 6 },
-    typeBtnActive: { backgroundColor: colors.accent.primary },
-    typeText: { fontSize: 12, color: colors.text.secondary, fontWeight: '600' },
-    saveBtn: { backgroundColor: colors.accent.primary, padding: 16, borderRadius: 12, alignItems: 'center' },
-    saveText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
+    fabGradient: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 });

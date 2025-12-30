@@ -1,12 +1,10 @@
 /**
- * Ecrã de Gestão de Membros de Equipa
- * Escola+ App
- * 
- * Permite ao Owner/Admin gerir membros: promover, demover, remover.
+ * Team Members Screen - Premium Dark Design
+ * Gestão de membros: promover, demover, remover
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Profile, TeamRole } from '@/types/database.types';
 import {
@@ -18,19 +16,22 @@ import {
     ROLE_LABELS,
 } from '@/utils/permissions';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActionSheetIOS,
     ActivityIndicator,
     Alert,
-    FlatList,
+    Animated,
     Image,
     Platform,
     Pressable,
     RefreshControl,
+    ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,6 +49,14 @@ interface TeamMemberWithProfile {
     profile: Profile;
 }
 
+const ROLE_ICONS: Record<TeamRole, string> = {
+    owner: '👑',
+    admin: '⭐',
+    moderator: '🛡️',
+    delegate: '📋',
+    member: '👤',
+};
+
 // ============================================
 // MAIN COMPONENT
 // ============================================
@@ -61,36 +70,35 @@ export default function TeamMembersScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [userRole, setUserRole] = useState<TeamRole | null>(null);
     const [teamName, setTeamName] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
 
-    // Carregar membros
+    // Load members
     const loadMembers = useCallback(async () => {
         if (!teamId || !user?.id) return;
 
         try {
-            // Buscar membros com perfil
             const { data: membersData, error } = await supabase
                 .from('team_members')
                 .select(`
-                    id,
-                    user_id,
-                    team_id,
-                    role,
-                    joined_at,
-                    profile:profiles!user_id (
-                        id,
-                        username,
-                        full_name,
-                        avatar_url,
-                        current_tier,
-                        current_xp
-                    )
-                `)
+          id,
+          user_id,
+          team_id,
+          role,
+          joined_at,
+          profile:profiles!user_id (
+            id,
+            username,
+            full_name,
+            avatar_url,
+            current_tier,
+            current_xp
+          )
+        `)
                 .eq('team_id', teamId)
                 .order('role', { ascending: true });
 
             if (error) throw error;
 
-            // Supabase retorna profile como array, extrair primeiro elemento
             const processedMembers = (membersData || []).map((m: any) => ({
                 ...m,
                 profile: Array.isArray(m.profile) ? m.profile[0] : m.profile,
@@ -98,22 +106,17 @@ export default function TeamMembersScreen() {
 
             setMembers(processedMembers);
 
-            // Encontrar role do utilizador atual
-            const myMembership = membersData?.find(m => m.user_id === user.id);
-            if (myMembership) {
-                setUserRole(myMembership.role as TeamRole);
-            }
+            const myMembership = membersData?.find((m) => m.user_id === user.id);
+            if (myMembership) setUserRole(myMembership.role as TeamRole);
 
-            // Buscar nome da equipa
             const { data: teamData } = await supabase
                 .from('teams')
                 .select('name')
                 .eq('id', teamId)
                 .single();
             if (teamData) setTeamName(teamData.name);
-
         } catch (err) {
-            console.error('Erro ao carregar membros:', err);
+            console.error('Error loading members:', err);
             Alert.alert('Erro', 'Não foi possível carregar os membros.');
         } finally {
             setLoading(false);
@@ -130,7 +133,7 @@ export default function TeamMembersScreen() {
         loadMembers();
     };
 
-    // Promover/Demover membro
+    // Change role
     const handleChangeRole = async (member: TeamMemberWithProfile, newRole: TeamRole) => {
         if (!canModifyRole(userRole, member.role)) {
             Alert.alert('Sem Permissão', 'Não podes modificar este membro.');
@@ -145,33 +148,27 @@ export default function TeamMembersScreen() {
 
             if (error) throw error;
 
-            // Atualizar lista local
-            setMembers(prev =>
-                prev.map(m => (m.id === member.id ? { ...m, role: newRole } : m))
+            setMembers((prev) =>
+                prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m))
             );
 
             Alert.alert('✅ Sucesso', `${member.profile.full_name || member.profile.username} é agora ${ROLE_LABELS[newRole]}.`);
         } catch (err) {
-            console.error('Erro ao alterar role:', err);
+            console.error('Error changing role:', err);
             Alert.alert('Erro', 'Não foi possível alterar o cargo.');
         }
     };
 
-    // Remover membro
+    // Remove member
     const handleRemoveMember = async (member: TeamMemberWithProfile) => {
-        if (!canUser(userRole, 'KICK_MEMBERS')) {
-            Alert.alert('Sem Permissão', 'Não podes remover membros.');
-            return;
-        }
-
-        if (!canModifyRole(userRole, member.role)) {
+        if (!canUser(userRole, 'KICK_MEMBERS') || !canModifyRole(userRole, member.role)) {
             Alert.alert('Sem Permissão', 'Não podes remover este membro.');
             return;
         }
 
         Alert.alert(
             'Remover Membro',
-            `Tens a certeza que queres remover ${member.profile.full_name || member.profile.username} da equipa?`,
+            `Remover ${member.profile.full_name || member.profile.username}?`,
             [
                 { text: 'Cancelar', style: 'cancel' },
                 {
@@ -179,17 +176,12 @@ export default function TeamMembersScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            const { error } = await supabase
-                                .from('team_members')
-                                .delete()
-                                .eq('id', member.id);
-
+                            const { error } = await supabase.from('team_members').delete().eq('id', member.id);
                             if (error) throw error;
-
-                            setMembers(prev => prev.filter(m => m.id !== member.id));
+                            setMembers((prev) => prev.filter((m) => m.id !== member.id));
                             Alert.alert('✅ Removido', 'Membro removido da equipa.');
                         } catch (err) {
-                            console.error('Erro ao remover membro:', err);
+                            console.error('Error removing member:', err);
                             Alert.alert('Erro', 'Não foi possível remover o membro.');
                         }
                     },
@@ -198,38 +190,31 @@ export default function TeamMembersScreen() {
         );
     };
 
-    // Mostrar opções de ação para um membro
+    // Show member actions
     const showMemberActions = (member: TeamMemberWithProfile) => {
-        if (member.user_id === user?.id) return; // Não pode editar a si mesmo
-        if (!isAdmin(userRole)) return; // Só admins podem editar
+        if (member.user_id === user?.id || !isAdmin(userRole)) return;
 
         const options: string[] = [];
         const actions: (() => void)[] = [];
 
-        // Opções de promoção/demoção baseadas no role atual
         if (canUser(userRole, 'PROMOTE_TO_ADMIN') && member.role !== 'admin') {
-            options.push('Promover a Admin');
+            options.push('⭐ Promover a Admin');
             actions.push(() => handleChangeRole(member, 'admin'));
         }
         if (canUser(userRole, 'PROMOTE_TO_MODERATOR') && member.role !== 'moderator') {
-            options.push('Promover a Moderador');
+            options.push('🛡️ Promover a Moderador');
             actions.push(() => handleChangeRole(member, 'moderator'));
         }
-        if (canUser(userRole, 'PROMOTE_TO_DELEGATE') && member.role !== 'delegate') {
-            options.push('Promover a Delegado');
-            actions.push(() => handleChangeRole(member, 'delegate'));
-        }
         if (member.role !== 'member' && canModifyRole(userRole, member.role)) {
-            options.push('Demover a Membro');
+            options.push('👤 Demover a Membro');
             actions.push(() => handleChangeRole(member, 'member'));
         }
         if (canUser(userRole, 'KICK_MEMBERS') && canModifyRole(userRole, member.role)) {
-            options.push('Remover da Equipa');
+            options.push('🚫 Remover da Equipa');
             actions.push(() => handleRemoveMember(member));
         }
 
         if (options.length === 0) return;
-
         options.push('Cancelar');
 
         if (Platform.OS === 'ios') {
@@ -237,17 +222,14 @@ export default function TeamMembersScreen() {
                 {
                     options,
                     cancelButtonIndex: options.length - 1,
-                    destructiveButtonIndex: options.findIndex(o => o.includes('Remover')),
+                    destructiveButtonIndex: options.findIndex((o) => o.includes('Remover')),
                     title: member.profile.full_name || member.profile.username || 'Membro',
                 },
                 (buttonIndex) => {
-                    if (buttonIndex < actions.length) {
-                        actions[buttonIndex]();
-                    }
+                    if (buttonIndex < actions.length) actions[buttonIndex]();
                 }
             );
         } else {
-            // Android: usar Alert com botões
             Alert.alert(
                 member.profile.full_name || member.profile.username || 'Membro',
                 'Escolhe uma ação:',
@@ -262,104 +244,190 @@ export default function TeamMembersScreen() {
         }
     };
 
-    // Render Member Card
-    const renderMember = ({ item }: { item: TeamMemberWithProfile }) => {
-        const isCurrentUser = item.user_id === user?.id;
-        const canEdit = isAdmin(userRole) && !isCurrentUser && canModifyRole(userRole, item.role);
+    // Filter members
+    const filteredMembers = members
+        .filter((m) => {
+            const name = m.profile.full_name || m.profile.username || '';
+            return name.toLowerCase().includes(searchQuery.toLowerCase());
+        })
+        .sort((a, b) => getRoleLevel(b.role) - getRoleLevel(a.role));
 
+    // Group by role
+    const groupedMembers = {
+        admins: filteredMembers.filter((m) => ['owner', 'admin'].includes(m.role)),
+        mods: filteredMembers.filter((m) => ['moderator', 'delegate'].includes(m.role)),
+        members: filteredMembers.filter((m) => m.role === 'member'),
+    };
+
+    if (loading) {
         return (
-            <Pressable
-                style={({ pressed }) => [
-                    styles.memberCard,
-                    pressed && canEdit && styles.memberCardPressed,
-                ]}
-                onPress={() => canEdit && showMemberActions(item)}
-                disabled={!canEdit}
-            >
-                {/* Avatar */}
-                {item.profile.avatar_url ? (
-                    <Image source={{ uri: item.profile.avatar_url }} style={styles.avatar} />
-                ) : (
-                    <View style={styles.avatarPlaceholder}>
-                        <Text style={styles.avatarText}>
-                            {(item.profile.full_name || item.profile.username || '?').charAt(0).toUpperCase()}
-                        </Text>
+            <View style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#6366F1" />
+                </View>
+            </View>
+        );
+    }
+
+    return (
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                    </Pressable>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>👥 Membros</Text>
+                        <Text style={styles.headerSubtitle}>{teamName} • {members.length}</Text>
                     </View>
+                </View>
+
+                {/* Search */}
+                <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={18} color={COLORS.text.tertiary} />
+                    <TextInput
+                        style={styles.searchInput}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Procurar membro..."
+                        placeholderTextColor={COLORS.text.tertiary}
+                    />
+                    {searchQuery.length > 0 && (
+                        <Pressable onPress={() => setSearchQuery('')}>
+                            <Ionicons name="close-circle" size={18} color={COLORS.text.tertiary} />
+                        </Pressable>
+                    )}
+                </View>
+
+                {/* Members */}
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366F1" />
+                    }
+                >
+                    {/* Admins */}
+                    {groupedMembers.admins.length > 0 && (
+                        <>
+                            <Text style={styles.sectionTitle}>Administração</Text>
+                            {groupedMembers.admins.map((member) => (
+                                <MemberCard
+                                    key={member.id}
+                                    member={member}
+                                    isCurrentUser={member.user_id === user?.id}
+                                    canEdit={isAdmin(userRole) && member.user_id !== user?.id && canModifyRole(userRole, member.role)}
+                                    onPress={() => showMemberActions(member)}
+                                />
+                            ))}
+                        </>
+                    )}
+
+                    {/* Moderators */}
+                    {groupedMembers.mods.length > 0 && (
+                        <>
+                            <Text style={styles.sectionTitle}>Moderadores</Text>
+                            {groupedMembers.mods.map((member) => (
+                                <MemberCard
+                                    key={member.id}
+                                    member={member}
+                                    isCurrentUser={member.user_id === user?.id}
+                                    canEdit={isAdmin(userRole) && member.user_id !== user?.id && canModifyRole(userRole, member.role)}
+                                    onPress={() => showMemberActions(member)}
+                                />
+                            ))}
+                        </>
+                    )}
+
+                    {/* Members */}
+                    {groupedMembers.members.length > 0 && (
+                        <>
+                            <Text style={styles.sectionTitle}>Membros ({groupedMembers.members.length})</Text>
+                            {groupedMembers.members.map((member) => (
+                                <MemberCard
+                                    key={member.id}
+                                    member={member}
+                                    isCurrentUser={member.user_id === user?.id}
+                                    canEdit={isAdmin(userRole) && member.user_id !== user?.id && canModifyRole(userRole, member.role)}
+                                    onPress={() => showMemberActions(member)}
+                                />
+                            ))}
+                        </>
+                    )}
+
+                    {filteredMembers.length === 0 && (
+                        <View style={styles.emptyContainer}>
+                            <Ionicons name="search-outline" size={48} color={COLORS.text.tertiary} />
+                            <Text style={styles.emptyText}>Nenhum membro encontrado</Text>
+                        </View>
+                    )}
+                </ScrollView>
+            </SafeAreaView>
+        </View>
+    );
+}
+
+// ============================================
+// MEMBER CARD
+// ============================================
+
+function MemberCard({
+    member,
+    isCurrentUser,
+    canEdit,
+    onPress,
+}: {
+    member: TeamMemberWithProfile;
+    isCurrentUser: boolean;
+    canEdit: boolean;
+    onPress: () => void;
+}) {
+    const scale = useRef(new Animated.Value(1)).current;
+    const roleColor = ROLE_COLORS[member.role] || '#6366F1';
+
+    return (
+        <Pressable
+            onPress={canEdit ? onPress : undefined}
+            onPressIn={() => canEdit && Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+            disabled={!canEdit}
+        >
+            <Animated.View style={[styles.memberCard, isCurrentUser && styles.memberCardHighlight, { transform: [{ scale }] }]}>
+                {/* Avatar */}
+                {member.profile.avatar_url ? (
+                    <Image source={{ uri: member.profile.avatar_url }} style={styles.avatar} />
+                ) : (
+                    <LinearGradient colors={[roleColor, `${roleColor}80`]} style={styles.avatarPlaceholder}>
+                        <Text style={styles.avatarText}>
+                            {(member.profile.full_name || member.profile.username || '?').charAt(0).toUpperCase()}
+                        </Text>
+                    </LinearGradient>
                 )}
 
                 {/* Info */}
                 <View style={styles.memberInfo}>
                     <View style={styles.nameRow}>
                         <Text style={styles.memberName}>
-                            {item.profile.full_name || item.profile.username || 'Utilizador'}
+                            {member.profile.full_name || member.profile.username || 'Utilizador'}
                         </Text>
-                        {isCurrentUser && (
-                            <Text style={styles.youBadge}>Tu</Text>
-                        )}
+                        {isCurrentUser && <Text style={styles.youBadge}>Tu</Text>}
                     </View>
-                    <Text style={styles.memberUsername}>@{item.profile.username || 'sem-username'}</Text>
+                    <Text style={styles.memberUsername}>@{member.profile.username || 'anónimo'}</Text>
                 </View>
 
                 {/* Role Badge */}
-                <View style={[styles.roleBadge, { backgroundColor: `${ROLE_COLORS[item.role]}20` }]}>
-                    <Text style={[styles.roleText, { color: ROLE_COLORS[item.role] }]}>
-                        {ROLE_LABELS[item.role]}
-                    </Text>
+                <View style={[styles.roleBadge, { backgroundColor: `${roleColor}20` }]}>
+                    <Text style={styles.roleIcon}>{ROLE_ICONS[member.role]}</Text>
+                    <Text style={[styles.roleText, { color: roleColor }]}>{ROLE_LABELS[member.role]}</Text>
                 </View>
 
                 {/* Edit Icon */}
                 {canEdit && (
-                    <Ionicons name="ellipsis-vertical" size={18} color={colors.text.tertiary} />
+                    <Ionicons name="ellipsis-vertical" size={18} color={COLORS.text.tertiary} style={{ marginLeft: SPACING.sm }} />
                 )}
-            </Pressable>
-        );
-    };
-
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
-                </View>
-            </SafeAreaView>
-        );
-    }
-
-    return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>Membros</Text>
-                    <Text style={styles.headerSubtitle}>{teamName} • {members.length} membros</Text>
-                </View>
-            </View>
-
-            {/* Members List */}
-            <FlatList
-                data={members.sort((a, b) => getRoleLevel(b.role) - getRoleLevel(a.role))}
-                keyExtractor={(item) => item.id}
-                renderItem={renderMember}
-                contentContainerStyle={styles.listContent}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={colors.accent.primary}
-                    />
-                }
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Ionicons name="people-outline" size={48} color={colors.text.tertiary} />
-                        <Text style={styles.emptyText}>Nenhum membro encontrado</Text>
-                    </View>
-                }
-            />
-        </SafeAreaView>
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -370,64 +438,92 @@ export default function TeamMembersScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
     },
+    scrollContent: {
+        paddingHorizontal: SPACING.lg,
+        paddingBottom: 100,
+    },
 
     // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
     },
     backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
     },
     headerContent: {
         flex: 1,
-        marginLeft: spacing.sm,
+        marginLeft: SPACING.md,
     },
     headerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
 
-    // List
-    listContent: {
-        padding: spacing.lg,
+    // Search
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        marginHorizontal: SPACING.lg,
+        marginBottom: SPACING.lg,
+        borderRadius: RADIUS.xl,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        gap: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    separator: {
-        height: spacing.sm,
+    searchInput: {
+        flex: 1,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+    },
+
+    // Section
+    sectionTitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.tertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginTop: SPACING.lg,
+        marginBottom: SPACING.md,
     },
 
     // Member Card
     memberCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        marginBottom: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    memberCardPressed: {
-        opacity: 0.7,
+    memberCardHighlight: {
+        borderColor: '#6366F1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
     },
     avatar: {
         width: 48,
@@ -438,63 +534,66 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: colors.accent.subtle,
         alignItems: 'center',
         justifyContent: 'center',
     },
     avatarText: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
     memberInfo: {
         flex: 1,
-        marginLeft: spacing.md,
+        marginLeft: SPACING.md,
     },
     nameRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
+        gap: SPACING.xs,
     },
     memberName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
     youBadge: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-        color: colors.accent.primary,
-        backgroundColor: colors.accent.subtle,
-        paddingHorizontal: spacing.xs,
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: '#6366F1',
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+        paddingHorizontal: SPACING.xs,
         paddingVertical: 2,
-        borderRadius: borderRadius.sm,
+        borderRadius: RADIUS.sm,
     },
     memberUsername: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
     roleBadge: {
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
-        marginRight: spacing.sm,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: SPACING.xs,
+        borderRadius: RADIUS.full,
+        gap: 4,
+    },
+    roleIcon: {
+        fontSize: 12,
     },
     roleText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.semibold,
     },
 
-    // Empty State
+    // Empty
     emptyContainer: {
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing['5xl'],
+        paddingVertical: 60,
     },
     emptyText: {
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
-        marginTop: spacing.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
+        marginTop: SPACING.md,
     },
 });

@@ -1,107 +1,218 @@
+/**
+ * Premium Profile Screen
+ * Ultra-premium design inspirado em apps de gaming/social
+ */
+
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, getTierStyle, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Tier } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
+import Animated, {
+    FadeInDown,
+    FadeInUp,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+} from 'react-native-reanimated';
 
-// Tier emoji mapping
-const TIER_EMOJI: Record<Tier, string> = {
-    Bronze: '🥉',
-    Prata: '🥈',
-    Ouro: '🥇',
-    Platina: '💎',
-    Diamante: '👑',
-    Elite: '🔥',
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ============================================
+// TIER CONFIG
+// ============================================
+
+const TIER_CONFIG: Record<Tier, { emoji: string; gradient: [string, string]; next: Tier | null; xpRequired: number }> = {
+    Bronze: { emoji: '🥉', gradient: ['#CD7F32', '#8B4513'], next: 'Prata', xpRequired: 500 },
+    Prata: { emoji: '🥈', gradient: ['#C0C0C0', '#808080'], next: 'Ouro', xpRequired: 1500 },
+    Ouro: { emoji: '🥇', gradient: ['#FFD700', '#FFA500'], next: 'Platina', xpRequired: 3000 },
+    Platina: { emoji: '💎', gradient: ['#E5E4E2', '#A9A9A9'], next: 'Diamante', xpRequired: 6000 },
+    Diamante: { emoji: '👑', gradient: ['#B9F2FF', '#00CED1'], next: 'Elite', xpRequired: 12000 },
+    Elite: { emoji: '🔥', gradient: ['#FF4500', '#8B0000'], next: null, xpRequired: 999999 },
 };
 
-// Level calculation
+// ============================================
+// HELPERS
+// ============================================
+
 function getLevelInfo(xp: number) {
     const xpPerLevel = 200;
     const level = Math.floor(xp / xpPerLevel) + 1;
     const currentLevelXP = (level - 1) * xpPerLevel;
     const progress = ((xp - currentLevelXP) / xpPerLevel) * 100;
-    const remaining = xpPerLevel - (xp - currentLevelXP);
-    return { level, progress, remaining };
+    const nextLevelXP = level * xpPerLevel;
+    return { level, progress, nextLevelXP, currentLevelXP };
 }
+
+// ============================================
+// ANIMATED COMPONENTS
+// ============================================
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// ============================================
+// STAT CARD
+// ============================================
+
+function StatCard({
+    icon,
+    value,
+    label,
+    color,
+    index,
+    onPress,
+}: {
+    icon: string;
+    value: string | number;
+    label: string;
+    color: string;
+    index: number;
+    onPress?: () => void;
+}) {
+    const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    return (
+        <AnimatedPressable
+            entering={FadeInDown.delay(100 + index * 50).springify()}
+            style={[styles.statCard, animatedStyle]}
+            onPress={onPress}
+            onPressIn={() => { scale.value = withSpring(0.95); }}
+            onPressOut={() => { scale.value = withSpring(1); }}
+        >
+            <View style={[styles.statIconContainer, { backgroundColor: `${color}20` }]}>
+                <Ionicons name={icon as any} size={22} color={color} />
+            </View>
+            <Text style={styles.statValue}>{value}</Text>
+            <Text style={styles.statLabel}>{label}</Text>
+        </AnimatedPressable>
+    );
+}
+
+// ============================================
+// MENU ITEM
+// ============================================
+
+function MenuItem({
+    icon,
+    label,
+    subtitle,
+    color = COLORS.text.primary,
+    onPress,
+    showArrow = true,
+    danger = false,
+}: {
+    icon: string;
+    label: string;
+    subtitle?: string;
+    color?: string;
+    onPress: () => void;
+    showArrow?: boolean;
+    danger?: boolean;
+}) {
+    return (
+        <Pressable style={styles.menuItem} onPress={onPress}>
+            <View style={[styles.menuIconContainer, { backgroundColor: danger ? '#EF444420' : `${color}15` }]}>
+                <Ionicons name={icon as any} size={20} color={danger ? '#EF4444' : color} />
+            </View>
+            <View style={styles.menuContent}>
+                <Text style={[styles.menuLabel, danger && { color: '#EF4444' }]}>{label}</Text>
+                {subtitle && <Text style={styles.menuSubtitle}>{subtitle}</Text>}
+            </View>
+            {showArrow && <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />}
+        </Pressable>
+    );
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function ProfileScreen() {
     const { user, signOut, isLoading: authLoading } = useAuthContext();
     const { profile, loading, refetchProfile } = useProfile();
-
     const [deleting, setDeleting] = useState(false);
+    const [frameConfig, setFrameConfig] = useState<{
+        border_color: string;
+        border_width: number;
+        glow_color?: string;
+        glow?: boolean;
+        animated?: boolean;
+    } | null>(null);
 
+    // Carregar moldura equipada
+    const loadEquippedFrame = useCallback(async () => {
+        if (!profile?.equipped_frame) {
+            setFrameConfig(null);
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('shop_items')
+                .select('config')
+                .eq('id', profile.equipped_frame)
+                .single();
+
+            if (error) throw error;
+            if (data?.config) {
+                setFrameConfig(data.config);
+            }
+        } catch (err) {
+            console.error('Erro ao carregar moldura:', err);
+        }
+    }, [profile?.equipped_frame]);
+
+    useEffect(() => {
+        loadEquippedFrame();
+    }, [loadEquippedFrame]);
+
+    // Handlers
     const handleSignOut = () => {
-        Alert.alert(
-            'Terminar Sessão',
-            'Tens a certeza que queres sair?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Sair', style: 'destructive', onPress: signOut },
-            ]
-        );
+        Alert.alert('Terminar Sessão', 'Tens a certeza que queres sair?', [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Sair', style: 'destructive', onPress: signOut },
+        ]);
     };
 
-    // Eliminar conta (DANGER)
     const handleDeleteAccount = () => {
         Alert.alert(
             '⚠️ Eliminar Conta',
-            'Esta ação é PERMANENTE e irá apagar todos os teus dados, incluindo:\n\n• Perfil e avatar\n• Mensagens\n• Tarefas\n• Amizades\n• XP e badges\n\nTens a certeza ABSOLUTA?',
+            'Esta ação é PERMANENTE.\n\nIrá apagar todos os teus dados.',
             [
                 { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Sim, Eliminar',
-                    style: 'destructive',
-                    onPress: () => confirmDeleteAccount(),
-                },
+                { text: 'Eliminar', style: 'destructive', onPress: confirmDelete },
             ]
         );
     };
 
-    const confirmDeleteAccount = () => {
-        Alert.prompt(
-            'Confirmação Final',
-            'Escreve "CONFIRMAR" para confirmar:',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Confirmar',
-                    style: 'destructive',
-                    onPress: async (text: string | undefined) => {
-                        if (text?.toUpperCase() === 'CONFIRMAR') {
-                            await executeDelete();
-                        } else {
-                            Alert.alert('Erro', 'Texto incorreto. A conta não foi eliminada.');
-                        }
-                    },
-                },
-            ],
-            'plain-text'
-        );
-    };
-
-    const executeDelete = async () => {
+    const confirmDelete = async () => {
         if (!user?.id) return;
-
         setDeleting(true);
         try {
-            // Usar a função RPC que já existe no Supabase
-            // Esta função apaga o auth.users e o CASCADE apaga o resto
             const { error } = await supabase.rpc('delete_user');
-
             if (error) throw error;
-
-            // Fazer signOut para limpar a sessão local
             await signOut();
-
-            Alert.alert('Conta Eliminada', 'A tua conta foi eliminada com sucesso.');
-        } catch (err: any) {
-            console.error('Erro ao eliminar conta:', err);
-            Alert.alert('Erro', 'Não foi possível eliminar a conta. Tenta novamente.');
+        } catch (err) {
+            Alert.alert('Erro', 'Não foi possível eliminar a conta.');
         } finally {
             setDeleting(false);
         }
@@ -109,179 +220,338 @@ export default function ProfileScreen() {
 
     if (loading || authLoading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
     // Profile data
     const displayName = profile?.full_name || profile?.username || 'Estudante';
-    const email = user?.email || '';
-    const tier = profile?.current_tier || 'Bronze';
+    const username = profile?.username || 'user';
+    const tier = (profile?.current_tier || 'Bronze') as Tier;
     const xp = profile?.current_xp || 0;
-    const { level, progress, remaining } = getLevelInfo(xp);
-    const tierStyle = getTierStyle(tier.toLowerCase());
-    const tierEmoji = TIER_EMOJI[tier];
+    const streak = profile?.current_streak || 0;
+    const focusMinutes = profile?.focus_minutes_total || 0;
+    const { level, progress, nextLevelXP } = getLevelInfo(xp);
+    const tierConfig = TIER_CONFIG[tier];
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* Header */}
-                <Text style={styles.pageTitle}>Perfil</Text>
+        <View style={styles.container}>
+            <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+                {/* ========== HERO HEADER ========== */}
+                <View style={styles.heroContainer}>
+                    <LinearGradient
+                        colors={tierConfig.gradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.heroGradient}
+                    />
+                    <View style={styles.heroOverlay} />
 
-                {/* Profile Card */}
-                <View style={styles.profileCard}>
-                    <View style={styles.profileHeader}>
-                        <View style={styles.avatarWrapper}>
-                            {profile?.avatar_url ? (
-                                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-                            ) : (
-                                <View style={[styles.avatarFallback, { backgroundColor: tierStyle.bg }]}>
-                                    <Text style={[styles.avatarInitial, { color: tierStyle.text }]}>
-                                        {displayName.charAt(0).toUpperCase()}
-                                    </Text>
-                                </View>
-                            )}
-                            <View style={[styles.tierIndicator, { backgroundColor: tierStyle.accent }]} />
+                    {/* Settings Button */}
+                    <Pressable style={styles.settingsButton} onPress={() => router.push('/settings')}>
+                        <BlurView intensity={40} tint="dark" style={styles.settingsBlur}>
+                            <Ionicons name="settings-outline" size={22} color="#FFF" />
+                        </BlurView>
+                    </Pressable>
+
+                    {/* Avatar com Moldura */}
+                    <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.avatarContainer}>
+                        {/* Glow Effect se moldura tiver glow */}
+                        {frameConfig?.glow && (
+                            <View style={[
+                                styles.avatarGlow,
+                                { backgroundColor: frameConfig.glow_color || 'rgba(255,215,0,0.5)' }
+                            ]} />
+                        )}
+
+                        {/* Avatar */}
+                        {profile?.avatar_url ? (
+                            <Image
+                                source={{ uri: profile.avatar_url }}
+                                style={[
+                                    styles.avatar,
+                                    frameConfig && {
+                                        borderColor: frameConfig.border_color,
+                                        borderWidth: frameConfig.border_width,
+                                    }
+                                ]}
+                            />
+                        ) : (
+                            <LinearGradient
+                                colors={tierConfig.gradient}
+                                style={[
+                                    styles.avatarFallback,
+                                    frameConfig && {
+                                        borderColor: frameConfig.border_color,
+                                        borderWidth: frameConfig.border_width,
+                                    }
+                                ]}
+                            >
+                                <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
+                            </LinearGradient>
+                        )}
+
+                        {/* Tier Badge */}
+                        <View style={styles.tierBadge}>
+                            <Text style={styles.tierEmoji}>{tierConfig.emoji}</Text>
                         </View>
 
-                        <View style={styles.profileInfo}>
-                            <Text style={styles.profileName}>{displayName}</Text>
-                            <Text style={styles.profileEmail}>{email}</Text>
-                            <View style={[styles.tierBadge, { backgroundColor: tierStyle.bg }]}>
-                                <Text style={styles.tierEmoji}>{tierEmoji}</Text>
-                                <Text style={[styles.tierText, { color: tierStyle.text }]}>{tier}</Text>
+                        {/* Frame indicator se tiver moldura */}
+                        {frameConfig && (
+                            <View style={[styles.frameIndicator, { backgroundColor: frameConfig.border_color }]}>
+                                <Text style={styles.frameIndicatorText}>🖼️</Text>
                             </View>
-                        </View>
+                        )}
+                    </Animated.View>
+
+                    {/* Name & Username */}
+                    <Text style={styles.displayName}>{displayName}</Text>
+                    <Text style={styles.username}>@{username}</Text>
+
+                    {/* Level Badge */}
+                    <View style={styles.levelBadge}>
+                        <Ionicons name="star" size={14} color="#FFD700" />
+                        <Text style={styles.levelText}>Nível {level}</Text>
                     </View>
                 </View>
 
-                {/* Level Progress Card */}
-                <View style={styles.levelCard}>
-                    <View style={styles.levelHeader}>
-                        <View>
-                            <Text style={styles.levelTitle}>Nível {level}</Text>
-                            <Text style={styles.levelSubtitle}>{remaining} XP para o próximo</Text>
+                {/* ========== XP PROGRESS ========== */}
+                <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.xpContainer}>
+                    <View style={styles.xpHeader}>
+                        <View style={styles.xpTierInfo}>
+                            <Text style={styles.xpTierLabel}>{tier}</Text>
+                            {tierConfig.next && (
+                                <Text style={styles.xpNextTier}>→ {tierConfig.next}</Text>
+                            )}
                         </View>
-                        <View style={styles.xpBadge}>
-                            <Ionicons name="flash" size={14} color={colors.accent.primary} />
-                            <Text style={styles.xpValue}>{xp.toLocaleString()}</Text>
-                        </View>
+                        <Text style={styles.xpText}>{xp} XP</Text>
                     </View>
-                    <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${progress}%` }]} />
+                    <View style={styles.xpBarContainer}>
+                        <LinearGradient
+                            colors={tierConfig.gradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={[styles.xpBarFill, { width: `${Math.min(progress, 100)}%` }]}
+                        />
                     </View>
-                    <Pressable
-                        style={styles.shopButton}
-                        onPress={() => router.push('/shop' as any)}
-                    >
-                        <Ionicons name="bag" size={18} color={colors.accent.primary} />
-                        <Text style={styles.shopButtonText}>Loja de Recompensas</Text>
-                        <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
-                    </Pressable>
-                </View>
+                    <Text style={styles.xpSubtext}>{nextLevelXP - xp} XP para o próximo nível</Text>
+                </Animated.View>
 
-                {/* Stats Grid */}
-                <Text style={styles.sectionTitle}>Estatísticas</Text>
+                {/* ========== STATS GRID ========== */}
                 <View style={styles.statsGrid}>
-                    <View style={styles.statBox}>
-                        <View style={[styles.statIconBg, { backgroundColor: `${colors.accent.primary}15` }]}>
-                            <Ionicons name="flash" size={22} color={colors.accent.primary} />
-                        </View>
-                        <Text style={styles.statValue}>{xp.toLocaleString()}</Text>
-                        <Text style={styles.statLabel}>XP Total</Text>
+                    <StatCard
+                        icon="flame"
+                        value={streak}
+                        label="Streak"
+                        color="#F59E0B"
+                        index={0}
+                        onPress={() => router.push('/badges')}
+                    />
+                    <StatCard
+                        icon="time"
+                        value={`${Math.floor(focusMinutes / 60)}h`}
+                        label="Foco"
+                        color="#10B981"
+                        index={1}
+                        onPress={() => router.push('/pomodoro')}
+                    />
+                    <StatCard
+                        icon="trophy"
+                        value={level}
+                        label="Nível"
+                        color="#6366F1"
+                        index={2}
+                        onPress={() => router.push('/leaderboard')}
+                    />
+                </View>
+
+                {/* ========== POWER-UPS ATIVOS ========== */}
+                <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
+                    <View style={styles.powerupsHeader}>
+                        <Text style={styles.sectionTitle}>Power-ups</Text>
+                        <Pressable onPress={() => router.push('/consumables')}>
+                            <Text style={styles.seeAllButton}>Ver todos →</Text>
+                        </Pressable>
                     </View>
-                    <View style={styles.statBox}>
-                        <View style={[styles.statIconBg, { backgroundColor: `${colors.success.primary}15` }]}>
-                            <Ionicons name="trophy" size={22} color={colors.success.primary} />
-                        </View>
-                        <Text style={styles.statValue}>{level}</Text>
-                        <Text style={styles.statLabel}>Nível</Text>
+                    <View style={styles.powerupsRow}>
+                        {/* Streak Freezes */}
+                        <Pressable style={styles.powerupCard} onPress={() => router.push('/consumables')}>
+                            <LinearGradient
+                                colors={['rgba(96, 165, 250, 0.2)', 'rgba(59, 130, 246, 0.1)']}
+                                style={styles.powerupGradient}
+                            >
+                                <Text style={styles.powerupEmoji}>❄️</Text>
+                                <Text style={styles.powerupValue}>{profile?.streak_freezes || 0}</Text>
+                                <Text style={styles.powerupLabel}>Freezes</Text>
+                            </LinearGradient>
+                        </Pressable>
+
+                        {/* XP Multiplier */}
+                        <Pressable style={styles.powerupCard} onPress={() => router.push('/consumables')}>
+                            <LinearGradient
+                                colors={
+                                    (profile?.xp_multiplier || 1) > 1 && profile?.xp_multiplier_expires && new Date(profile.xp_multiplier_expires) > new Date()
+                                        ? ['rgba(251, 191, 36, 0.3)', 'rgba(245, 158, 11, 0.2)']
+                                        : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']
+                                }
+                                style={styles.powerupGradient}
+                            >
+                                <Text style={styles.powerupEmoji}>⚡</Text>
+                                <Text style={[
+                                    styles.powerupValue,
+                                    (profile?.xp_multiplier || 1) > 1 && { color: '#FBBF24' }
+                                ]}>
+                                    {profile?.xp_multiplier || 1}x
+                                </Text>
+                                <Text style={styles.powerupLabel}>XP Boost</Text>
+                            </LinearGradient>
+                        </Pressable>
+
+                        {/* Shop Button */}
+                        <Pressable style={styles.powerupCard} onPress={() => router.push('/shop')}>
+                            <LinearGradient
+                                colors={['rgba(99, 102, 241, 0.2)', 'rgba(79, 70, 229, 0.1)']}
+                                style={styles.powerupGradient}
+                            >
+                                <Text style={styles.powerupEmoji}>🛒</Text>
+                                <Ionicons name="add-circle" size={24} color="#6366F1" />
+                                <Text style={styles.powerupLabel}>Comprar</Text>
+                            </LinearGradient>
+                        </Pressable>
                     </View>
-                    <Pressable style={styles.statBox} onPress={() => router.push('/badges' as any)}>
-                        <View style={[styles.statIconBg, { backgroundColor: `${colors.warning.primary}15` }]}>
-                            <Ionicons name="medal" size={22} color={colors.warning.primary} />
-                        </View>
-                        <Text style={styles.statValue}>🏅</Text>
-                        <Text style={styles.statLabel}>Conquistas</Text>
-                    </Pressable>
+                </Animated.View>
+
+                {/* ========== QUICK ACTIONS ========== */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Acesso Rápido</Text>
+                    <View style={styles.menuCard}>
+                        <MenuItem
+                            icon="notifications-outline"
+                            label="Atividade"
+                            subtitle="Notificações e atualizações"
+                            color="#F59E0B"
+                            onPress={() => router.push('/(tabs)/activity')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="trophy-outline"
+                            label="Conquistas"
+                            subtitle="Ver badges desbloqueados"
+                            color="#EF4444"
+                            onPress={() => router.push('/badges')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="podium-outline"
+                            label="Leaderboard"
+                            subtitle="Ranking global de XP"
+                            color="#6366F1"
+                            onPress={() => router.push('/leaderboard')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="storefront-outline"
+                            label="Loja"
+                            subtitle="Molduras e power-ups"
+                            color="#EC4899"
+                            onPress={() => router.push('/shop')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="image-outline"
+                            label="Molduras"
+                            subtitle="Personalizar avatar"
+                            color="#A855F7"
+                            onPress={() => router.push('/frames')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="flash-outline"
+                            label="Consumíveis"
+                            subtitle="Power-ups e bónus"
+                            color="#22C55E"
+                            onPress={() => router.push('/consumables')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="people-outline"
+                            label="Equipas"
+                            subtitle="Gerir os teus squads"
+                            color="#10B981"
+                            onPress={() => router.push('/(tabs)/teams')}
+                        />
+                    </View>
                 </View>
 
-                {/* Settings Menu */}
-                <Text style={styles.sectionTitle}>Definições</Text>
-                <View style={styles.menuCard}>
-                    <MenuItem icon="analytics-outline" label="Perfil e Analíticas" onPress={() => router.push('/settings')} />
-                    <MenuItem icon="notifications-outline" label="Notificações" onPress={() => { }} />
-                    <MenuItem icon="shield-outline" label="Privacidade" onPress={() => { }} />
-                    <MenuItem icon="help-circle-outline" label="Ajuda" onPress={() => { }} last />
+                {/* ========== SETTINGS ========== */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Definições</Text>
+                    <View style={styles.menuCard}>
+                        <MenuItem
+                            icon="person-outline"
+                            label="Editar Perfil"
+                            onPress={() => router.push('/settings')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="notifications-outline"
+                            label="Notificações"
+                            onPress={() => router.push('/settings')}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="color-palette-outline"
+                            label="Aparência"
+                            onPress={() => router.push('/settings')}
+                        />
+                    </View>
                 </View>
 
-                {/* Logout */}
-                <Pressable style={styles.logoutButton} onPress={handleSignOut}>
-                    <Ionicons name="log-out-outline" size={18} color={colors.danger.primary} />
-                    <Text style={styles.logoutText}>Terminar Sessão</Text>
-                </Pressable>
-
-                {/* Delete Account - DANGER ZONE */}
-                <View style={styles.dangerZone}>
-                    <Text style={styles.dangerTitle}>Zona Perigosa</Text>
-                    <Text style={styles.dangerSubtitle}>
-                        Esta ação é irreversível e apagará todos os teus dados.
-                    </Text>
-                    <Pressable style={styles.deleteButton} onPress={handleDeleteAccount}>
-                        <Ionicons name="trash-outline" size={18} color={colors.text.inverse} />
-                        <Text style={styles.deleteButtonText}>Eliminar Conta</Text>
-                    </Pressable>
+                {/* ========== ACCOUNT ========== */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Conta</Text>
+                    <View style={styles.menuCard}>
+                        <MenuItem
+                            icon="log-out-outline"
+                            label="Terminar Sessão"
+                            onPress={handleSignOut}
+                            showArrow={false}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="trash-outline"
+                            label="Eliminar Conta"
+                            onPress={handleDeleteAccount}
+                            danger
+                            showArrow={false}
+                        />
+                    </View>
                 </View>
 
-                {/* Version */}
-                <Text style={styles.version}>Escola+ v0.1.0</Text>
+                {/* App Version */}
+                <Text style={styles.version}>Escola+ v2.0.0</Text>
 
-                <View style={{ height: 120 }} />
+                <View style={{ height: 150 }} />
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 
-function MenuItem({
-    icon,
-    label,
-    onPress,
-    last = false
-}: {
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-    onPress: () => void;
-    last?: boolean;
-}) {
-    return (
-        <Pressable style={[styles.menuItem, !last && styles.menuItemBorder]} onPress={onPress}>
-            <View style={styles.menuIconBg}>
-                <Ionicons name={icon} size={18} color={colors.text.secondary} />
-            </View>
-            <Text style={styles.menuLabel}>{label}</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
-        </Pressable>
-    );
-}
+// ============================================
+// STYLES
+// ============================================
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     scrollView: {
         flex: 1,
-    },
-    scrollContent: {
-        paddingHorizontal: spacing.xl,
     },
     loadingContainer: {
         flex: 1,
@@ -289,286 +559,307 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
 
-    // Page Title
-    pageTitle: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginTop: spacing.lg,
-        marginBottom: spacing['2xl'],
-    },
-
-    // Profile Card
-    profileCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.xl,
-        marginBottom: spacing.lg,
-        ...shadows.md,
-    },
-    profileHeader: {
-        flexDirection: 'row',
+    // Hero
+    heroContainer: {
+        height: 320,
         alignItems: 'center',
+        justifyContent: 'flex-end',
+        paddingBottom: SPACING['2xl'],
     },
-    avatarWrapper: {
+    heroGradient: {
+        ...StyleSheet.absoluteFillObject,
+        opacity: 0.8,
+    },
+    heroOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    settingsButton: {
+        position: 'absolute',
+        top: 50,
+        right: LAYOUT.screenPadding,
+        zIndex: 10,
+    },
+    settingsBlur: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    avatarContainer: {
         position: 'relative',
-        marginRight: spacing.lg,
+        marginBottom: SPACING.lg,
+    },
+    avatarGlow: {
+        position: 'absolute',
+        top: -10,
+        left: -10,
+        right: -10,
+        bottom: -10,
+        borderRadius: 60,
+        opacity: 0.6,
+    },
+    frameIndicator: {
+        position: 'absolute',
+        top: -4,
+        left: -4,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: COLORS.background,
+    },
+    frameIndicatorText: {
+        fontSize: 12,
     },
     avatar: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        borderWidth: 4,
+        borderColor: '#FFF',
     },
     avatarFallback: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        borderWidth: 4,
+        borderColor: '#FFF',
         alignItems: 'center',
         justifyContent: 'center',
     },
     avatarInitial: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-    },
-    tierIndicator: {
-        position: 'absolute',
-        bottom: 2,
-        right: 2,
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        borderWidth: 2,
-        borderColor: colors.surface,
-    },
-    profileInfo: {
-        flex: 1,
-    },
-    profileName: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    profileEmail: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: 2,
+        fontSize: 40,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
     tierBadge: {
-        flexDirection: 'row',
+        position: 'absolute',
+        bottom: -4,
+        right: -4,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.background,
         alignItems: 'center',
-        alignSelf: 'flex-start',
-        marginTop: spacing.sm,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
-        gap: spacing.xs,
+        justifyContent: 'center',
+        borderWidth: 3,
+        borderColor: '#FFF',
     },
     tierEmoji: {
-        fontSize: 12,
+        fontSize: 18,
     },
-    tierText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
+    displayName: {
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+        marginBottom: 4,
+    },
+    username: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: 'rgba(255,255,255,0.8)',
+        marginBottom: SPACING.md,
+    },
+    levelBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.xs,
+        borderRadius: RADIUS.full,
+    },
+    levelText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 
-    // Level Card
-    levelCard: {
-        backgroundColor: colors.text.primary,
-        borderRadius: borderRadius.lg,
-        padding: spacing.lg,
-        marginBottom: spacing['2xl'],
-        ...shadows.lg,
+    // XP
+    xpContainer: {
+        marginHorizontal: LAYOUT.screenPadding,
+        marginTop: -SPACING.xl,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        ...SHADOWS.md,
     },
-    levelHeader: {
+    xpHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: spacing.md,
+        marginBottom: SPACING.sm,
     },
-    levelTitle: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.bold,
-        color: colors.text.inverse,
-    },
-    levelSubtitle: {
-        fontSize: typography.size.xs,
-        color: 'rgba(255,255,255,0.6)',
-        marginTop: 2,
-    },
-    xpBadge: {
+    xpTierInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
+        gap: SPACING.sm,
     },
-    xpValue: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: colors.text.inverse,
+    xpTierLabel: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    progressBar: {
-        height: 6,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        borderRadius: 3,
+    xpNextTier: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+    },
+    xpText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
+    },
+    xpBarContainer: {
+        height: 8,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: 4,
         overflow: 'hidden',
     },
-    progressFill: {
+    xpBarFill: {
         height: '100%',
-        backgroundColor: colors.accent.primary,
-        borderRadius: 3,
+        borderRadius: 4,
+    },
+    xpSubtext: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginTop: SPACING.sm,
+        textAlign: 'center',
     },
 
-    // Section
-    sectionTitle: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.md,
-    },
-
-    // Stats Grid
+    // Stats
     statsGrid: {
         flexDirection: 'row',
-        gap: spacing.md,
-        marginBottom: spacing['2xl'],
+        paddingHorizontal: LAYOUT.screenPadding,
+        gap: SPACING.md,
+        marginTop: SPACING.xl,
+        marginBottom: SPACING.xl,
     },
-    statBox: {
+    statCard: {
         flex: 1,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.lg,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
         alignItems: 'center',
-        ...shadows.sm,
+        ...SHADOWS.sm,
     },
-    statIconBg: {
+    statIconContainer: {
         width: 44,
         height: 44,
-        borderRadius: 12,
+        borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.sm,
+        marginBottom: SPACING.sm,
     },
     statValue: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     statLabel: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
         marginTop: 2,
+    },
+
+    // Sections
+    section: {
+        paddingHorizontal: LAYOUT.screenPadding,
+        marginBottom: SPACING.xl,
+    },
+    sectionTitle: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.md,
     },
 
     // Menu
     menuCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        marginBottom: spacing['2xl'],
-        ...shadows.sm,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+        ...SHADOWS.sm,
     },
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: spacing.lg,
-        paddingHorizontal: spacing.lg,
+        padding: SPACING.lg,
+        gap: SPACING.md,
     },
-    menuItemBorder: {
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    menuIconBg: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        backgroundColor: colors.surfaceSubtle,
+    menuIconContainer: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: spacing.md,
+    },
+    menuContent: {
+        flex: 1,
     },
     menuLabel: {
-        flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
-
-    // Logout
-    logoutButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.danger.light,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.lg,
-        gap: spacing.sm,
-        marginBottom: spacing.lg,
+    menuSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
     },
-    logoutText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.danger.primary,
-    },
-
-    // Danger Zone
-    dangerZone: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.xl,
-        marginTop: spacing.lg,
-        marginBottom: spacing.lg,
-        borderWidth: 1,
-        borderColor: colors.danger.primary,
-    },
-    dangerTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.danger.primary,
-        marginBottom: spacing.xs,
-    },
-    dangerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginBottom: spacing.lg,
-    },
-    deleteButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.danger.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.md,
-        gap: spacing.sm,
-    },
-    deleteButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+    menuDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        marginLeft: 68,
     },
 
     // Version
     version: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         textAlign: 'center',
+        marginTop: SPACING.lg,
     },
 
-    // Shop Button
-    shopButton: {
+    // Power-ups
+    powerupsHeader: {
         flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: colors.accent.subtle,
-        marginTop: spacing.md,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.lg,
-        borderRadius: borderRadius.lg,
-        gap: spacing.sm,
+        marginBottom: SPACING.md,
     },
-    shopButtonText: {
+    seeAllButton: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: '#6366F1',
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    powerupsRow: {
+        flexDirection: 'row',
+        gap: SPACING.md,
+    },
+    powerupCard: {
         flex: 1,
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.accent.primary,
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+    },
+    powerupGradient: {
+        padding: SPACING.lg,
+        alignItems: 'center',
+        gap: SPACING.xs,
+    },
+    powerupEmoji: {
+        fontSize: 24,
+    },
+    powerupValue: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    powerupLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
     },
 });

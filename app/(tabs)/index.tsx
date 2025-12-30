@@ -1,15 +1,19 @@
-import DailySpinWheel from '@/components/DailySpinWheel';
-import { NextClassCard } from '@/components/schedule/NextClassCard';
-import { useTasks } from '@/hooks/useTasks';
+/**
+ * Premium Home Screen - Dashboard Real
+ * Dados reais do Supabase + Links corretos
+ */
+
+import { ImmersiveCard } from '@/components/ImmersiveCard';
+import { useCalendarItems } from '@/hooks/useCalendarItems';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, getQuestStyle, getTierStyle, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useProfile } from '@/providers/ProfileProvider';
-import { Task, TaskType } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   Image,
   Pressable,
   RefreshControl,
@@ -18,133 +22,181 @@ import {
   Text,
   View
 } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
-// HELPERS
+// QUICK ACTIONS DATA
 // ============================================
-function getLevel(xp: number): { level: number; progress: number } {
-  const xpPerLevel = 200;
-  const level = Math.floor(xp / xpPerLevel) + 1;
-  const currentLevelXP = (level - 1) * xpPerLevel;
-  const progress = ((xp - currentLevelXP) / xpPerLevel) * 100;
-  return { level, progress };
+
+const QUICK_ACTIONS = [
+  { id: 'calendar', icon: 'calendar-outline', label: 'Calendário', route: '/(tabs)/calendar' },
+  { id: 'rooms', icon: 'people-outline', label: 'Salas', route: '/(app)/study-room' },
+  { id: 'ai', icon: 'sparkles', label: 'AI Tutor', route: '/(app)/ai-tutor' },
+  { id: 'focus', icon: 'timer-outline', label: 'Foco', route: '/pomodoro' },
+];
+
+// ============================================
+// TYPES
+// ============================================
+
+interface Task {
+  id: string;
+  title: string;
+  due_date: string | null;
+  is_completed: boolean;
+  priority: string;
+  subject_id: string | null;
 }
 
-function formatDueDate(dateString: string | null): string {
-  if (!dateString) return 'Sem prazo';
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return 'Hoje';
-  if (diffDays === 1) return 'Amanhã';
-  if (diffDays < 7) return `Em ${diffDays} dias`;
-  return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+interface NextClass {
+  id: string;
+  subject_name: string;
+  room: string;
+  start_time: string;
+  end_time: string;
+  day_of_week: number;
 }
 
 // ============================================
-// MAIN COMPONENT
+// COMPONENT
 // ============================================
+
 export default function HomeScreen() {
-  const { profile, loading: profileLoading, refetchProfile } = useProfile();
-  const { data: tasks = [], isLoading: tasksLoading, refetch: refetchTasks } = useTasks();
+  const { profile, refetchProfile } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
-  const [spinModalVisible, setSpinModalVisible] = useState(false);
-  const [canSpin, setCanSpin] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [nextClass, setNextClass] = useState<NextClass | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Animated spin button
-  const spinButtonScale = useSharedValue(1);
+  // Fetch next class from calendar
+  const { agendaItems } = useCalendarItems(new Date());
 
-  // Check if can spin today
-  const checkSpinAvailability = useCallback(async () => {
-    if (!profile?.id) return;
+  // ============================================
+  // FETCH DATA
+  // ============================================
 
-    const { data } = await supabase
-      .from('profiles')
-      .select('last_daily_spin')
-      .eq('id', profile.id)
-      .single();
+  const fetchTasks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('personal_todos')
+        .select('*')
+        .eq('user_id', profile?.id)
+        .order('due_date', { ascending: true })
+        .limit(5);
 
-    if (!data?.last_daily_spin) {
-      setCanSpin(true);
-    } else {
-      const lastSpin = new Date(data.last_daily_spin);
+      if (!error && data) {
+        setTasks(data);
+      }
+    } catch (err) {
+      console.error('Error fetching tasks:', err);
+    }
+  };
+
+  const fetchNextClass = async () => {
+    try {
       const today = new Date();
-      setCanSpin(lastSpin.toDateString() !== today.toDateString());
+      const dayOfWeek = today.getDay(); // 0 = Sunday
+
+      const { data, error } = await supabase
+        .from('class_schedule')
+        .select(`
+          id,
+          room,
+          start_time,
+          end_time,
+          day_of_week,
+          user_subjects (name)
+        `)
+        .eq('user_id', profile?.id)
+        .eq('day_of_week', dayOfWeek)
+        .order('start_time', { ascending: true })
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        const classData = data[0];
+        setNextClass({
+          id: classData.id,
+          subject_name: (classData.user_subjects as any)?.name || 'Aula',
+          room: classData.room || 'Sala',
+          start_time: classData.start_time,
+          end_time: classData.end_time,
+          day_of_week: classData.day_of_week,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching next class:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (profile?.id) {
+      setLoading(true);
+      Promise.all([fetchTasks(), fetchNextClass()]).finally(() => setLoading(false));
     }
   }, [profile?.id]);
-
-  // Check spin and auto-popup on load (Temu-style)
-  const [hasShownPopup, setHasShownPopup] = useState(false);
-
-  useEffect(() => {
-    checkSpinAvailability();
-  }, [checkSpinAvailability]);
-
-  // Auto-popup: show modal automatically if user can spin and hasn't seen it yet
-  useEffect(() => {
-    if (canSpin && !hasShownPopup && !profileLoading) {
-      // Small delay for smoother UX
-      const timer = setTimeout(() => {
-        setSpinModalVisible(true);
-        setHasShownPopup(true);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [canSpin, hasShownPopup, profileLoading]);
-
-  // Spin button pulse animation
-  useEffect(() => {
-    if (canSpin) {
-      spinButtonScale.value = withRepeat(
-        withSequence(
-          withTiming(1.1, { duration: 500 }),
-          withTiming(1, { duration: 500 })
-        ),
-        -1,
-        true
-      );
-    }
-  }, [canSpin]);
-
-  const spinButtonAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: spinButtonScale.value }],
-  }));
-
-  // User data
-  const firstName = profile?.full_name?.split(' ')[0] || profile?.username || 'Estudante';
-  const userXP = profile?.current_xp || 0;
-  const userTier = profile?.current_tier || 'Bronze';
-  const { level, progress } = getLevel(userXP);
-  const tierStyle = getTierStyle(userTier.toLowerCase());
-
-  // Filter tasks
-  const pendingTasks = tasks.filter(t => !t.is_completed);
-  const completedCount = tasks.filter(t => t.is_completed).length;
-  const todayQuest = pendingTasks[0]; // Featured quest
 
   // Pull to refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchProfile(), refetchTasks()]);
+    await Promise.all([refetchProfile(), fetchTasks(), fetchNextClass()]);
     setRefreshing(false);
-  }, [refetchProfile, refetchTasks]);
+  }, [refetchProfile]);
 
-  // Loading state
-  if (profileLoading && !profile) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.accent.primary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // Greeting based on time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
+
+  const firstName = profile?.username?.split(' ')[0] || 'Estudante';
+
+  // Format time
+  const formatTime = (time: string) => {
+    if (!time) return '';
+    return time.substring(0, 5);
+  };
+
+  // Format due date
+  const formatDueDate = (dueDate: string | null) => {
+    if (!dueDate) return 'Sem prazo';
+    const date = new Date(dueDate);
+    const now = new Date();
+    const diffHours = Math.floor((date.getTime() - now.getTime()) / (1000 * 60 * 60));
+
+    if (diffHours < 0) return 'Atrasado';
+    if (diffHours < 1) return 'Menos de 1h';
+    if (diffHours < 24) return `${diffHours}h restantes`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'Amanhã';
+    return `${diffDays} dias`;
+  };
+
+  // Toggle task completion
+  const toggleTask = async (taskId: string, currentStatus: boolean) => {
+    try {
+      await supabase
+        .from('personal_todos')
+        .update({ is_completed: !currentStatus })
+        .eq('id', taskId);
+
+      setTasks(prev =>
+        prev.map(t => t.id === taskId ? { ...t, is_completed: !currentStatus } : t)
+      );
+    } catch (err) {
+      console.error('Error toggling task:', err);
+    }
+  };
+
+  // ============================================
+  // RENDER
+  // ============================================
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -153,22 +205,15 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.accent.primary}
+            tintColor={COLORS.text.secondary}
           />
         }
       >
         {/* ========== HEADER ========== */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Olá, {firstName}</Text>
-            <Pressable
-              style={styles.levelBadge}
-              onPress={() => router.push('/leaderboard' as any)}
-            >
-              <Ionicons name="flash" size={14} color={colors.accent.primary} />
-              <Text style={styles.levelText}>Nível {level} · {userXP.toLocaleString()} XP</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.text.tertiary} />
-            </Pressable>
+            <Text style={styles.greeting}>{getGreeting()},</Text>
+            <Text style={styles.userName}>{firstName}</Text>
           </View>
           <Pressable
             style={styles.avatarContainer}
@@ -177,720 +222,461 @@ export default function HomeScreen() {
             {profile?.avatar_url ? (
               <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: tierStyle.bg }]}>
-                <Text style={[styles.avatarInitial, { color: tierStyle.text }]}>
-                  {firstName.charAt(0).toUpperCase()}
-                </Text>
+              <View style={styles.avatarPlaceholder}>
+                <Ionicons name="person" size={24} color={COLORS.text.secondary} />
               </View>
             )}
-            <View style={[styles.tierDot, { backgroundColor: tierStyle.accent }]} />
+            {profile?.current_xp !== undefined && (
+              <View style={styles.xpBadge}>
+                <Text style={styles.xpText}>{profile.current_xp}</Text>
+              </View>
+            )}
           </Pressable>
         </View>
 
-        {/* ========== NEXT CLASS CARD ========== */}
-        <NextClassCard onPress={() => router.push('/(tabs)/subjects' as any)} />
-
-        {/* ========== FEATURED QUEST CARD ========== */}
-        {todayQuest ? (
-          <Pressable
-            style={styles.featuredCard}
-            onPress={() => router.push('/(tabs)/calendar')}
-          >
-            <View style={styles.featuredHeader}>
-              <View style={styles.featuredBadge}>
-                <Ionicons name="flash" size={12} color={colors.accent.primary} />
-                <Text style={styles.featuredBadgeText}>Quest Prioritária</Text>
-              </View>
-              <XPBadge amount={todayQuest.xp_reward || 30} />
-            </View>
-            <Text style={styles.featuredTitle}>{todayQuest.title}</Text>
-            {todayQuest.description && (
-              <Text style={styles.featuredDescription} numberOfLines={2}>
-                {todayQuest.description}
-              </Text>
-            )}
-            <View style={styles.featuredFooter}>
-              <View style={styles.featuredMeta}>
-                <QuestTypePill type={todayQuest.type} />
-                <Text style={styles.featuredDue}>
-                  {formatDueDate(todayQuest.due_date)}
-                </Text>
-              </View>
-              <View style={styles.featuredArrow}>
-                <Ionicons name="arrow-forward" size={18} color={colors.text.inverse} />
-              </View>
-            </View>
-          </Pressable>
-        ) : (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="checkmark-circle" size={40} color={colors.success.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Tudo em dia!</Text>
-            <Text style={styles.emptySubtitle}>
-              Não tens quests pendentes. Adiciona novas na aba Quests.
-            </Text>
-          </View>
-        )}
-
-        {/* ========== STATS ROW ========== */}
-        <View style={styles.statsRow}>
-          <StatCard
-            icon="flash-outline"
-            value={userXP.toLocaleString()}
-            label="XP Total"
-            color={colors.accent.primary}
-          />
-          <StatCard
-            icon="checkmark-done-outline"
-            value={completedCount.toString()}
-            label="Completas"
-            color={colors.success.primary}
-          />
-          <StatCard
-            icon="time-outline"
-            value={pendingTasks.length.toString()}
-            label="Pendentes"
-            color={colors.warning.primary}
-          />
-        </View>
-
-        {/* ========== POMODORO QUICK ACCESS ========== */}
+        {/* ========== SEARCH BAR ========== */}
         <Pressable
-          style={styles.pomodoroCard}
-          onPress={() => router.push('/pomodoro' as any)}
+          style={styles.searchContainer}
+          onPress={() => router.push('/(tabs)/planner')}
         >
-          <View style={styles.pomodoroLeft}>
-            <View style={styles.pomodoroIcon}>
-              <Ionicons name="timer-outline" size={28} color={colors.accent.primary} />
-            </View>
-            <View>
-              <Text style={styles.pomodoroTitle}>⏱️ Pomodoro Timer</Text>
-              <Text style={styles.pomodoroSubtitle}>
-                Foca-te e ganha XP por cada sessão
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+          <Ionicons name="search" size={20} color={COLORS.text.tertiary} />
+          <Text style={styles.searchPlaceholder}>Pesquisar aulas, tarefas...</Text>
         </Pressable>
 
-        {/* ========== TASK HUB QUICK ACCESS ========== */}
-        <Pressable
-          style={styles.taskHubCard}
-          onPress={() => router.push('/(app)/tasks' as any)}
-        >
-          <View style={styles.pomodoroLeft}>
-            <View style={[styles.pomodoroIcon, { backgroundColor: colors.success.light }]}>
-              <Ionicons name="checkbox-outline" size={28} color={colors.success.primary} />
-            </View>
-            <View>
-              <Text style={styles.pomodoroTitle}>📋 Task Hub</Text>
-              <Text style={styles.pomodoroSubtitle}>
-                Todas as tuas tarefas num só lugar
-              </Text>
-            </View>
-          </View>
-          <View style={styles.taskHubBadge}>
-            <Text style={styles.taskHubBadgeText}>{pendingTasks.length}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-        </Pressable>
-
-        {/* ========== EVENTS & CHALLENGES QUICK ACCESS ========== */}
-        <Pressable
-          style={styles.eventsCard}
-          onPress={() => router.push('/(app)/events' as any)}
-        >
-          <View style={styles.pomodoroLeft}>
-            <View style={[styles.pomodoroIcon, { backgroundColor: '#7C3AED20' }]}>
-              <Ionicons name="trophy-outline" size={28} color="#7C3AED" />
-            </View>
-            <View>
-              <Text style={styles.pomodoroTitle}>🎮 Eventos & Desafios</Text>
-              <Text style={styles.pomodoroSubtitle}>
-                Roda da Sorte, XP Boost & mais
-              </Text>
-            </View>
-          </View>
-          <View style={styles.liveTag}>
-            <Text style={styles.liveTagText}>LIVE</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-        </Pressable>
-
-        {/* ========== LEVEL PROGRESS ========== */}
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.sectionTitle}>Progresso</Text>
-            <Text style={styles.progressPercent}>{Math.round(progress)}%</Text>
-          </View>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${progress}%` }]} />
-          </View>
-          <Text style={styles.progressLabel}>
-            {200 - (userXP % 200)} XP para o próximo nível
-          </Text>
-        </View>
-
-        {/* ========== UPCOMING QUESTS ========== */}
-        {pendingTasks.length > 1 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Próximas Quests</Text>
-              <Pressable onPress={() => router.push('/(tabs)/calendar')}>
-                <Text style={styles.sectionLink}>Ver todas</Text>
+        {/* ========== HERO CARD - PRÓXIMA AULA ========== */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Próximo</Text>
+          {nextClass ? (
+            <ImmersiveCard
+              image="https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800"
+              title={nextClass.subject_name}
+              subtitle="Próxima aula"
+              badge="Hoje"
+              badgeColor="#10B981"
+              time={`${formatTime(nextClass.start_time)} - ${formatTime(nextClass.end_time)}`}
+              location={nextClass.room}
+              variant="hero"
+              onPress={() => router.push('/(tabs)/calendar')}
+            />
+          ) : (
+            <View style={styles.emptyHero}>
+              <Ionicons name="sunny-outline" size={48} color={COLORS.text.tertiary} />
+              <Text style={styles.emptyHeroText}>Sem aulas agendadas para hoje!</Text>
+              <Pressable
+                style={styles.emptyHeroButton}
+                onPress={() => router.push('/(tabs)/subjects')}
+              >
+                <Text style={styles.emptyHeroButtonText}>Ver Horário</Text>
               </Pressable>
             </View>
-            {pendingTasks.slice(1, 4).map((task) => (
-              <QuestCard key={task.id} task={task} />
+          )}
+        </View>
+
+        {/* ========== QUICK ACTIONS ========== */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Ações Rápidas</Text>
+          <View style={styles.quickActionsGrid}>
+            {QUICK_ACTIONS.map((action) => (
+              <Pressable
+                key={action.id}
+                style={styles.quickActionCard}
+                onPress={() => router.push(action.route as any)}
+              >
+                <View style={styles.quickActionIcon}>
+                  <Ionicons name={action.icon as any} size={24} color={COLORS.text.primary} />
+                </View>
+                <Text style={styles.quickActionLabel}>{action.label}</Text>
+              </Pressable>
             ))}
           </View>
-        )}
+        </View>
 
-        {/* Bottom Spacing */}
+        {/* ========== O MEU PLANO (TAREFAS REAIS) ========== */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>O Meu Plano</Text>
+            <Pressable onPress={() => router.push('/(tabs)/planner')}>
+              <Text style={styles.seeAllText}>Ver tudo</Text>
+            </Pressable>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator color={COLORS.accent.primary} style={{ padding: 40 }} />
+          ) : tasks.length > 0 ? (
+            <View style={styles.planList}>
+              {tasks.map((task) => (
+                <Pressable
+                  key={task.id}
+                  style={[styles.taskCard, task.is_completed && styles.taskCompleted]}
+                  onPress={() => toggleTask(task.id, task.is_completed)}
+                >
+                  <View
+                    style={[
+                      styles.taskColorBar,
+                      {
+                        backgroundColor: task.is_completed
+                          ? COLORS.success
+                          : task.priority === 'high'
+                            ? '#EF4444'
+                            : task.priority === 'medium'
+                              ? '#F59E0B'
+                              : '#4F46E5',
+                      },
+                    ]}
+                  />
+                  <View style={styles.taskContent}>
+                    <Text
+                      style={[styles.taskTitle, task.is_completed && styles.taskTitleCompleted]}
+                      numberOfLines={1}
+                    >
+                      {task.title}
+                    </Text>
+                    <View style={styles.taskMeta}>
+                      <Ionicons
+                        name={task.is_completed ? 'checkmark-circle' : 'time-outline'}
+                        size={12}
+                        color={task.is_completed ? COLORS.success : COLORS.text.tertiary}
+                      />
+                      <Text
+                        style={[
+                          styles.taskTime,
+                          task.is_completed && { color: COLORS.success },
+                        ]}
+                      >
+                        {task.is_completed ? 'Concluído' : formatDueDate(task.due_date)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.taskCheckbox}>
+                    <Ionicons
+                      name={task.is_completed ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={22}
+                      color={task.is_completed ? COLORS.success : COLORS.text.tertiary}
+                    />
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyTasks}>
+              <Ionicons name="checkbox-outline" size={32} color={COLORS.text.tertiary} />
+              <Text style={styles.emptyTasksText}>Sem tarefas pendentes</Text>
+              <Pressable
+                style={styles.addTaskButton}
+                onPress={() => router.push('/(tabs)/planner')}
+              >
+                <Ionicons name="add" size={18} color="#FFF" />
+                <Text style={styles.addTaskButtonText}>Criar Tarefa</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        {/* ========== STATS RÁPIDOS ========== */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Estatísticas</Text>
+          <View style={styles.statsGrid}>
+            <Pressable style={styles.statCard} onPress={() => router.push('/leaderboard')}>
+              <View style={[styles.statIcon, { backgroundColor: 'rgba(99, 102, 241, 0.2)' }]}>
+                <Ionicons name="trophy" size={20} color="#6366F1" />
+              </View>
+              <Text style={styles.statValue}>{profile?.current_xp || 0}</Text>
+              <Text style={styles.statLabel}>XP Total</Text>
+            </Pressable>
+
+            <Pressable style={styles.statCard} onPress={() => router.push('/badges')}>
+              <View style={[styles.statIcon, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
+                <Ionicons name="flame" size={20} color="#F59E0B" />
+              </View>
+              <Text style={styles.statValue}>{profile?.current_streak || 0}</Text>
+              <Text style={styles.statLabel}>Dias Streak</Text>
+            </Pressable>
+
+            <Pressable style={styles.statCard} onPress={() => router.push('/(tabs)/teams')}>
+              <View style={[styles.statIcon, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
+                <Ionicons name="people" size={20} color="#10B981" />
+              </View>
+              <Text style={styles.statValue}>
+                {tasks.filter(t => t.is_completed).length}/{tasks.length}
+              </Text>
+              <Text style={styles.statLabel}>Tarefas</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Bottom Padding for Floating Nav */}
         <View style={{ height: 120 }} />
       </ScrollView>
-
-      {/* ========== DAILY SPIN FLOATING BUTTON ========== */}
-      {canSpin && (
-        <Animated.View style={[styles.spinFab, spinButtonAnimatedStyle]}>
-          <Pressable
-            style={styles.spinFabButton}
-            onPress={() => setSpinModalVisible(true)}
-          >
-            <Text style={styles.spinFabIcon}>🎰</Text>
-            <Text style={styles.spinFabText}>GIRAR!</Text>
-          </Pressable>
-        </Animated.View>
-      )}
-
-      {/* Daily Spin Modal */}
-      <DailySpinWheel
-        visible={spinModalVisible}
-        onClose={() => {
-          setSpinModalVisible(false);
-          checkSpinAvailability();
-        }}
-        onSpinComplete={(xp) => {
-          refetchProfile();
-        }}
-      />
-    </SafeAreaView>
-  );
-}
-
-// ============================================
-// SUB COMPONENTS
-// ============================================
-function XPBadge({ amount }: { amount: number }) {
-  return (
-    <View style={styles.xpBadge}>
-      <Text style={styles.xpText}>+{amount} XP</Text>
     </View>
-  );
-}
-
-function QuestTypePill({ type }: { type: TaskType }) {
-  const style = getQuestStyle(type);
-  const icons: Record<TaskType, keyof typeof Ionicons.glyphMap> = {
-    study: 'book-outline',
-    assignment: 'document-text-outline',
-    exam: 'school-outline',
-  };
-  const labels: Record<TaskType, string> = {
-    study: 'Estudo',
-    assignment: 'Trabalho',
-    exam: 'Exame',
-  };
-
-  return (
-    <View style={[styles.typePill, { backgroundColor: style.bg }]}>
-      <Ionicons name={icons[type]} size={12} color={style.icon} />
-      <Text style={[styles.typePillText, { color: style.text }]}>{labels[type]}</Text>
-    </View>
-  );
-}
-
-function StatCard({ icon, value, label, color }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  value: string;
-  label: string;
-  color: string;
-}) {
-  return (
-    <View style={styles.statCard}>
-      <View style={[styles.statIcon, { backgroundColor: `${color}15` }]}>
-        <Ionicons name={icon} size={20} color={color} />
-      </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function QuestCard({ task }: { task: Task }) {
-  const questStyle = getQuestStyle(task.type);
-
-  return (
-    <Pressable style={styles.questCard}>
-      <View style={[styles.questIndicator, { backgroundColor: questStyle.icon }]} />
-      <View style={styles.questContent}>
-        <Text style={styles.questTitle} numberOfLines={1}>{task.title}</Text>
-        <Text style={styles.questMeta}>
-          {formatDueDate(task.due_date)}
-        </Text>
-      </View>
-      <View style={styles.questXP}>
-        <Text style={styles.questXPText}>+{task.xp_reward || 30}</Text>
-        <Ionicons name="flash" size={12} color={colors.accent.primary} />
-      </View>
-    </Pressable>
   );
 }
 
 // ============================================
 // STYLES
 // ============================================
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: COLORS.background,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.xl,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: LAYOUT.screenPadding,
+    paddingTop: 60,
   },
 
   // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: spacing.lg,
-    paddingBottom: spacing['2xl'],
+    alignItems: 'flex-start',
+    marginBottom: SPACING.xl,
   },
-  headerLeft: {
-    flex: 1,
-  },
+  headerLeft: {},
   greeting: {
-    fontSize: typography.size['2xl'],
-    fontWeight: typography.weight.bold,
-    color: colors.text.primary,
-    letterSpacing: -0.5,
+    fontSize: TYPOGRAPHY.size.md,
+    color: COLORS.text.secondary,
+    marginBottom: SPACING.xs,
   },
-  levelBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-    gap: spacing.xs,
-  },
-  levelText: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.medium,
-    color: colors.text.secondary,
+  userName: {
+    fontSize: TYPOGRAPHY.size['3xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: COLORS.text.primary,
   },
   avatarContainer: {
     position: 'relative',
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
-  avatarFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+  avatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: {
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.bold,
-  },
-  tierDot: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: colors.background,
-  },
-
-  // Featured Card
-  featuredCard: {
-    backgroundColor: colors.text.primary,
-    borderRadius: borderRadius.xl,
-    padding: spacing.xl,
-    marginBottom: spacing['2xl'],
-    ...shadows.lg,
-  },
-  featuredHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  featuredBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-  },
-  featuredBadgeText: {
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.semibold,
-    color: colors.accent.primary,
-  },
-  featuredTitle: {
-    fontSize: typography.size.xl,
-    fontWeight: typography.weight.bold,
-    color: colors.text.inverse,
-    marginBottom: spacing.xs,
-  },
-  featuredDescription: {
-    fontSize: typography.size.sm,
-    color: 'rgba(255, 255, 255, 0.7)',
-    lineHeight: 20,
-    marginBottom: spacing.lg,
-  },
-  featuredFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  featuredMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  featuredDue: {
-    fontSize: typography.size.sm,
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
-  featuredArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Empty State
-  emptyCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing['3xl'],
-    alignItems: 'center',
-    marginBottom: spacing['2xl'],
-    ...shadows.md,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.success.light,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  emptyTitle: {
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
-  },
-  emptySubtitle: {
-    fontSize: typography.size.sm,
-    color: colors.text.secondary,
-    textAlign: 'center',
-  },
-
-  // XP Badge
   xpBadge: {
-    backgroundColor: colors.success.light,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: COLORS.background,
   },
   xpText: {
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.bold,
-    color: colors.success.dark,
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#FFF',
   },
 
-  // Type Pill
-  typePill: {
+  // Search
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING['2xl'],
+    gap: SPACING.md,
   },
-  typePillText: {
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.semibold,
-  },
-
-  // Stats Row
-  statsRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing['2xl'],
-  },
-  statCard: {
+  searchPlaceholder: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    alignItems: 'center',
-    ...shadows.sm,
-  },
-  statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  statValue: {
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.bold,
-    color: colors.text.primary,
-  },
-  statLabel: {
-    fontSize: typography.size.xs,
-    color: colors.text.tertiary,
-    marginTop: 2,
+    fontSize: TYPOGRAPHY.size.base,
+    color: COLORS.text.tertiary,
   },
 
-  // Progress Section
-  progressSection: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing['2xl'],
-    ...shadows.sm,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  progressPercent: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.semibold,
-    color: colors.accent.primary,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.accent.primary,
-    borderRadius: 4,
-  },
-  progressLabel: {
-    fontSize: typography.size.xs,
-    color: colors.text.tertiary,
-    marginTop: spacing.sm,
-  },
-
-  // Section
+  // Sections
   section: {
-    marginBottom: spacing['2xl'],
+    marginBottom: SPACING['2xl'],
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: SPACING.lg,
   },
   sectionTitle: {
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.primary,
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.lg,
   },
-  sectionLink: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.medium,
-    color: colors.accent.primary,
+  seeAllText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.accent.primary,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
 
-  // Quest Card
-  questCard: {
-    flexDirection: 'row',
+  // Empty Hero
+  emptyHero: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    padding: spacing.lg,
-    marginBottom: spacing.sm,
-    ...shadows.sm,
+    gap: SPACING.md,
   },
-  questIndicator: {
-    width: 4,
-    height: 32,
-    borderRadius: 2,
-    marginRight: spacing.md,
+  emptyHeroText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: COLORS.text.secondary,
   },
-  questContent: {
+  emptyHeroButton: {
+    backgroundColor: COLORS.accent.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    marginTop: SPACING.sm,
+  },
+  emptyHeroButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#FFF',
+  },
+
+  // Quick Actions
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.md,
+  },
+  quickActionCard: {
     flex: 1,
-  },
-  questTitle: {
-    fontSize: typography.size.base,
-    fontWeight: typography.weight.medium,
-    color: colors.text.primary,
-    marginBottom: 2,
-  },
-  questMeta: {
-    fontSize: typography.size.sm,
-    color: colors.text.tertiary,
-  },
-  questXP: {
-    flexDirection: 'row',
+    minWidth: (SCREEN_WIDTH - LAYOUT.screenPadding * 2 - SPACING.md * 3) / 4,
     alignItems: 'center',
-    gap: 2,
+    paddingVertical: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS['2xl'],
+    ...SHADOWS.sm,
   },
-  questXPText: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.semibold,
-    color: colors.accent.primary,
-  },
-
-  // Pomodoro Quick Access
-  pomodoroCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.accent.primary + '30',
-    ...shadows.sm,
-  },
-  pomodoroLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  pomodoroIcon: {
+  quickActionIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accent.primary + '15',
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: SPACING.sm,
   },
-  pomodoroTitle: {
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.primary,
+  quickActionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: COLORS.text.secondary,
   },
-  pomodoroSubtitle: {
-    fontSize: typography.size.sm,
-    color: colors.text.tertiary,
+
+  // Tasks
+  planList: {
+    gap: SPACING.md,
+  },
+  taskCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING.lg,
+    ...SHADOWS.sm,
+  },
+  taskCompleted: {
+    opacity: 0.6,
+  },
+  taskColorBar: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginRight: SPACING.lg,
+  },
+  taskContent: {
+    flex: 1,
+  },
+  taskTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.xs,
+  },
+  taskTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: COLORS.text.tertiary,
+  },
+  taskMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  taskTime: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: COLORS.text.tertiary,
+  },
+  taskCheckbox: {
+    marginLeft: SPACING.md,
+  },
+
+  // Empty Tasks
+  emptyTasks: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  emptyTasksText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.text.tertiary,
+  },
+  addTaskButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.accent.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    marginTop: SPACING.sm,
+  },
+  addTaskButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#FFF',
+  },
+
+  // Stats
+  statsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING.lg,
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  statIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  statValue: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: COLORS.text.primary,
+  },
+  statLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: COLORS.text.tertiary,
     marginTop: 2,
-  },
-
-  // Task Hub Quick Access
-  taskHubCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.success.primary + '30',
-    ...shadows.sm,
-  },
-  taskHubBadge: {
-    backgroundColor: colors.success.primary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-    marginRight: spacing.sm,
-  },
-  taskHubBadgeText: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.bold,
-    color: '#FFF',
-  },
-
-  // Daily Spin FAB
-  spinFab: {
-    position: 'absolute',
-    bottom: 100,
-    right: spacing.lg,
-    zIndex: 100,
-  },
-  spinFabButton: {
-    backgroundColor: colors.warning.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.full,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    ...shadows.lg,
-    borderWidth: 3,
-    borderColor: '#FFF',
-  },
-  spinFabIcon: {
-    fontSize: 24,
-  },
-  spinFabText: {
-    fontSize: typography.size.base,
-    fontWeight: typography.weight.bold,
-    color: '#FFF',
-  },
-
-  // Events Card
-  eventsCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: '#7C3AED30',
-    ...shadows.sm,
-  },
-  liveTag: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.sm,
-    marginRight: spacing.sm,
-  },
-  liveTagText: {
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.bold,
-    color: '#FFF',
   },
 });

@@ -26,6 +26,7 @@ interface StreakUpdateResult {
     longestStreak: number;
     isNewStreak: boolean;
     streakBroken: boolean;
+    freezeUsed: boolean;
     error?: string;
 }
 
@@ -71,15 +72,17 @@ function getDaysDifference(date1: string, date2: string): number {
  * Lógica:
  * 1. Se last_activity_date === hoje: não faz nada (já contou para hoje)
  * 2. Se last_activity_date === ontem: incrementa streak
- * 3. Se last_activity_date < ontem: reset streak para 1
+ * 3. Se last_activity_date < ontem: 
+ *    - Se tem streak_freeze disponível: usa o freeze, mantém streak
+ *    - Se não: reset streak para 1
  * 4. Se nunca estudou: começa streak em 1
  */
 export async function updateStreakOnSession(userId: string): Promise<StreakUpdateResult> {
     try {
-        // Buscar dados atuais da streak
+        // Buscar dados atuais da streak (inclui streak_freezes)
         const { data: profile, error: fetchError } = await supabase
             .from('profiles')
-            .select('current_streak, longest_streak, last_activity_date')
+            .select('current_streak, longest_streak, last_activity_date, streak_freezes')
             .eq('id', userId)
             .single();
 
@@ -91,6 +94,7 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
                 longestStreak: 0,
                 isNewStreak: false,
                 streakBroken: false,
+                freezeUsed: false,
                 error: fetchError.message,
             };
         }
@@ -101,11 +105,14 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
         const currentStreak = profile?.current_streak || 0;
         const longestStreak = profile?.longest_streak || 0;
         const lastActivityDate = profile?.last_activity_date;
+        const streakFreezes = profile?.streak_freezes || 0;
 
         let newStreak = currentStreak;
         let newLongest = longestStreak;
+        let newFreezes = streakFreezes;
         let isNewStreak = false;
         let streakBroken = false;
+        let freezeUsed = false;
 
         // Caso 1: Já estudou hoje - não incrementa
         if (lastActivityDate === today) {
@@ -116,6 +123,7 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
                 longestStreak,
                 isNewStreak: false,
                 streakBroken: false,
+                freezeUsed: false,
             };
         }
 
@@ -125,15 +133,31 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
             isNewStreak = true;
             console.log('🔥 Streak incrementada:', currentStreak, '->', newStreak);
         }
-        // Caso 3: Nunca estudou OU estudou há mais de 1 dia - reset
+        // Caso 3: Nunca estudou OU estudou há mais de 1 dia
         else {
-            if (lastActivityDate && getDaysDifference(lastActivityDate, today) > 1) {
-                streakBroken = true;
-                console.log('💔 Streak quebrada! Era:', currentStreak);
+            const daysMissed = lastActivityDate ? getDaysDifference(lastActivityDate, today) : 0;
+            
+            // Verificar se tem streak freeze E ia perder streak
+            if (lastActivityDate && daysMissed > 1 && currentStreak > 0) {
+                if (streakFreezes > 0) {
+                    // 🧊 USAR STREAK FREEZE!
+                    newFreezes = streakFreezes - 1;
+                    freezeUsed = true;
+                    newStreak = currentStreak; // Mantém a streak!
+                    console.log('❄️ Streak Freeze usado! Streak protegida:', currentStreak, '| Freezes restantes:', newFreezes);
+                } else {
+                    // Sem freeze - streak quebrada
+                    streakBroken = true;
+                    newStreak = 1;
+                    isNewStreak = true;
+                    console.log('💔 Streak quebrada! Era:', currentStreak);
+                }
+            } else {
+                // Primeira atividade ou sem streak anterior
+                newStreak = 1;
+                isNewStreak = true;
+                console.log('🔥 Nova streak iniciada: 1');
             }
-            newStreak = 1;
-            isNewStreak = true;
-            console.log('🔥 Nova streak iniciada: 1');
         }
 
         // Atualizar longest_streak se necessário
@@ -149,6 +173,7 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
                 current_streak: newStreak,
                 longest_streak: newLongest,
                 last_activity_date: today,
+                streak_freezes: newFreezes,
             })
             .eq('id', userId);
 
@@ -160,11 +185,12 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
                 longestStreak,
                 isNewStreak: false,
                 streakBroken: false,
+                freezeUsed: false,
                 error: updateError.message,
             };
         }
 
-        console.log(`✅ Streak atualizada: ${newStreak} dias (recorde: ${newLongest})`);
+        console.log(`✅ Streak atualizada: ${newStreak} dias (recorde: ${newLongest})${freezeUsed ? ' [FREEZE USADO]' : ''}`);
 
         return {
             success: true,
@@ -172,6 +198,7 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
             longestStreak: newLongest,
             isNewStreak,
             streakBroken,
+            freezeUsed,
         };
     } catch (err: any) {
         console.error('❌ Erro inesperado na streak:', err);
@@ -181,6 +208,7 @@ export async function updateStreakOnSession(userId: string): Promise<StreakUpdat
             longestStreak: 0,
             isNewStreak: false,
             streakBroken: false,
+            freezeUsed: false,
             error: err.message,
         };
     }

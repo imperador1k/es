@@ -1,37 +1,30 @@
 /**
- * Team Leaderboard Screen
- * Ranking de membros por XP com estilo gamificado (Duolingo/jogos)
+ * Team Leaderboard Screen - Premium Dark Design
+ * Ranking de membros por XP com design moderno
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Animated,
-    FlatList,
+    Dimensions,
     Image,
-    Platform,
     Pressable,
+    RefreshControl,
+    ScrollView,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// LinearGradient pode falhar na web, usar View como fallback
-let LinearGradientComponent: any = View;
-try {
-    if (Platform.OS !== 'web') {
-        const { LinearGradient } = require('expo-linear-gradient');
-        LinearGradientComponent = LinearGradient;
-    }
-} catch (e) {
-    console.log('LinearGradient não disponível');
-}
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
 // TYPES
@@ -51,20 +44,11 @@ interface LeaderboardMember {
 // CONSTANTS
 // ============================================
 
-const PODIUM_COLORS = {
-    1: { primary: '#FFD700', secondary: '#FFA500', icon: '👑' }, // Ouro
-    2: { primary: '#C0C0C0', secondary: '#A0A0A0', icon: '🥈' }, // Prata
-    3: { primary: '#CD7F32', secondary: '#8B4513', icon: '🥉' }, // Bronze
+const PODIUM_CONFIG = {
+    1: { color: '#FFD700', icon: '👑', height: 120 },
+    2: { color: '#C0C0C0', icon: '🥈', height: 90 },
+    3: { color: '#CD7F32', icon: '🥉', height: 70 },
 };
-
-const TIER_LEVELS = [
-    { name: 'Bronze', minXP: 0, color: '#CD7F32' },
-    { name: 'Prata', minXP: 500, color: '#C0C0C0' },
-    { name: 'Ouro', minXP: 1500, color: '#FFD700' },
-    { name: 'Platina', minXP: 3000, color: '#E5E4E2' },
-    { name: 'Diamante', minXP: 5000, color: '#B9F2FF' },
-    { name: 'Mestre', minXP: 10000, color: '#9B30FF' },
-];
 
 // ============================================
 // MAIN COMPONENT
@@ -76,39 +60,33 @@ export default function TeamLeaderboardScreen() {
 
     const [members, setMembers] = useState<LeaderboardMember[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [teamName, setTeamName] = useState('');
 
-    // Animações para o pódio
-    const podiumAnim = new Animated.Value(0);
-
     // ============================================
-    // LOAD LEADERBOARD DATA
+    // LOAD DATA
     // ============================================
 
     const loadLeaderboard = useCallback(async () => {
         if (!teamId) return;
 
         try {
-            setLoading(true);
-
-            // Buscar membros com perfis ordenados por XP
             const { data, error } = await supabase
                 .from('team_members')
                 .select(`
-                    user_id,
-                    profiles!user_id (
-                        username,
-                        full_name,
-                        avatar_url,
-                        current_xp,
-                        current_tier
-                    )
-                `)
+          user_id,
+          profiles!user_id (
+            username,
+            full_name,
+            avatar_url,
+            current_xp,
+            current_tier
+          )
+        `)
                 .eq('team_id', teamId);
 
             if (error) throw error;
 
-            // Processar e ordenar por XP
             const processedMembers: LeaderboardMember[] = (data || [])
                 .map((m: any) => {
                     const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
@@ -127,28 +105,24 @@ export default function TeamLeaderboardScreen() {
 
             setMembers(processedMembers);
 
-            // Buscar nome da equipa
             const { data: teamData } = await supabase
                 .from('teams')
                 .select('name')
                 .eq('id', teamId)
                 .single();
             if (teamData) setTeamName(teamData.name);
-
-            // Animar entrada do pódio
-            Animated.spring(podiumAnim, {
-                toValue: 1,
-                tension: 50,
-                friction: 7,
-                useNativeDriver: true,
-            }).start();
-
         } catch (err) {
-            console.error('Erro ao carregar leaderboard:', err);
+            console.error('Error loading leaderboard:', err);
         } finally {
             setLoading(false);
         }
     }, [teamId]);
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await loadLeaderboard();
+        setRefreshing(false);
+    };
 
     useEffect(() => {
         loadLeaderboard();
@@ -158,272 +132,215 @@ export default function TeamLeaderboardScreen() {
     // HELPERS
     // ============================================
 
-    const getCurrentUserRank = (): number => {
-        const userMember = members.find(m => m.user_id === user?.id);
-        return userMember?.rank || 0;
-    };
-
-    const getXPToNextRank = (): { name: string; xpNeeded: number } | null => {
-        const myRank = getCurrentUserRank();
-        if (myRank <= 1) return null;
-
-        const userAbove = members.find(m => m.rank === myRank - 1);
-        const me = members.find(m => m.user_id === user?.id);
-
-        if (userAbove && me) {
-            return {
-                name: userAbove.full_name || userAbove.username || 'Utilizador',
-                xpNeeded: userAbove.current_xp - me.current_xp,
-            };
-        }
-        return null;
-    };
-
     const formatXP = (xp: number): string => {
-        if (xp >= 1000) {
-            return `${(xp / 1000).toFixed(1)}k`;
-        }
+        if (xp >= 1000) return `${(xp / 1000).toFixed(1)}k`;
         return xp.toString();
     };
 
+    const getMyRank = () => members.find((m) => m.user_id === user?.id)?.rank || 0;
+
     // ============================================
-    // RENDER PODIUM (TOP 3)
+    // LOADING
     // ============================================
 
-    const renderPodium = () => {
-        const top3 = members.slice(0, 3);
-        if (top3.length === 0) return null;
-
-        // Reordenar para 2º-1º-3º (visual do pódio)
-        const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
-        const heights = [100, 140, 80];
-
+    if (loading) {
         return (
-            <Animated.View
-                style={[
-                    styles.podiumContainer,
-                    {
-                        opacity: podiumAnim,
-                        transform: [
-                            {
-                                translateY: podiumAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [50, 0],
-                                }),
-                            },
-                        ],
-                    },
-                ]}
-            >
-                {podiumOrder.map((member, index) => {
-                    if (!member) return null;
-                    const rank = member.rank as 1 | 2 | 3;
-                    const podiumColor = PODIUM_COLORS[rank];
-                    const isFirst = rank === 1;
-
-                    return (
-                        <View key={member.user_id} style={styles.podiumItem}>
-                            {/* Avatar com coroa/medalha */}
-                            <View style={styles.podiumAvatarContainer}>
-                                <Text style={styles.podiumIcon}>{podiumColor.icon}</Text>
-                                {member.avatar_url ? (
-                                    <Image source={{ uri: member.avatar_url }} style={[
-                                        styles.podiumAvatar,
-                                        isFirst && styles.podiumAvatarFirst,
-                                        { borderColor: podiumColor.primary },
-                                    ]} />
-                                ) : (
-                                    <View style={[
-                                        styles.podiumAvatarPlaceholder,
-                                        isFirst && styles.podiumAvatarFirst,
-                                        { borderColor: podiumColor.primary, backgroundColor: `${podiumColor.primary}30` },
-                                    ]}>
-                                        <Text style={[styles.podiumAvatarText, { color: podiumColor.primary }]}>
-                                            {(member.full_name || member.username || '?').charAt(0).toUpperCase()}
-                                        </Text>
-                                    </View>
-                                )}
-                            </View>
-
-                            {/* Nome */}
-                            <Text style={styles.podiumName} numberOfLines={1}>
-                                {member.full_name || member.username || 'Anónimo'}
-                            </Text>
-
-                            {/* XP */}
-                            <Text style={[styles.podiumXP, { color: podiumColor.primary }]}>
-                                {formatXP(member.current_xp)} XP
-                            </Text>
-
-                            {/* Pedestal */}
-                            <LinearGradientComponent
-                                colors={[podiumColor.primary, podiumColor.secondary]}
-                                style={[styles.podiumPedestal, { height: heights[index] }]}
-                            >
-                                <Text style={styles.podiumRank}>#{rank}</Text>
-                            </LinearGradientComponent>
-                        </View>
-                    );
-                })}
-            </Animated.View>
+            <View style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#FFD700" />
+                    <Text style={styles.loadingText}>A carregar ranking...</Text>
+                </View>
+            </View>
         );
-    };
+    }
 
-    // ============================================
-    // RENDER LIST ITEM (4th and below)
-    // ============================================
+    const top3 = members.slice(0, 3);
+    const restMembers = members.slice(3);
 
-    const renderListItem = ({ item }: { item: LeaderboardMember }) => {
-        const isCurrentUser = item.user_id === user?.id;
+    return (
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                    </Pressable>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>🏆 Ranking</Text>
+                        <Text style={styles.headerSubtitle}>{teamName}</Text>
+                    </View>
+                    <Pressable style={styles.refreshButton} onPress={handleRefresh}>
+                        <Ionicons name="refresh" size={20} color={COLORS.text.tertiary} />
+                    </Pressable>
+                </View>
 
-        return (
-            <Pressable
-                style={[
-                    styles.listItem,
-                    isCurrentUser && styles.listItemHighlight,
-                ]}
-                onPress={() => router.push(`/user/${item.user_id}` as any)}
-            >
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#FFD700" />
+                    }
+                >
+                    {/* Podium Section */}
+                    {top3.length > 0 && (
+                        <View style={styles.podiumSection}>
+                            <LinearGradient
+                                colors={['rgba(255, 215, 0, 0.1)', 'transparent']}
+                                style={styles.podiumGradient}
+                            />
+
+                            <View style={styles.podiumRow}>
+                                {/* 2nd Place */}
+                                {top3[1] && <PodiumCard member={top3[1]} position={2} />}
+
+                                {/* 1st Place */}
+                                {top3[0] && <PodiumCard member={top3[0]} position={1} />}
+
+                                {/* 3rd Place */}
+                                {top3[2] && <PodiumCard member={top3[2]} position={3} />}
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Rest of Members */}
+                    {restMembers.length > 0 && (
+                        <View style={styles.listSection}>
+                            <Text style={styles.sectionTitle}>
+                                Restantes Membros ({restMembers.length})
+                            </Text>
+
+                            {restMembers.map((member) => (
+                                <MemberCard key={member.user_id} member={member} isCurrentUser={member.user_id === user?.id} />
+                            ))}
+                        </View>
+                    )}
+
+                    {restMembers.length === 0 && members.length > 0 && members.length <= 3 && (
+                        <View style={styles.emptyMessage}>
+                            <Text style={styles.emptyText}>Todos os membros estão no pódio! 🎉</Text>
+                        </View>
+                    )}
+                </ScrollView>
+
+                {/* My Position Footer */}
+                {getMyRank() > 0 && (
+                    <View style={styles.footer}>
+                        <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.footerGradient}>
+                            <View style={styles.footerContent}>
+                                <Text style={styles.footerRank}>#{getMyRank()}</Text>
+                                <View>
+                                    <Text style={styles.footerLabel}>Tua Posição</Text>
+                                    <Text style={styles.footerXP}>
+                                        {formatXP(members.find((m) => m.user_id === user?.id)?.current_xp || 0)} XP
+                                    </Text>
+                                </View>
+                            </View>
+                        </LinearGradient>
+                    </View>
+                )}
+            </SafeAreaView>
+        </View>
+    );
+}
+
+// ============================================
+// PODIUM CARD
+// ============================================
+
+function PodiumCard({ member, position }: { member: LeaderboardMember; position: 1 | 2 | 3 }) {
+    const scale = useRef(new Animated.Value(1)).current;
+    const config = PODIUM_CONFIG[position];
+    const isFirst = position === 1;
+
+    return (
+        <Pressable
+            onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+            onPress={() => router.push(`/user/${member.user_id}` as any)}
+        >
+            <Animated.View style={[styles.podiumCard, isFirst && styles.podiumCardFirst, { transform: [{ scale }] }]}>
+                {/* Icon */}
+                <Text style={styles.podiumIcon}>{config.icon}</Text>
+
+                {/* Avatar */}
+                {member.avatar_url ? (
+                    <Image
+                        source={{ uri: member.avatar_url }}
+                        style={[styles.podiumAvatar, isFirst && styles.podiumAvatarFirst, { borderColor: config.color }]}
+                    />
+                ) : (
+                    <View style={[styles.podiumAvatarPlaceholder, isFirst && styles.podiumAvatarFirst, { borderColor: config.color, backgroundColor: `${config.color}20` }]}>
+                        <Text style={[styles.podiumInitial, { color: config.color }]}>
+                            {(member.full_name || member.username || '?').charAt(0).toUpperCase()}
+                        </Text>
+                    </View>
+                )}
+
+                {/* Name */}
+                <Text style={styles.podiumName} numberOfLines={1}>
+                    {member.full_name || member.username || 'Anónimo'}
+                </Text>
+
+                {/* XP */}
+                <Text style={[styles.podiumXP, { color: config.color }]}>
+                    {member.current_xp} XP
+                </Text>
+
+                {/* Pedestal */}
+                <LinearGradient colors={[config.color, `${config.color}80`]} style={[styles.pedestal, { height: config.height }]}>
+                    <Text style={styles.pedestalRank}>#{position}</Text>
+                </LinearGradient>
+            </Animated.View>
+        </Pressable>
+    );
+}
+
+// ============================================
+// MEMBER CARD
+// ============================================
+
+function MemberCard({ member, isCurrentUser }: { member: LeaderboardMember; isCurrentUser: boolean }) {
+    const scale = useRef(new Animated.Value(1)).current;
+
+    return (
+        <Pressable
+            onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+            onPress={() => router.push(`/user/${member.user_id}` as any)}
+        >
+            <Animated.View style={[styles.memberCard, isCurrentUser && styles.memberCardHighlight, { transform: [{ scale }] }]}>
                 {/* Rank */}
-                <View style={styles.rankContainer}>
-                    <Text style={[styles.rankText, isCurrentUser && styles.rankTextHighlight]}>
-                        #{item.rank}
-                    </Text>
+                <View style={styles.rankBadge}>
+                    <Text style={[styles.rankText, isCurrentUser && styles.rankTextHighlight]}>#{member.rank}</Text>
                 </View>
 
                 {/* Avatar */}
-                {item.avatar_url ? (
-                    <Image source={{ uri: item.avatar_url }} style={styles.listAvatar} />
+                {member.avatar_url ? (
+                    <Image source={{ uri: member.avatar_url }} style={styles.memberAvatar} />
                 ) : (
-                    <View style={styles.listAvatarPlaceholder}>
-                        <Text style={styles.listAvatarText}>
-                            {(item.full_name || item.username || '?').charAt(0).toUpperCase()}
+                    <View style={styles.memberAvatarPlaceholder}>
+                        <Text style={styles.memberInitial}>
+                            {(member.full_name || member.username || '?').charAt(0).toUpperCase()}
                         </Text>
                     </View>
                 )}
 
                 {/* Info */}
-                <View style={styles.listInfo}>
-                    <Text style={[styles.listName, isCurrentUser && styles.listNameHighlight]}>
-                        {item.full_name || item.username || 'Utilizador'}
+                <View style={styles.memberInfo}>
+                    <Text style={[styles.memberName, isCurrentUser && styles.memberNameHighlight]}>
+                        {member.full_name || member.username || 'Utilizador'}
                         {isCurrentUser && ' (Tu)'}
                     </Text>
-                    <Text style={styles.listTier}>{item.current_tier || 'Bronze'}</Text>
+                    <Text style={styles.memberTier}>{member.current_tier || 'Bronze'}</Text>
                 </View>
 
-                {/* XP */}
+                {/* XP Badge */}
                 <View style={styles.xpBadge}>
-                    <Ionicons name="flash" size={14} color={colors.accent.primary} />
-                    <Text style={styles.xpText}>{formatXP(item.current_xp)}</Text>
+                    <Ionicons name="flash" size={14} color="#FFD700" />
+                    <Text style={styles.xpText}>{member.current_xp}</Text>
                 </View>
-            </Pressable>
-        );
-    };
-
-    // ============================================
-    // RENDER FOOTER (Status atual)
-    // ============================================
-
-    const renderFooter = () => {
-        const myRank = getCurrentUserRank();
-        const nextRank = getXPToNextRank();
-        const me = members.find(m => m.user_id === user?.id);
-
-        if (!me || myRank === 0) return null;
-
-        return (
-            <View style={styles.footer}>
-                <LinearGradientComponent
-                    colors={[colors.accent.primary, colors.accent.dark]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.footerGradient}
-                >
-                    <View style={styles.footerContent}>
-                        <View style={styles.footerLeft}>
-                            <Text style={styles.footerRank}>#{myRank}</Text>
-                            <View>
-                                <Text style={styles.footerTitle}>Tua Posição</Text>
-                                <Text style={styles.footerXP}>{formatXP(me.current_xp)} XP</Text>
-                            </View>
-                        </View>
-                        {nextRank && (
-                            <View style={styles.footerRight}>
-                                <Text style={styles.footerHint}>
-                                    Faltam {nextRank.xpNeeded} XP
-                                </Text>
-                                <Text style={styles.footerTarget}>
-                                    para passar {nextRank.name}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-                </LinearGradientComponent>
-            </View>
-        );
-    };
-
-    // ============================================
-    // LOADING STATE
-    // ============================================
-
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
-                    <Text style={styles.loadingText}>A carregar ranking...</Text>
-                </View>
-            </SafeAreaView>
-        );
-    }
-
-    // ============================================
-    // MAIN RENDER
-    // ============================================
-
-    const restOfMembers = members.slice(3);
-
-    return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>🏆 Ranking</Text>
-                    <Text style={styles.headerSubtitle}>{teamName}</Text>
-                </View>
-                <Pressable style={styles.refreshButton} onPress={loadLeaderboard}>
-                    <Ionicons name="refresh" size={20} color={colors.text.tertiary} />
-                </Pressable>
-            </View>
-
-            {/* Podium */}
-            {renderPodium()}
-
-            {/* List */}
-            <FlatList
-                data={restOfMembers}
-                keyExtractor={(item) => item.user_id}
-                renderItem={renderListItem}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-                ListEmptyComponent={
-                    members.length <= 3 ? (
-                        <View style={styles.emptyList}>
-                            <Text style={styles.emptyListText}>
-                                Apenas {members.length} membro{members.length !== 1 ? 's' : ''} na equipa
-                            </Text>
-                        </View>
-                    ) : null
-                }
-            />
-
-            {/* Footer */}
-            {renderFooter()}
-        </SafeAreaView>
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -434,228 +351,243 @@ export default function TeamLeaderboardScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.md,
+        gap: SPACING.md,
     },
     loadingText: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+    },
+    scrollContent: {
+        paddingBottom: 120,
     },
 
     // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
     },
     backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
     },
     headerContent: {
         flex: 1,
-        marginLeft: spacing.sm,
+        marginLeft: SPACING.md,
     },
     headerTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
     refreshButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
     },
 
-    // Podium
-    podiumContainer: {
+    // Podium Section
+    podiumSection: {
+        paddingTop: SPACING.xl,
+        paddingBottom: SPACING.lg,
+    },
+    podiumGradient: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 200,
+    },
+    podiumRow: {
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'flex-end',
-        paddingHorizontal: spacing.lg,
-        paddingTop: spacing['3xl'],
-        paddingBottom: spacing.xl,
-        backgroundColor: colors.surface,
+        paddingHorizontal: SPACING.md,
+        gap: SPACING.sm,
     },
-    podiumItem: {
+
+    // Podium Card
+    podiumCard: {
         alignItems: 'center',
-        flex: 1,
-        maxWidth: 120,
+        width: (SCREEN_WIDTH - SPACING.md * 2 - SPACING.sm * 2) / 3,
+        maxWidth: 110,
     },
-    podiumAvatarContainer: {
-        position: 'relative',
-        marginBottom: spacing.sm,
+    podiumCardFirst: {
+        marginTop: -20,
     },
     podiumIcon: {
-        fontSize: 24,
-        position: 'absolute',
-        top: -20,
-        left: '50%',
-        marginLeft: -12,
-        zIndex: 1,
+        fontSize: 28,
+        marginBottom: SPACING.xs,
     },
     podiumAvatar: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         borderWidth: 3,
     },
     podiumAvatarFirst: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 72,
+        height: 72,
+        borderRadius: 36,
         borderWidth: 4,
     },
     podiumAvatarPlaceholder: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         borderWidth: 3,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    podiumAvatarText: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
+    podiumInitial: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
     },
     podiumName: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
         textAlign: 'center',
-        maxWidth: 90,
+        marginTop: SPACING.sm,
+        maxWidth: 100,
     },
     podiumXP: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.bold,
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.bold,
         marginTop: 2,
     },
-    podiumPedestal: {
-        width: '80%',
-        marginTop: spacing.sm,
-        borderTopLeftRadius: borderRadius.md,
-        borderTopRightRadius: borderRadius.md,
+    pedestal: {
+        width: '90%',
+        marginTop: SPACING.md,
+        borderTopLeftRadius: RADIUS.lg,
+        borderTopRightRadius: RADIUS.lg,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    podiumRank: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
+    pedestalRank: {
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
         color: '#FFF',
-        textShadowColor: 'rgba(0,0,0,0.3)',
-        textShadowOffset: { width: 1, height: 1 },
-        textShadowRadius: 2,
     },
 
-    // List
-    listContent: {
-        paddingHorizontal: spacing.md,
-        paddingTop: spacing.md,
-        paddingBottom: 100,
+    // List Section
+    listSection: {
+        paddingHorizontal: SPACING.lg,
+        paddingTop: SPACING.lg,
     },
-    listItem: {
+    sectionTitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.md,
+    },
+
+    // Member Card
+    memberCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        marginBottom: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    listItemHighlight: {
-        backgroundColor: `${colors.accent.primary}15`,
-        borderWidth: 2,
-        borderColor: colors.accent.primary,
+    memberCardHighlight: {
+        borderColor: '#6366F1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
     },
-    rankContainer: {
+    rankBadge: {
         width: 40,
         alignItems: 'center',
     },
     rankText: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.tertiary,
     },
     rankTextHighlight: {
-        color: colors.accent.primary,
+        color: '#6366F1',
     },
-    listAvatar: {
+    memberAvatar: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        marginLeft: spacing.sm,
+        marginLeft: SPACING.sm,
     },
-    listAvatarPlaceholder: {
+    memberAvatarPlaceholder: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        marginLeft: spacing.sm,
-        backgroundColor: colors.accent.subtle,
+        marginLeft: SPACING.sm,
+        backgroundColor: COLORS.surfaceMuted,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    listAvatarText: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
+    memberInitial: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.secondary,
     },
-    listInfo: {
+    memberInfo: {
         flex: 1,
-        marginLeft: spacing.md,
+        marginLeft: SPACING.md,
     },
-    listName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+    memberName: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
-    listNameHighlight: {
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
+    memberNameHighlight: {
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#6366F1',
     },
-    listTier: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    memberTier: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
     xpBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.accent.subtle,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
+        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: SPACING.xs,
+        borderRadius: RADIUS.full,
         gap: 4,
     },
     xpText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFD700',
     },
-    emptyList: {
+
+    // Empty
+    emptyMessage: {
         alignItems: 'center',
-        paddingVertical: spacing.xl,
+        paddingVertical: SPACING.xl,
     },
-    emptyListText: {
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
+    emptyText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
     },
 
     // Footer
@@ -666,43 +598,27 @@ const styles = StyleSheet.create({
         right: 0,
     },
     footerGradient: {
-        paddingVertical: spacing.lg,
-        paddingHorizontal: spacing.xl,
+        paddingVertical: SPACING.lg,
+        paddingHorizontal: SPACING.xl,
+        paddingBottom: 40,
     },
     footerContent: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-    },
-    footerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.md,
+        gap: SPACING.lg,
     },
     footerRank: {
-        fontSize: typography.size['3xl'],
-        fontWeight: typography.weight.bold,
+        fontSize: 32,
+        fontWeight: TYPOGRAPHY.weight.bold,
         color: '#FFF',
     },
-    footerTitle: {
-        fontSize: typography.size.xs,
-        color: 'rgba(255,255,255,0.8)',
+    footerLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: 'rgba(255,255,255,0.7)',
     },
     footerXP: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
         color: '#FFF',
-    },
-    footerRight: {
-        alignItems: 'flex-end',
-    },
-    footerHint: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    footerTarget: {
-        fontSize: typography.size.xs,
-        color: 'rgba(255,255,255,0.8)',
     },
 });

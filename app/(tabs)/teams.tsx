@@ -1,29 +1,43 @@
+/**
+ * Teams Screen - Premium Dark Design
+ * With search filter and organized layout
+ */
+
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { TeamWithRole, useTeams } from '@/providers/TeamsProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
+    Dimensions,
     FlatList,
     Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
     Pressable,
-    ScrollView,
+    RefreshControl,
     StyleSheet,
     Text,
     TextInput,
-    View
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 // Squad colors
 const SQUAD_COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F43F5E', '#F97316', '#EAB308', '#22C55E', '#14B8A6'];
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function TeamsScreen() {
     const { user } = useAuthContext();
@@ -31,6 +45,7 @@ export default function TeamsScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Form
     const [newName, setNewName] = useState('');
@@ -39,22 +54,25 @@ export default function TeamsScreen() {
     const [isPublic, setIsPublic] = useState(false);
     const [customCode, setCustomCode] = useState('');
 
+    // Filter teams
+    const filteredTeams = teams.filter((team) =>
+        team.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     const handleRefresh = async () => {
         setRefreshing(true);
         await refreshTeams();
         setRefreshing(false);
     };
 
-    // Create team
     const handleCreateTeam = async () => {
         if (!user?.id || !newName.trim()) {
             Alert.alert('Erro', 'Nome é obrigatório');
             return;
         }
 
-        // Validar código personalizado se fornecido
         if (customCode.trim() && customCode.trim().length < 4) {
-            Alert.alert('Erro', 'Código personalizado deve ter pelo menos 4 caracteres.');
+            Alert.alert('Erro', 'Código deve ter pelo menos 4 caracteres');
             return;
         }
 
@@ -69,7 +87,6 @@ export default function TeamsScreen() {
                 is_public: isPublic,
             };
 
-            // Se código personalizado fornecido, usá-lo
             if (customCode.trim()) {
                 teamInsert.invite_code = customCode.trim().toUpperCase();
             }
@@ -82,7 +99,7 @@ export default function TeamsScreen() {
 
             if (teamError) {
                 if (teamError.code === '23505') {
-                    Alert.alert('Erro', 'Este código de convite já existe. Escolhe outro.');
+                    Alert.alert('Erro', 'Este código já existe. Escolhe outro.');
                     return;
                 }
                 throw teamError;
@@ -94,14 +111,12 @@ export default function TeamsScreen() {
                 role: 'owner',
             });
 
-            // Criar canal #geral por defeito
             await supabase.from('channels').insert({
                 team_id: teamData.id,
                 name: 'geral',
                 type: 'text',
             });
 
-            // Realtime vai atualizar a lista automaticamente, mas fazemos refresh explícito
             await refreshTeams();
             setModalVisible(false);
             resetForm();
@@ -124,228 +139,262 @@ export default function TeamsScreen() {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.title}>Minhas Squads</Text>
-                    <Text style={styles.subtitle}>{teams.length} squads</Text>
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.headerTitle}>Equipas</Text>
+                        <Text style={styles.headerSubtitle}>
+                            {teams.length > 0 ? `${teams.length} squad${teams.length > 1 ? 's' : ''}` : 'Sem squads'}
+                        </Text>
+                    </View>
                 </View>
-            </View>
 
-            {/* Action Cards */}
-            <View style={styles.actionCards}>
-                <Pressable
-                    style={styles.actionCard}
-                    onPress={() => router.push('/team/join' as any)}
-                >
-                    <View style={[styles.actionIconContainer, { backgroundColor: colors.success.subtle }]}>
-                        <Ionicons name="log-in-outline" size={22} color={colors.success.primary} />
-                    </View>
-                    <View style={styles.actionTextContainer}>
-                        <Text style={styles.actionTitle}>Entrar numa Squad</Text>
-                        <Text style={styles.actionSubtitle}>Via código ou explorar</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-                </Pressable>
-
-                <Pressable
-                    style={styles.actionCard}
-                    onPress={() => setModalVisible(true)}
-                >
-                    <View style={[styles.actionIconContainer, { backgroundColor: colors.accent.subtle }]}>
-                        <Ionicons name="add-circle-outline" size={22} color={colors.accent.primary} />
-                    </View>
-                    <View style={styles.actionTextContainer}>
-                        <Text style={styles.actionTitle}>Criar Nova Squad</Text>
-                        <Text style={styles.actionSubtitle}>Torna-te o líder</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-                </Pressable>
-            </View>
-
-            {/* List */}
-            <FlatList
-                data={teams}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => <SquadCard team={item} />}
-                contentContainerStyle={styles.listContent}
-                ListEmptyComponent={<EmptyState onPress={() => setModalVisible(true)} />}
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                showsVerticalScrollIndicator={false}
-            />
-
-            {/* Modal */}
-            <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
-                    <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHandle} />
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Nova Squad</Text>
-                            <Pressable onPress={() => setModalVisible(false)}>
-                                <Ionicons name="close" size={24} color={colors.text.tertiary} />
+                {/* Search Bar */}
+                <View style={styles.searchContainer}>
+                    <View style={styles.searchInputWrapper}>
+                        <Ionicons name="search" size={18} color={COLORS.text.tertiary} />
+                        <TextInput
+                            style={styles.searchInput}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Procurar squads..."
+                            placeholderTextColor={COLORS.text.tertiary}
+                        />
+                        {searchQuery.length > 0 && (
+                            <Pressable onPress={() => setSearchQuery('')}>
+                                <Ionicons name="close-circle" size={18} color={COLORS.text.tertiary} />
                             </Pressable>
-                        </View>
+                        )}
+                    </View>
+                </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            {/* Nome */}
-                            <Text style={styles.inputLabel}>Nome da Squad *</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Ex: Turma 12ºA"
-                                placeholderTextColor={colors.text.tertiary}
-                                value={newName}
-                                onChangeText={setNewName}
-                            />
+                {/* Quick Actions - 2 buttons */}
+                <View style={styles.quickActions}>
+                    <Pressable style={styles.quickActionCard} onPress={() => router.push('/team/join' as any)}>
+                        <LinearGradient colors={['#10B981', '#059669']} style={styles.quickActionIcon}>
+                            <Ionicons name="enter-outline" size={22} color="#FFF" />
+                        </LinearGradient>
+                        <Text style={styles.quickActionLabel}>Entrar</Text>
+                        <Text style={styles.quickActionHint}>Via código</Text>
+                    </Pressable>
 
-                            {/* Descrição */}
-                            <Text style={styles.inputLabel}>Descrição (opcional)</Text>
-                            <TextInput
-                                style={[styles.input, styles.textArea]}
-                                placeholder="Descreve a squad..."
-                                placeholderTextColor={colors.text.tertiary}
-                                value={newDescription}
-                                onChangeText={setNewDescription}
-                                multiline
-                            />
+                    <Pressable style={styles.quickActionCard} onPress={() => setModalVisible(true)}>
+                        <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.quickActionIcon}>
+                            <Ionicons name="add" size={22} color="#FFF" />
+                        </LinearGradient>
+                        <Text style={styles.quickActionLabel}>Criar</Text>
+                        <Text style={styles.quickActionHint}>Nova squad</Text>
+                    </Pressable>
+                </View>
 
-                            {/* Cor */}
-                            <Text style={styles.inputLabel}>Cor da Squad</Text>
-                            <View style={styles.colorPicker}>
-                                {SQUAD_COLORS.map((color) => (
-                                    <Pressable
-                                        key={color}
-                                        style={[
-                                            styles.colorOption,
-                                            { backgroundColor: color },
-                                            selectedColor === color && styles.colorOptionSelected,
-                                        ]}
-                                        onPress={() => setSelectedColor(color)}
-                                    >
-                                        {selectedColor === color && (
-                                            <Ionicons name="checkmark" size={16} color={colors.text.inverse} />
-                                        )}
-                                    </Pressable>
-                                ))}
+                {/* Section Title */}
+                {filteredTeams.length > 0 && (
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Minhas Squads</Text>
+                        <Text style={styles.sectionCount}>{filteredTeams.length}</Text>
+                    </View>
+                )}
+
+                {/* Teams List */}
+                <FlatList
+                    data={filteredTeams}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => <SquadCard team={item} />}
+                    contentContainerStyle={styles.listContent}
+                    ListEmptyComponent={
+                        searchQuery.length > 0 ? (
+                            <View style={styles.noResultsContainer}>
+                                <Ionicons name="search-outline" size={40} color={COLORS.text.tertiary} />
+                                <Text style={styles.noResultsText}>Nenhuma squad encontrada</Text>
                             </View>
+                        ) : (
+                            <EmptyState onPress={() => setModalVisible(true)} />
+                        )
+                    }
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor="#6366F1"
+                            colors={['#6366F1']}
+                        />
+                    }
+                />
 
-                            {/* Toggle Privacidade */}
-                            <View style={styles.toggleRow}>
-                                <View style={styles.toggleInfo}>
-                                    <Ionicons
-                                        name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
-                                        size={20}
-                                        color={isPublic ? colors.success.primary : colors.text.secondary}
-                                    />
-                                    <View style={styles.toggleTextContainer}>
-                                        <Text style={styles.toggleTitle}>
-                                            {isPublic ? 'Squad Pública' : 'Squad Privada'}
-                                        </Text>
-                                        <Text style={styles.toggleSubtitle}>
-                                            {isPublic
-                                                ? 'Qualquer pessoa pode ver e juntar-se'
-                                                : 'Só com código de convite'}
-                                        </Text>
-                                    </View>
-                                </View>
-                                <Pressable
-                                    style={[styles.toggleSwitch, isPublic && styles.toggleSwitchActive]}
-                                    onPress={() => setIsPublic(!isPublic)}
-                                >
-                                    <View style={[styles.toggleThumb, isPublic && styles.toggleThumbActive]} />
+                {/* Create Modal */}
+                <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
+                        <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHandle} />
+
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Nova Squad</Text>
+                                <Pressable onPress={() => setModalVisible(false)} style={styles.modalClose}>
+                                    <Ionicons name="close" size={22} color={COLORS.text.secondary} />
                                 </Pressable>
                             </View>
 
-                            {/* Código Personalizado */}
-                            <Text style={styles.inputLabel}>Código de Convite (opcional)</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Ex: TURMA12A (gerado se vazio)"
-                                placeholderTextColor={colors.text.tertiary}
-                                value={customCode}
-                                onChangeText={(text) => setCustomCode(text.toUpperCase())}
-                                autoCapitalize="characters"
-                                maxLength={10}
-                            />
-                            <Text style={styles.inputHint}>
-                                Deixa vazio para gerar automaticamente
-                            </Text>
+                            <View style={styles.formSection}>
+                                <Text style={styles.formLabel}>Nome *</Text>
+                                <TextInput
+                                    style={styles.formInput}
+                                    value={newName}
+                                    onChangeText={setNewName}
+                                    placeholder="Ex: Estudo de Cálculo"
+                                    placeholderTextColor={COLORS.text.tertiary}
+                                    autoFocus
+                                />
+                            </View>
 
-                            {/* Botão Criar */}
-                            <Pressable style={styles.submitButton} onPress={handleCreateTeam} disabled={creating}>
+                            <View style={styles.formSection}>
+                                <Text style={styles.formLabel}>Descrição</Text>
+                                <TextInput
+                                    style={[styles.formInput, { height: 80 }]}
+                                    value={newDescription}
+                                    onChangeText={setNewDescription}
+                                    placeholder="Breve descrição..."
+                                    placeholderTextColor={COLORS.text.tertiary}
+                                    multiline
+                                    textAlignVertical="top"
+                                />
+                            </View>
+
+                            <View style={styles.formSection}>
+                                <Text style={styles.formLabel}>Cor</Text>
+                                <View style={styles.colorPicker}>
+                                    {SQUAD_COLORS.map((color) => (
+                                        <Pressable
+                                            key={color}
+                                            style={[
+                                                styles.colorOption,
+                                                { backgroundColor: color },
+                                                selectedColor === color && styles.colorOptionSelected,
+                                            ]}
+                                            onPress={() => setSelectedColor(color)}
+                                        >
+                                            {selectedColor === color && <Ionicons name="checkmark" size={16} color="#FFF" />}
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
+
+                            <View style={styles.formSection}>
+                                <Text style={styles.formLabel}>Código (opcional)</Text>
+                                <TextInput
+                                    style={styles.formInput}
+                                    value={customCode}
+                                    onChangeText={(t) => setCustomCode(t.toUpperCase())}
+                                    placeholder="Ex: CALC2024"
+                                    placeholderTextColor={COLORS.text.tertiary}
+                                    autoCapitalize="characters"
+                                />
+                            </View>
+
+                            <Pressable style={styles.toggleRow} onPress={() => setIsPublic(!isPublic)}>
+                                <View>
+                                    <Text style={styles.toggleLabel}>Squad Pública</Text>
+                                    <Text style={styles.toggleHint}>Visível na exploração</Text>
+                                </View>
+                                <View style={[styles.toggle, isPublic && styles.toggleActive]}>
+                                    <View style={[styles.toggleThumb, isPublic && styles.toggleThumbActive]} />
+                                </View>
+                            </Pressable>
+
+                            <Pressable
+                                style={[styles.submitButton, creating && styles.submitButtonDisabled]}
+                                onPress={handleCreateTeam}
+                                disabled={creating}
+                            >
                                 {creating ? (
-                                    <ActivityIndicator color={colors.text.inverse} />
+                                    <ActivityIndicator color="#FFF" />
                                 ) : (
-                                    <Text style={styles.submitText}>Criar Squad</Text>
+                                    <>
+                                        <Ionicons name="rocket-outline" size={20} color="#FFF" />
+                                        <Text style={styles.submitText}>Criar Squad</Text>
+                                    </>
                                 )}
                             </Pressable>
-                        </ScrollView>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
-        </SafeAreaView>
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
+            </SafeAreaView>
+        </View>
     );
 }
 
 // ============================================
-// SUB COMPONENTS
+// SQUAD CARD
 // ============================================
+
 function SquadCard({ team }: { team: TeamWithRole }) {
+    const scale = useRef(new Animated.Value(1)).current;
     const color = team.color || SQUAD_COLORS[0];
     const initial = team.name.charAt(0).toUpperCase();
 
+    const handlePressIn = () => {
+        Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start();
+    };
+
+    const handlePressOut = () => {
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+    };
+
+    const roleLabel = team.role === 'owner' ? '👑 Owner' : team.role === 'admin' ? '⭐ Admin' : '👤 Membro';
+
     return (
-        <Pressable style={styles.squadCard} onPress={() => router.push(`/team/${team.id}` as any)}>
-            {/* Avatar - Mostra icon_url se existir */}
-            {team.icon_url ? (
-                <Image source={{ uri: team.icon_url }} style={styles.squadAvatar} />
-            ) : (
-                <View style={[styles.squadAvatarPlaceholder, { backgroundColor: `${color}20` }]}>
-                    <Text style={[styles.squadInitial, { color }]}>{initial}</Text>
-                </View>
-            )}
+        <Pressable onPress={() => router.push(`/team/${team.id}` as any)} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+            <Animated.View style={[styles.squadCard, { transform: [{ scale }] }]}>
+                <View style={[styles.squadAccent, { backgroundColor: color }]} />
 
-            {/* Content */}
-            <View style={styles.squadContent}>
-                <Text style={styles.squadName}>{team.name}</Text>
-                {team.description && (
-                    <Text style={styles.squadDescription} numberOfLines={1}>{team.description}</Text>
+                {team.icon_url ? (
+                    <Image source={{ uri: team.icon_url }} style={styles.squadAvatar} />
+                ) : (
+                    <LinearGradient colors={[color, `${color}99`]} style={styles.squadAvatarPlaceholder}>
+                        <Text style={styles.squadInitial}>{initial}</Text>
+                    </LinearGradient>
                 )}
-                <View style={styles.squadMeta}>
-                    <View style={[styles.roleBadge, { backgroundColor: `${color}20` }]}>
-                        <Text style={[styles.roleText, { color }]}>{team.role}</Text>
-                    </View>
-                </View>
-            </View>
 
-            {/* Arrow */}
-            <View style={styles.squadArrow}>
-                <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
-            </View>
+                <View style={styles.squadContent}>
+                    <Text style={styles.squadName} numberOfLines={1}>{team.name}</Text>
+                    <Text style={styles.squadDescription} numberOfLines={1}>
+                        {team.description || 'Sem descrição'}
+                    </Text>
+                    <Text style={styles.squadRole}>{roleLabel}</Text>
+                </View>
+
+                <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />
+            </Animated.View>
         </Pressable>
     );
 }
 
+// ============================================
+// EMPTY STATE
+// ============================================
+
 function EmptyState({ onPress }: { onPress: () => void }) {
     return (
         <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-                <Ionicons name="people-outline" size={48} color={colors.accent.primary} />
+            <View style={styles.emptyIconContainer}>
+                <Ionicons name="people-outline" size={56} color={COLORS.text.tertiary} />
             </View>
-            <Text style={styles.emptyTitle}>Sem squads</Text>
-            <Text style={styles.emptySubtitle}>Cria uma squad para colaborar com colegas!</Text>
+            <Text style={styles.emptyTitle}>Sem Squads</Text>
+            <Text style={styles.emptySubtitle}>Cria ou entra numa squad para colaborar!</Text>
             <Pressable style={styles.emptyButton} onPress={onPress}>
+                <Ionicons name="add" size={18} color="#FFF" />
                 <Text style={styles.emptyButtonText}>Criar Squad</Text>
             </Pressable>
         </View>
@@ -355,10 +404,11 @@ function EmptyState({ onPress }: { onPress: () => void }) {
 // ============================================
 // STYLES
 // ============================================
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
@@ -368,145 +418,214 @@ const styles = StyleSheet.create({
 
     // Header
     header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: spacing.xl,
-        paddingTop: spacing.lg,
-        paddingBottom: spacing.lg,
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.lg,
     },
-    title: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+    headerTitle: {
+        fontSize: TYPOGRAPHY.size['3xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    subtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    headerSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
-    addButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.accent.primary,
+
+    // Search
+    searchContainer: {
+        paddingHorizontal: SPACING.xl,
+        marginBottom: SPACING.lg,
+    },
+    searchInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        gap: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+    },
+
+    // Quick Actions
+    quickActions: {
+        flexDirection: 'row',
+        paddingHorizontal: SPACING.xl,
+        gap: SPACING.md,
+        marginBottom: SPACING.lg,
+    },
+    quickActionCard: {
+        flex: 1,
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        paddingVertical: SPACING.lg,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    quickActionIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        ...shadows.md,
+        marginBottom: SPACING.sm,
+    },
+    quickActionLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+    },
+    quickActionHint: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
+    },
+
+    // Section Header
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: SPACING.xl,
+        marginBottom: SPACING.md,
+    },
+    sectionTitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
+    },
+    sectionCount: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        backgroundColor: COLORS.surfaceMuted,
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 2,
+        borderRadius: RADIUS.sm,
     },
 
     // List
     listContent: {
-        paddingHorizontal: spacing.xl,
-        paddingBottom: 120,
-        flexGrow: 1,
+        paddingHorizontal: SPACING.xl,
+        paddingBottom: 100,
+    },
+
+    // No Results
+    noResultsContainer: {
+        alignItems: 'center',
+        paddingTop: 60,
+    },
+    noResultsText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
+        marginTop: SPACING.md,
     },
 
     // Squad Card
     squadCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
-        marginBottom: spacing.md,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.lg,
+        marginBottom: SPACING.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        overflow: 'hidden',
+    },
+    squadAccent: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 4,
+        borderTopLeftRadius: RADIUS.xl,
+        borderBottomLeftRadius: RADIUS.xl,
     },
     squadAvatar: {
         width: 52,
         height: 52,
-        borderRadius: 14,
-        marginRight: spacing.lg,
+        borderRadius: 16,
+        marginRight: SPACING.lg,
     },
     squadAvatarPlaceholder: {
         width: 52,
         height: 52,
-        borderRadius: 14,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: spacing.lg,
+        marginRight: SPACING.lg,
     },
     squadInitial: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
     squadContent: {
         flex: 1,
     },
     squadName: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        marginBottom: 2,
     },
     squadDescription: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        marginTop: 2,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        marginBottom: 4,
     },
-    squadMeta: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: spacing.sm,
-        gap: spacing.xs,
-    },
-    roleBadge: {
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 2,
-        borderRadius: borderRadius.sm,
-    },
-    roleText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-        textTransform: 'capitalize',
-    },
-    squadArrow: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: colors.surfaceSubtle,
-        alignItems: 'center',
-        justifyContent: 'center',
+    squadRole: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.secondary,
     },
 
     // Empty
     emptyContainer: {
-        flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: spacing['3xl'],
+        paddingTop: 60,
     },
-    emptyIcon: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: colors.accent.light,
+    emptyIconContainer: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
+        marginBottom: SPACING.lg,
     },
     emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
     },
     emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         textAlign: 'center',
-        marginBottom: spacing.xl,
+        marginBottom: SPACING.xl,
     },
     emptyButton: {
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing['2xl'],
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
+        backgroundColor: '#6366F1',
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.xl,
+        borderRadius: RADIUS.xl,
     },
     emptyButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 
     // Modal
@@ -516,182 +635,137 @@ const styles = StyleSheet.create({
     },
     modalBackdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: colors.overlay,
+        backgroundColor: 'rgba(0,0,0,0.6)',
     },
     modalContent: {
-        backgroundColor: colors.surface,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        padding: spacing.xl,
-        paddingBottom: spacing['4xl'],
+        backgroundColor: COLORS.surface,
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        padding: SPACING.xl,
+        paddingBottom: 50,
     },
     modalHandle: {
         width: 40,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: colors.border,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.2)',
         alignSelf: 'center',
-        marginBottom: spacing.lg,
+        marginBottom: SPACING.lg,
     },
     modalHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: spacing.xl,
+        justifyContent: 'space-between',
+        marginBottom: SPACING.xl,
     },
     modalTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-
-    // Inputs
-    inputLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
-        marginTop: spacing.lg,
-    },
-    input: {
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.md,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-    },
-    textArea: {
-        minHeight: 100,
-        textAlignVertical: 'top',
-    },
-
-    // Submit
-    submitButton: {
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.lg,
-        alignItems: 'center',
-        marginTop: spacing.xl,
-        ...shadows.md,
-    },
-    submitText: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
-
-    // Action Cards
-    actionCards: {
-        paddingHorizontal: spacing.lg,
-        paddingTop: spacing.md,
-        gap: spacing.sm,
-    },
-    actionCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        ...shadows.sm,
-    },
-    actionIconContainer: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
+    modalClose: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.surfaceMuted,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    actionTextContainer: {
-        flex: 1,
-        marginLeft: spacing.md,
+
+    // Form
+    formSection: {
+        marginBottom: SPACING.lg,
     },
-    actionTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+    formLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.sm,
     },
-    actionSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    formInput: {
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
 
     // Color Picker
     colorPicker: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing.sm,
-        marginTop: spacing.xs,
+        gap: SPACING.sm,
     },
     colorOption: {
         width: 36,
         height: 36,
-        borderRadius: 18,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
     },
     colorOptionSelected: {
         borderWidth: 3,
-        borderColor: colors.text.inverse,
-        ...shadows.sm,
+        borderColor: '#FFF',
     },
 
-    // Toggle / Switch
+    // Toggle
     toggleRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginTop: spacing.lg,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.md,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        marginBottom: SPACING.xl,
     },
-    toggleInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-        gap: spacing.sm,
+    toggleLabel: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
-    toggleTextContainer: {
-        flex: 1,
+    toggleHint: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
     },
-    toggleTitle: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-    },
-    toggleSubtitle: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-    },
-    toggleSwitch: {
+    toggle: {
         width: 50,
         height: 28,
         borderRadius: 14,
-        backgroundColor: colors.divider,
-        padding: 2,
+        backgroundColor: COLORS.surfaceElevated,
         justifyContent: 'center',
+        padding: 3,
     },
-    toggleSwitchActive: {
-        backgroundColor: colors.success.primary,
+    toggleActive: {
+        backgroundColor: '#6366F1',
     },
     toggleThumb: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: colors.text.inverse,
-        ...shadows.sm,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: '#FFF',
     },
     toggleThumbActive: {
         alignSelf: 'flex-end',
     },
 
-    // Input Hint
-    inputHint: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        marginTop: spacing.xs,
-        marginBottom: spacing.sm,
+    // Submit
+    submitButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        backgroundColor: '#6366F1',
+        paddingVertical: SPACING.lg,
+        borderRadius: RADIUS.xl,
+    },
+    submitButtonDisabled: {
+        opacity: 0.6,
+    },
+    submitText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 });

@@ -1,27 +1,29 @@
 /**
- * Teacher Analytics Dashboard
+ * Teacher Analytics Dashboard - Premium Dark Design
  * Dashboard profissional para gestão de entregas
  * Gráfico de progresso + Gradebook + Sistema de correção
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    FlatList,
+    Animated,
+    KeyboardAvoidingView,
     Linking,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { PieChart } from 'react-native-gifted-charts';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -67,24 +69,19 @@ export default function TaskAnalyticsScreen() {
     const { id: teamId, taskId } = useLocalSearchParams<{ id: string; taskId: string }>();
     const { user } = useAuthContext();
 
-    // State
     const [analytics, setAnalytics] = useState<TaskAnalytics | null>(null);
     const [students, setStudents] = useState<StudentSubmission[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<FilterType>('all');
 
-    // Grading Modal
     const [gradingModalVisible, setGradingModalVisible] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState<StudentSubmission | null>(null);
     const [gradeScore, setGradeScore] = useState('');
     const [gradeFeedback, setGradeFeedback] = useState('');
     const [grading, setGrading] = useState(false);
 
-    // Fetch data
     useEffect(() => {
-        if (taskId && user?.id) {
-            fetchAnalytics();
-        }
+        if (taskId && user?.id) fetchAnalytics();
     }, [taskId, user?.id]);
 
     const fetchAnalytics = async () => {
@@ -92,17 +89,12 @@ export default function TaskAnalyticsScreen() {
 
         try {
             setLoading(true);
-
-            // Try RPC first
-            const { data: rpcData, error: rpcError } = await supabase.rpc('get_task_teacher_analytics', {
-                p_task_id: taskId,
-            });
+            const { data: rpcData, error: rpcError } = await supabase.rpc('get_task_teacher_analytics', { p_task_id: taskId });
 
             if (!rpcError && rpcData) {
                 setAnalytics(rpcData.analytics);
                 setStudents(rpcData.students || []);
             } else {
-                // Fallback: fetch manually
                 await fetchAnalyticsFallback();
             }
         } catch (err) {
@@ -116,57 +108,58 @@ export default function TaskAnalyticsScreen() {
         if (!taskId || !teamId) return;
 
         try {
-            // Get task info
-            const { data: task } = await supabase
-                .from('tasks')
-                .select('id, title, config')
-                .eq('id', taskId)
-                .single();
+            // Buscar tarefa
+            const { data: task } = await supabase.from('tasks').select('id, title, config, team_id').eq('id', taskId).single();
 
-            // Get all assignments
+            // Tentar buscar assignments primeiro
             const { data: assignments } = await supabase
                 .from('task_assignments')
-                .select(`
-                    user_id,
-                    user:profiles(id, full_name, username, avatar_url)
-                `)
+                .select(`user_id, user:profiles(id, full_name, username, avatar_url)`)
                 .eq('task_id', taskId);
 
-            // Get all submissions
-            const { data: submissions } = await supabase
-                .from('task_submissions')
-                .select('*')
-                .eq('task_id', taskId);
+            // Se não há assignments, buscar membros da equipa diretamente
+            let memberProfiles: any[] = [];
+            if (!assignments || assignments.length === 0) {
+                const { data: teamMembers } = await supabase
+                    .from('team_members')
+                    .select(`user_id, profile:profiles(id, full_name, username, avatar_url)`)
+                    .eq('team_id', task?.team_id || teamId);
 
-            const submissionMap = new Map(submissions?.map(s => [s.user_id, s]) || []);
+                memberProfiles = (teamMembers || [])
+                    .filter(m => m.profile && !Array.isArray(m.profile))
+                    .map(m => ({ user_id: m.user_id, user: m.profile }));
+            } else {
+                memberProfiles = assignments.filter(a => a.user && !Array.isArray(a.user));
+            }
 
-            // Build student list
-            const studentList: StudentSubmission[] = (assignments || [])
-                .filter(a => a.user && !Array.isArray(a.user))
-                .map(a => {
-                    const profile = a.user as any;
-                    const sub = submissionMap.get(a.user_id);
-                    return {
-                        user_id: a.user_id,
-                        full_name: profile.full_name || profile.username,
-                        username: profile.username,
-                        avatar_url: profile.avatar_url,
-                        submission_id: sub?.id || null,
-                        status: sub?.status === 'graded' ? 'graded' : sub?.status === 'submitted' ? 'submitted' : 'missing',
-                        score: sub?.score || null,
-                        feedback: sub?.feedback || null,
-                        file_url: sub?.file_url || null,
-                        file_name: sub?.file_name || null,
-                        submitted_at: sub?.submitted_at || null,
-                        is_late: sub?.is_late || false,
-                    };
-                });
+            // Buscar todas as submissions
+            const { data: submissions } = await supabase.from('task_submissions').select('*').eq('task_id', taskId);
+            const submissionMap = new Map(submissions?.map((s) => [s.user_id, s]) || []);
 
-            // Calculate analytics
-            const submitted = studentList.filter(s => s.status === 'submitted').length;
-            const graded = studentList.filter(s => s.status === 'graded').length;
-            const missing = studentList.filter(s => s.status === 'missing').length;
-            const scores = studentList.filter(s => s.score !== null).map(s => s.score!);
+            // Construir lista de estudantes
+            const studentList: StudentSubmission[] = memberProfiles.map((a) => {
+                const profile = a.user as any;
+                const sub = submissionMap.get(a.user_id);
+                return {
+                    user_id: a.user_id,
+                    full_name: profile?.full_name || profile?.username || 'Unknown',
+                    username: profile?.username || '',
+                    avatar_url: profile?.avatar_url || null,
+                    submission_id: sub?.id || null,
+                    status: sub?.status === 'graded' ? 'graded' : sub?.status === 'submitted' ? 'submitted' : 'missing',
+                    score: sub?.score || null,
+                    feedback: sub?.feedback || null,
+                    file_url: sub?.file_url || null,
+                    file_name: sub?.file_name || null,
+                    submitted_at: sub?.submitted_at || null,
+                    is_late: sub?.is_late || false,
+                };
+            });
+
+            const submitted = studentList.filter((s) => s.status === 'submitted').length;
+            const graded = studentList.filter((s) => s.status === 'graded').length;
+            const missing = studentList.filter((s) => s.status === 'missing').length;
+            const scores = studentList.filter((s) => s.score !== null).map((s) => s.score!);
             const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 
             setAnalytics({
@@ -175,7 +168,7 @@ export default function TaskAnalyticsScreen() {
                 total_assigned: studentList.length,
                 submitted_count: submitted,
                 graded_count: graded,
-                pending_count: submitted, // submitted but not graded
+                pending_count: submitted,
                 missing_count: missing,
                 average_score: avgScore,
                 max_score: task?.config?.max_score || 20,
@@ -213,7 +206,6 @@ export default function TaskAnalyticsScreen() {
 
         setGrading(true);
         try {
-            // Use secure RPC for grading (validates permissions server-side)
             const { data, error } = await supabase.rpc('grade_submission', {
                 p_submission_id: selectedStudent.submission_id,
                 p_score: score,
@@ -221,19 +213,15 @@ export default function TaskAnalyticsScreen() {
             });
 
             if (error) throw error;
-
             const result = data as { success: boolean; xp_awarded: number; message: string };
-
-            if (!result.success) {
-                throw new Error(result.message || 'Failed to grade submission');
-            }
+            if (!result.success) throw new Error(result.message || 'Failed to grade submission');
 
             Alert.alert(
                 '✅ Nota Lançada!',
                 `${selectedStudent.full_name} recebeu ${score}/${analytics.max_score}${result.xp_awarded > 0 ? ` e +${result.xp_awarded} XP` : ''}.`
             );
             setGradingModalVisible(false);
-            fetchAnalytics(); // Refresh
+            fetchAnalytics();
         } catch (err: any) {
             console.error('Grading error:', err);
             Alert.alert('Erro', err?.message || 'Não foi possível lançar a nota.');
@@ -243,339 +231,304 @@ export default function TaskAnalyticsScreen() {
     };
 
     // ============================================
-    // FILTERED DATA
+    // DATA
     // ============================================
 
-    const filteredStudents = students.filter(s => {
+    const filteredStudents = students.filter((s) => {
         if (filter === 'all') return true;
-        if (filter === 'submitted') return s.status === 'submitted';
-        if (filter === 'graded') return s.status === 'graded';
-        if (filter === 'missing') return s.status === 'missing';
-        return true;
+        return s.status === filter;
     });
 
+    const chartData = analytics
+        ? [
+            { value: analytics.graded_count, color: '#22C55E', label: 'Corrigidos' },
+            { value: analytics.submitted_count, color: '#F59E0B', label: 'Por corrigir' },
+            { value: analytics.missing_count, color: '#EF4444', label: 'Em falta' },
+        ].filter((d) => d.value > 0)
+        : [];
+
+    const progressPercent = analytics?.total_assigned
+        ? Math.round(((analytics.graded_count + analytics.submitted_count) / analytics.total_assigned) * 100)
+        : 0;
+
     // ============================================
-    // CHART DATA
+    // LOADING
     // ============================================
-
-    const chartData = analytics ? [
-        { value: analytics.graded_count, color: colors.success.primary, label: 'Corrigidos' },
-        { value: analytics.submitted_count, color: colors.warning.primary, label: 'Por corrigir' },
-        { value: analytics.missing_count, color: colors.danger.primary, label: 'Em falta' },
-    ].filter(d => d.value > 0) : [];
-
-    // ============================================
-    // RENDER
-    // ============================================
-
-    const renderStudent = ({ item }: { item: StudentSubmission }) => {
-        const getStatusStyle = () => {
-            switch (item.status) {
-                case 'graded':
-                    return { bg: colors.success.light, color: colors.success.primary };
-                case 'submitted':
-                    return { bg: colors.warning.light, color: colors.warning.primary };
-                case 'missing':
-                    return { bg: colors.danger.light, color: colors.danger.primary };
-            }
-        };
-
-        const statusStyle = getStatusStyle();
-
-        return (
-            <Pressable
-                style={styles.studentCard}
-                onPress={() => handleOpenGrading(item)}
-            >
-                {/* Avatar */}
-                <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                        {item.full_name?.[0]?.toUpperCase() || '?'}
-                    </Text>
-                </View>
-
-                {/* Info */}
-                <View style={styles.studentInfo}>
-                    <Text style={styles.studentName}>{item.full_name}</Text>
-                    <View style={styles.studentMeta}>
-                        {item.submitted_at && (
-                            <Text style={styles.submittedAt}>
-                                {new Date(item.submitted_at).toLocaleDateString('pt-PT')}
-                                {item.is_late && ' (atrasado)'}
-                            </Text>
-                        )}
-                        {item.file_name && (
-                            <Ionicons name="attach" size={14} color={colors.text.tertiary} />
-                        )}
-                    </View>
-                </View>
-
-                {/* Status Badge */}
-                <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                    {item.status === 'graded' ? (
-                        <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>
-                            {item.score}/{analytics?.max_score || 20}
-                        </Text>
-                    ) : item.status === 'submitted' ? (
-                        <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>
-                            Por corrigir
-                        </Text>
-                    ) : (
-                        <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>
-                            Em falta
-                        </Text>
-                    )}
-                </View>
-
-                <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-            </Pressable>
-        );
-    };
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
+                    <Text style={styles.loadingText}>A carregar analytics...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable onPress={() => router.back()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={colors.text.primary} />
-                </Pressable>
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>Entregas</Text>
-                    <Text style={styles.headerSubtitle} numberOfLines={1}>
-                        {analytics?.title}
-                    </Text>
-                </View>
-            </View>
-
-            <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-                {/* Stats Card with Chart */}
-                <View style={styles.statsCard}>
-                    <View style={styles.chartContainer}>
-                        <PieChart
-                            data={chartData}
-                            donut
-                            radius={60}
-                            innerRadius={40}
-                            centerLabelComponent={() => (
-                                <View style={styles.chartCenter}>
-                                    <Text style={styles.chartCenterNumber}>
-                                        {(analytics?.graded_count || 0) + (analytics?.submitted_count || 0)}
-                                    </Text>
-                                    <Text style={styles.chartCenterLabel}>
-                                        /{analytics?.total_assigned || 0}
-                                    </Text>
-                                </View>
-                            )}
-                        />
-                    </View>
-                    <View style={styles.legendContainer}>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: colors.success.primary }]} />
-                            <Text style={styles.legendLabel}>Corrigidos</Text>
-                            <Text style={styles.legendValue}>{analytics?.graded_count || 0}</Text>
-                        </View>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: colors.warning.primary }]} />
-                            <Text style={styles.legendLabel}>Por corrigir</Text>
-                            <Text style={styles.legendValue}>{analytics?.submitted_count || 0}</Text>
-                        </View>
-                        <View style={styles.legendItem}>
-                            <View style={[styles.legendDot, { backgroundColor: colors.danger.primary }]} />
-                            <Text style={styles.legendLabel}>Em falta</Text>
-                            <Text style={styles.legendValue}>{analytics?.missing_count || 0}</Text>
-                        </View>
-                        {analytics && analytics.average_score !== null && (
-                            <View style={[styles.legendItem, styles.legendItemAverage]}>
-                                <Ionicons name="stats-chart" size={16} color={colors.accent.primary} />
-                                <Text style={styles.legendLabel}>Média</Text>
-                                <Text style={[styles.legendValue, styles.legendValueAverage]}>
-                                    {analytics.average_score.toFixed(1)}/{analytics.max_score}
-                                </Text>
-                            </View>
-                        )}
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                    </Pressable>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>📊 Analytics</Text>
+                        <Text style={styles.headerSubtitle} numberOfLines={1}>{analytics?.title}</Text>
                     </View>
                 </View>
 
-                {/* Filter Tabs */}
-                <View style={styles.filterTabs}>
-                    {[
-                        { id: 'all', label: 'Todos', count: students.length },
-                        { id: 'submitted', label: 'Por corrigir', count: analytics?.submitted_count || 0 },
-                        { id: 'graded', label: 'Corrigidos', count: analytics?.graded_count || 0 },
-                        { id: 'missing', label: 'Em falta', count: analytics?.missing_count || 0 },
-                    ].map(tab => (
-                        <Pressable
-                            key={tab.id}
-                            style={[
-                                styles.filterTab,
-                                filter === tab.id && styles.filterTabActive,
-                            ]}
-                            onPress={() => setFilter(tab.id as FilterType)}
-                        >
-                            <Text style={[
-                                styles.filterTabText,
-                                filter === tab.id && styles.filterTabTextActive,
-                            ]}>
-                                {tab.label} ({tab.count})
-                            </Text>
-                        </Pressable>
-                    ))}
-                </View>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                    {/* Stats Overview */}
+                    <View style={styles.statsGrid}>
+                        <View style={[styles.statCard, { borderColor: '#22C55E' }]}>
+                            <Text style={styles.statValue}>{analytics?.graded_count || 0}</Text>
+                            <Text style={styles.statLabel}>Corrigidos</Text>
+                        </View>
+                        <View style={[styles.statCard, { borderColor: '#F59E0B' }]}>
+                            <Text style={styles.statValue}>{analytics?.submitted_count || 0}</Text>
+                            <Text style={styles.statLabel}>Por corrigir</Text>
+                        </View>
+                        <View style={[styles.statCard, { borderColor: '#EF4444' }]}>
+                            <Text style={styles.statValue}>{analytics?.missing_count || 0}</Text>
+                            <Text style={styles.statLabel}>Em falta</Text>
+                        </View>
+                    </View>
 
-                {/* Student List */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>
-                        📋 Alunos ({filteredStudents.length})
-                    </Text>
-                    <FlatList
-                        data={filteredStudents}
-                        renderItem={renderStudent}
-                        keyExtractor={item => item.user_id}
-                        scrollEnabled={false}
-                        contentContainerStyle={styles.listContent}
-                    />
-                </View>
-            </ScrollView>
-
-            {/* Grading Modal */}
-            <Modal
-                visible={gradingModalVisible}
-                animationType="slide"
-                presentationStyle="pageSheet"
-                onRequestClose={() => setGradingModalVisible(false)}
-            >
-                <SafeAreaView style={styles.modalContainer} edges={['top']}>
-                    <View style={styles.modalHeader}>
-                        <Pressable onPress={() => setGradingModalVisible(false)}>
-                            <Text style={styles.modalCancel}>Cancelar</Text>
-                        </Pressable>
-                        <Text style={styles.modalTitle}>Correção</Text>
-                        <Pressable onPress={handleGrade} disabled={grading}>
-                            {grading ? (
-                                <ActivityIndicator size="small" color={colors.accent.primary} />
+                    {/* Chart Card */}
+                    <View style={styles.chartCard}>
+                        <View style={styles.chartContainer}>
+                            {chartData.length > 0 ? (
+                                <PieChart
+                                    data={chartData}
+                                    donut
+                                    radius={70}
+                                    innerRadius={50}
+                                    centerLabelComponent={() => (
+                                        <View style={styles.chartCenter}>
+                                            <Text style={styles.chartPercent}>{progressPercent}%</Text>
+                                            <Text style={styles.chartPercentLabel}>entregue</Text>
+                                        </View>
+                                    )}
+                                />
                             ) : (
-                                <Text style={styles.modalSave}>Lançar</Text>
+                                <View style={styles.chartEmpty}>
+                                    <Ionicons name="pie-chart-outline" size={48} color={COLORS.text.tertiary} />
+                                </View>
                             )}
-                        </Pressable>
+                        </View>
+
+                        <View style={styles.legendContainer}>
+                            {[
+                                { label: 'Corrigidos', value: analytics?.graded_count || 0, color: '#22C55E' },
+                                { label: 'Por corrigir', value: analytics?.submitted_count || 0, color: '#F59E0B' },
+                                { label: 'Em falta', value: analytics?.missing_count || 0, color: '#EF4444' },
+                            ].map((item) => (
+                                <View key={item.label} style={styles.legendItem}>
+                                    <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                                    <Text style={styles.legendLabel}>{item.label}</Text>
+                                    <Text style={styles.legendValue}>{item.value}</Text>
+                                </View>
+                            ))}
+                            {analytics?.average_score !== null && (
+                                <View style={styles.averageRow}>
+                                    <Ionicons name="stats-chart" size={16} color="#6366F1" />
+                                    <Text style={styles.averageLabel}>Média</Text>
+                                    <Text style={styles.averageValue}>
+                                        {analytics?.average_score?.toFixed(1)}/{analytics?.max_score}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
                     </View>
 
-                    <ScrollView style={styles.modalContent}>
-                        {selectedStudent && (
-                            <>
-                                {/* Student Info */}
-                                <View style={styles.gradingStudentCard}>
-                                    <View style={styles.gradingAvatar}>
-                                        <Text style={styles.gradingAvatarText}>
-                                            {selectedStudent.full_name?.[0]?.toUpperCase()}
-                                        </Text>
-                                    </View>
-                                    <View>
-                                        <Text style={styles.gradingStudentName}>
-                                            {selectedStudent.full_name}
-                                        </Text>
-                                        <Text style={styles.gradingSubmittedAt}>
-                                            Entregue: {selectedStudent.submitted_at
-                                                ? new Date(selectedStudent.submitted_at).toLocaleString('pt-PT')
-                                                : 'N/A'}
-                                            {selectedStudent.is_late && ' (atrasado)'}
-                                        </Text>
-                                    </View>
-                                </View>
+                    {/* Filter Tabs */}
+                    <View style={styles.filterContainer}>
+                        {[
+                            { id: 'all' as FilterType, label: 'Todos', count: students.length },
+                            { id: 'submitted' as FilterType, label: 'Por corrigir', count: analytics?.submitted_count || 0 },
+                            { id: 'graded' as FilterType, label: 'Corrigidos', count: analytics?.graded_count || 0 },
+                            { id: 'missing' as FilterType, label: 'Em falta', count: analytics?.missing_count || 0 },
+                        ].map((tab) => (
+                            <Pressable
+                                key={tab.id}
+                                style={[styles.filterTab, filter === tab.id && styles.filterTabActive]}
+                                onPress={() => setFilter(tab.id)}
+                            >
+                                <Text style={[styles.filterTabText, filter === tab.id && styles.filterTabTextActive]}>
+                                    {tab.label} ({tab.count})
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
 
-                                {/* File Link */}
-                                {selectedStudent.file_url && (
-                                    <Pressable
-                                        style={styles.fileCard}
-                                        onPress={() => Linking.openURL(selectedStudent.file_url!)}
-                                    >
-                                        <View style={styles.fileIconBox}>
-                                            <Ionicons name="document" size={24} color={colors.accent.primary} />
-                                        </View>
-                                        <View style={styles.fileInfo}>
-                                            <Text style={styles.fileName}>{selectedStudent.file_name}</Text>
-                                            <Text style={styles.fileAction}>Toca para abrir</Text>
-                                        </View>
-                                        <Ionicons name="open-outline" size={20} color={colors.text.tertiary} />
-                                    </Pressable>
-                                )}
+                    {/* Students List */}
+                    <Text style={styles.sectionTitle}>📋 Alunos ({filteredStudents.length})</Text>
+                    {filteredStudents.map((student) => (
+                        <StudentRow key={student.user_id} student={student} maxScore={analytics?.max_score || 20} onPress={() => handleOpenGrading(student)} />
+                    ))}
+                </ScrollView>
 
-                                {/* Score Input */}
-                                <View style={styles.gradeInputGroup}>
-                                    <Text style={styles.gradeLabel}>
-                                        Nota (0-{analytics?.max_score || 20})
-                                    </Text>
-                                    <View style={styles.scoreInputRow}>
+                {/* Grading Modal */}
+                <Modal visible={gradingModalVisible} animationType="slide" transparent onRequestClose={() => setGradingModalVisible(false)}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
+                        <Pressable style={styles.modalBackdrop} onPress={() => setGradingModalVisible(false)} />
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHandle} />
+                            <Text style={styles.modalTitle}>Lançar Nota</Text>
+
+                            {selectedStudent && (
+                                <>
+                                    <View style={styles.gradingHeader}>
+                                        <View style={styles.gradingAvatar}>
+                                            <Text style={styles.gradingAvatarText}>{selectedStudent.full_name?.[0]?.toUpperCase()}</Text>
+                                        </View>
+                                        <View>
+                                            <Text style={styles.gradingName}>{selectedStudent.full_name}</Text>
+                                            <Text style={styles.gradingDate}>
+                                                {selectedStudent.submitted_at
+                                                    ? new Date(selectedStudent.submitted_at).toLocaleString('pt-PT')
+                                                    : 'N/A'}
+                                                {selectedStudent.is_late && ' (atrasado)'}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    {selectedStudent.file_url && (
+                                        <Pressable style={styles.fileCard} onPress={() => Linking.openURL(selectedStudent.file_url!)}>
+                                            <Ionicons name="document" size={24} color="#6366F1" />
+                                            <Text style={styles.fileCardName}>{selectedStudent.file_name}</Text>
+                                            <Ionicons name="open-outline" size={18} color={COLORS.text.tertiary} />
+                                        </Pressable>
+                                    )}
+
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.inputLabel}>Nota (0-{analytics?.max_score || 20})</Text>
                                         <TextInput
-                                            style={styles.scoreInput}
+                                            style={styles.input}
                                             value={gradeScore}
                                             onChangeText={setGradeScore}
                                             keyboardType="number-pad"
                                             placeholder="0"
-                                            placeholderTextColor={colors.text.tertiary}
+                                            placeholderTextColor={COLORS.text.tertiary}
                                         />
-                                        <Text style={styles.scoreMax}>
-                                            / {analytics?.max_score || 20}
-                                        </Text>
                                     </View>
-                                </View>
 
-                                {/* Quick Grades */}
-                                <View style={styles.quickGrades}>
-                                    {[
-                                        { label: '😞', value: Math.round((analytics?.max_score || 20) * 0.25) },
-                                        { label: '😐', value: Math.round((analytics?.max_score || 20) * 0.5) },
-                                        { label: '🙂', value: Math.round((analytics?.max_score || 20) * 0.75) },
-                                        { label: '🤩', value: analytics?.max_score || 20 },
-                                    ].map(qg => (
-                                        <Pressable
-                                            key={qg.value}
-                                            style={[
-                                                styles.quickGradeButton,
-                                                gradeScore === qg.value.toString() && styles.quickGradeButtonActive,
-                                            ]}
-                                            onPress={() => setGradeScore(qg.value.toString())}
-                                        >
-                                            <Text style={styles.quickGradeEmoji}>{qg.label}</Text>
-                                            <Text style={[
-                                                styles.quickGradeValue,
-                                                gradeScore === qg.value.toString() && styles.quickGradeValueActive,
-                                            ]}>
-                                                {qg.value}
-                                            </Text>
+                                    {/* Quick Grades */}
+                                    <View style={styles.quickGrades}>
+                                        {[
+                                            { emoji: '😞', value: Math.round((analytics?.max_score || 20) * 0.25) },
+                                            { emoji: '😐', value: Math.round((analytics?.max_score || 20) * 0.5) },
+                                            { emoji: '🙂', value: Math.round((analytics?.max_score || 20) * 0.75) },
+                                            { emoji: '🤩', value: analytics?.max_score || 20 },
+                                        ].map((qg) => (
+                                            <Pressable
+                                                key={qg.value}
+                                                style={[styles.quickGrade, gradeScore === qg.value.toString() && styles.quickGradeActive]}
+                                                onPress={() => setGradeScore(qg.value.toString())}
+                                            >
+                                                <Text style={styles.quickGradeEmoji}>{qg.emoji}</Text>
+                                                <Text style={[styles.quickGradeValue, gradeScore === qg.value.toString() && styles.quickGradeValueActive]}>
+                                                    {qg.value}
+                                                </Text>
+                                            </Pressable>
+                                        ))}
+                                    </View>
+
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.inputLabel}>Feedback</Text>
+                                        <TextInput
+                                            style={[styles.input, { height: 100 }]}
+                                            value={gradeFeedback}
+                                            onChangeText={setGradeFeedback}
+                                            placeholder="Comentários sobre o trabalho..."
+                                            placeholderTextColor={COLORS.text.tertiary}
+                                            multiline
+                                            textAlignVertical="top"
+                                        />
+                                    </View>
+
+                                    <View style={styles.modalButtons}>
+                                        <Pressable style={styles.modalBtnCancel} onPress={() => setGradingModalVisible(false)}>
+                                            <Text style={styles.modalBtnCancelText}>Cancelar</Text>
                                         </Pressable>
-                                    ))}
-                                </View>
+                                        <Pressable style={styles.modalBtnConfirm} onPress={handleGrade} disabled={grading}>
+                                            {grading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.modalBtnConfirmText}>Lançar Nota</Text>}
+                                        </Pressable>
+                                    </View>
+                                </>
+                            )}
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
+            </SafeAreaView>
+        </View>
+    );
+}
 
-                                {/* Feedback Input */}
-                                <View style={styles.gradeInputGroup}>
-                                    <Text style={styles.gradeLabel}>Feedback</Text>
-                                    <TextInput
-                                        style={[styles.textInput, styles.textArea]}
-                                        value={gradeFeedback}
-                                        onChangeText={setGradeFeedback}
-                                        placeholder="Comentários sobre o trabalho..."
-                                        placeholderTextColor={colors.text.tertiary}
-                                        multiline
-                                        numberOfLines={4}
-                                        textAlignVertical="top"
-                                    />
-                                </View>
-                            </>
+// ============================================
+// STUDENT ROW COMPONENT
+// ============================================
+
+function StudentRow({
+    student,
+    maxScore,
+    onPress,
+}: {
+    student: StudentSubmission;
+    maxScore: number;
+    onPress: () => void;
+}) {
+    const scale = useRef(new Animated.Value(1)).current;
+
+    const getStatusStyle = () => {
+        switch (student.status) {
+            case 'graded':
+                return { bg: 'rgba(34, 197, 94, 0.15)', color: '#22C55E' };
+            case 'submitted':
+                return { bg: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' };
+            case 'missing':
+                return { bg: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' };
+        }
+    };
+
+    const statusStyle = getStatusStyle();
+
+    return (
+        <Pressable
+            onPress={onPress}
+            onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+        >
+            <Animated.View style={[styles.studentCard, { transform: [{ scale }] }]}>
+                <View style={styles.studentAvatar}>
+                    <Text style={styles.studentAvatarText}>{student.full_name?.[0]?.toUpperCase() || '?'}</Text>
+                </View>
+
+                <View style={styles.studentInfo}>
+                    <Text style={styles.studentName}>{student.full_name}</Text>
+                    <View style={styles.studentMeta}>
+                        {student.submitted_at && (
+                            <Text style={styles.studentDate}>
+                                {new Date(student.submitted_at).toLocaleDateString('pt-PT')}
+                                {student.is_late && ' (atrasado)'}
+                            </Text>
                         )}
-                    </ScrollView>
-                </SafeAreaView>
-            </Modal>
-        </SafeAreaView>
+                        {student.file_name && <Ionicons name="attach" size={14} color={COLORS.text.tertiary} />}
+                    </View>
+                </View>
+
+                <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                    <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>
+                        {student.status === 'graded' ? `${student.score}/${maxScore}` : student.status === 'submitted' ? 'Por corrigir' : 'Em falta'}
+                    </Text>
+                </View>
+
+                <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -586,58 +539,87 @@ export default function TaskAnalyticsScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        gap: SPACING.md,
+    },
+    loadingText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+    },
+    scrollContent: {
+        paddingHorizontal: SPACING.lg,
+        paddingBottom: 100,
     },
 
     // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.md,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
     },
     backButton: {
         width: 44,
         height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: borderRadius.md,
-        backgroundColor: colors.surface,
     },
     headerContent: {
         flex: 1,
+        marginLeft: SPACING.md,
     },
     headerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
 
-    // Scroll
-    scrollView: {
-        flex: 1,
-    },
-
-    // Stats Card
-    statsCard: {
+    // Stats Grid
+    statsGrid: {
         flexDirection: 'row',
-        backgroundColor: colors.surface,
-        margin: spacing.lg,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
-        ...shadows.md,
+        gap: SPACING.sm,
+        marginBottom: SPACING.lg,
+    },
+    statCard: {
+        flex: 1,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderLeftWidth: 3,
+    },
+    statValue: {
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    statLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
+    },
+
+    // Chart Card
+    chartCard: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        marginBottom: SPACING.lg,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     chartContainer: {
         alignItems: 'center',
@@ -646,31 +628,31 @@ const styles = StyleSheet.create({
     chartCenter: {
         alignItems: 'center',
     },
-    chartCenterNumber: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+    chartPercent: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    chartCenterLabel: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    chartPercentLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+    },
+    chartEmpty: {
+        width: 140,
+        height: 140,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     legendContainer: {
         flex: 1,
-        marginLeft: spacing.lg,
+        marginLeft: SPACING.lg,
         justifyContent: 'center',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     legendItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-    },
-    legendItemAverage: {
-        marginTop: spacing.sm,
-        paddingTop: spacing.sm,
-        borderTopWidth: 1,
-        borderTopColor: colors.divider,
+        gap: SPACING.sm,
     },
     legendDot: {
         width: 10,
@@ -679,284 +661,268 @@ const styles = StyleSheet.create({
     },
     legendLabel: {
         flex: 1,
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
     },
     legendValue: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    legendValueAverage: {
-        color: colors.accent.primary,
+    averageRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
+        marginTop: SPACING.sm,
+        paddingTop: SPACING.sm,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.08)',
+    },
+    averageLabel: {
+        flex: 1,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+    },
+    averageValue: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#6366F1',
     },
 
     // Filter Tabs
-    filterTabs: {
+    filterContainer: {
         flexDirection: 'row',
-        paddingHorizontal: spacing.lg,
-        gap: spacing.xs,
-        marginBottom: spacing.md,
+        flexWrap: 'wrap',
+        gap: SPACING.xs,
+        marginBottom: SPACING.lg,
     },
     filterTab: {
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
-        backgroundColor: colors.surface,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.full,
+        backgroundColor: COLORS.surfaceElevated,
     },
     filterTabActive: {
-        backgroundColor: colors.accent.primary,
+        backgroundColor: '#6366F1',
     },
     filterTabText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
     filterTabTextActive: {
         color: '#FFF',
     },
 
     // Section
-    section: {
-        paddingHorizontal: spacing.lg,
-    },
     sectionTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.md,
-    },
-    listContent: {
-        paddingBottom: spacing.xl,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.md,
     },
 
     // Student Card
     studentCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        marginBottom: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    avatar: {
+    studentAvatar: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: colors.accent.light,
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    avatarText: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
+    studentAvatarText: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#6366F1',
     },
     studentInfo: {
         flex: 1,
-        marginLeft: spacing.md,
+        marginLeft: SPACING.md,
     },
     studentName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
     studentMeta: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
+        gap: SPACING.xs,
         marginTop: 2,
     },
-    submittedAt: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    studentDate: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
     statusBadge: {
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
-        marginRight: spacing.sm,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.lg,
+        marginRight: SPACING.sm,
     },
     statusBadgeText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
     },
 
     // Modal
-    modalContainer: {
+    modalWrapper: {
         flex: 1,
-        backgroundColor: colors.background,
+        justifyContent: 'flex-end',
     },
-    modalHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    modalCancel: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-    },
-    modalTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    modalSave: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
     },
     modalContent: {
-        padding: spacing.lg,
+        backgroundColor: COLORS.surface,
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        padding: SPACING.xl,
+        paddingBottom: 50,
     },
-
-    // Grading Student Card
-    gradingStudentCard: {
+    modalHandle: {
+        width: 40,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        alignSelf: 'center',
+        marginBottom: SPACING.lg,
+    },
+    modalTitle: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xl,
+        textAlign: 'center',
+    },
+    gradingHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
-        marginBottom: spacing.lg,
+        gap: SPACING.md,
+        marginBottom: SPACING.lg,
     },
     gradingAvatar: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: colors.accent.primary,
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: spacing.md,
     },
     gradingAvatarText: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#6366F1',
     },
-    gradingStudentName: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+    gradingName: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
     },
-    gradingSubmittedAt: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: 2,
+    gradingDate: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
-
-    // File Card
     fileCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.md,
-        marginBottom: spacing.lg,
-        borderWidth: 1,
-        borderColor: colors.accent.primary,
+        gap: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginBottom: SPACING.lg,
     },
-    fileIconBox: {
-        width: 48,
-        height: 48,
-        borderRadius: borderRadius.lg,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    fileInfo: {
+    fileCardName: {
         flex: 1,
-        marginLeft: spacing.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: '#6366F1',
     },
-    fileName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+    inputGroup: {
+        marginBottom: SPACING.lg,
     },
-    fileAction: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
+    inputLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.sm,
     },
-
-    // Grade Input
-    gradeInputGroup: {
-        marginBottom: spacing.lg,
+    input: {
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    gradeLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
-    },
-    scoreInputRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    scoreInput: {
-        width: 100,
-        fontSize: typography.size['3xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        textAlign: 'center',
-    },
-    scoreMax: {
-        fontSize: typography.size.xl,
-        color: colors.text.tertiary,
-        marginLeft: spacing.sm,
-    },
-
-    // Quick Grades
     quickGrades: {
         flexDirection: 'row',
-        gap: spacing.sm,
-        marginBottom: spacing.lg,
+        gap: SPACING.sm,
+        marginBottom: SPACING.lg,
     },
-    quickGradeButton: {
+    quickGrade: {
         flex: 1,
         alignItems: 'center',
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
+        paddingVertical: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
         borderWidth: 2,
-        borderColor: colors.divider,
+        borderColor: 'transparent',
     },
-    quickGradeButtonActive: {
-        borderColor: colors.accent.primary,
-        backgroundColor: colors.accent.light,
+    quickGradeActive: {
+        borderColor: '#6366F1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
     },
     quickGradeEmoji: {
         fontSize: 24,
+        marginBottom: 4,
     },
     quickGradeValue: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: colors.text.tertiary,
-        marginTop: spacing.xs,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
     },
     quickGradeValueActive: {
-        color: colors.accent.primary,
+        color: '#6366F1',
     },
-
-    // Text Input
-    textInput: {
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.divider,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+    modalButtons: {
+        flexDirection: 'row',
+        gap: SPACING.md,
     },
-    textArea: {
-        minHeight: 120,
+    modalBtnCancel: {
+        flex: 1,
+        paddingVertical: SPACING.lg,
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.xl,
+    },
+    modalBtnCancelText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
+    },
+    modalBtnConfirm: {
+        flex: 1,
+        paddingVertical: SPACING.lg,
+        alignItems: 'center',
+        backgroundColor: '#6366F1',
+        borderRadius: RADIUS.xl,
+    },
+    modalBtnConfirmText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 });

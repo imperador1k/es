@@ -34,12 +34,19 @@ export interface Profile {
     // Status
     status: 'online' | 'offline' | 'away' | 'dnd';
     last_seen_at: string | null;
-    // Novos campos de Gamificação e Social
+    // Gamificação e Social
     current_streak?: number;       // Dias seguidos
     longest_streak?: number;       // Recorde de dias
     last_activity_date?: string;   // Data da ultima atividade
     active_theme?: string;         // Tema visual equipado
     active_frame?: string;         // Moldura equipada
+    // Consumíveis
+    streak_freezes?: number;           // Número de freezes disponíveis
+    xp_multiplier?: number;            // Multiplicador XP atual (1.0 = normal)
+    xp_multiplier_expires?: string;    // Quando expira o boost
+    equipped_title?: string | null;    // Título equipado
+    equipped_frame?: string | null;    // Frame UUID equipado
+    current_theme?: string;            // Tema atual
     created_at: string;
     updated_at?: string;
 }

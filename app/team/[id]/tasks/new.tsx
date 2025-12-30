@@ -1,19 +1,21 @@
 /**
- * Create Task Wizard - Clean Version
- * Wizard de 3 passos para criar tarefas
+ * Create Task Wizard - ULTRA PREMIUM Design
+ * Wizard de 3 passos para criar tarefas com design absurdamente profissional
  * Passo 1: Detalhes | Passo 2: Configuração | Passo 3: Atribuição
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -35,22 +37,20 @@ type AssignmentType = 'individual' | 'team' | 'groups';
 interface TeamMember {
     user_id: string;
     role: string;
-    profile: {
-        username: string;
-        full_name: string;
-        avatar_url: string;
-    };
+    profile: { username: string; full_name: string; avatar_url: string };
 }
 
-// ============================================
-// CONSTANTS
-// ============================================
-
 const FILE_TYPES = [
-    { id: 'pdf', label: 'PDF', icon: 'document-text-outline' },
-    { id: 'jpg', label: 'Imagem', icon: 'image-outline' },
-    { id: 'docx', label: 'Word', icon: 'document-outline' },
-    { id: 'zip', label: 'ZIP', icon: 'archive-outline' },
+    { id: 'pdf', label: 'PDF', icon: 'document-text', color: '#EF4444' },
+    { id: 'jpg', label: 'Imagem', icon: 'image', color: '#8B5CF6' },
+    { id: 'docx', label: 'Word', icon: 'document', color: '#3B82F6' },
+    { id: 'zip', label: 'ZIP', icon: 'archive', color: '#6B7280' },
+];
+
+const STEP_CONFIG = [
+    { num: 1, icon: 'create-outline', label: 'Detalhes', emoji: '📝' },
+    { num: 2, icon: 'settings-outline', label: 'Regras', emoji: '⚙️' },
+    { num: 3, icon: 'people-outline', label: 'Atribuir', emoji: '👥' },
 ];
 
 // ============================================
@@ -61,13 +61,11 @@ export default function CreateTaskScreen() {
     const { id: teamId } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
 
-    // Wizard Step (1, 2, 3)
     const [step, setStep] = useState(1);
     const [publishing, setPublishing] = useState(false);
+    const progressAnim = useRef(new Animated.Value(1)).current;
 
-    // ============================================
-    // STEP 1: DETALHES
-    // ============================================
+    // Step 1
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [dueDate, setDueDate] = useState<Date | null>(null);
@@ -75,119 +73,67 @@ export default function CreateTaskScreen() {
     const [showTimePicker, setShowTimePicker] = useState(false);
     const [xpReward, setXpReward] = useState('50');
 
-    // ============================================
-    // STEP 2: CONFIGURAÇÃO
-    // ============================================
+    // Step 2
     const [requiresFile, setRequiresFile] = useState(false);
     const [allowedTypes, setAllowedTypes] = useState<string[]>(['pdf']);
     const [allowLate, setAllowLate] = useState(false);
     const [maxScore, setMaxScore] = useState('20');
 
-    // ============================================
-    // STEP 3: ATRIBUIÇÃO
-    // ============================================
+    // Step 3
     const [assignmentType, setAssignmentType] = useState<AssignmentType>('team');
-    const [membersPerGroup, setMembersPerGroup] = useState('4');
-    const [teamMemberCount, setTeamMemberCount] = useState(0);
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
     const [memberGroups, setMemberGroups] = useState<Map<string, number>>(new Map());
     const [numGroups, setNumGroups] = useState('2');
 
-    // Fetch team members
     useEffect(() => {
-        if (teamId) {
-            fetchTeamMembers();
-        }
+        if (teamId) fetchTeamMembers();
     }, [teamId]);
 
-    const fetchTeamMembers = async () => {
-        const { data, count } = await supabase
-            .from('team_members')
-            .select(`
-                user_id,
-                role,
-                profile:profiles(username, full_name, avatar_url)
-            `, { count: 'exact' })
-            .eq('team_id', teamId)
-            .neq('role', 'owner'); // Exclude owner from assignments
+    useEffect(() => {
+        Animated.spring(progressAnim, { toValue: step, useNativeDriver: false }).start();
+    }, [step]);
 
-        setTeamMemberCount((count || 0) + 1); // Total including owner
+    const fetchTeamMembers = async () => {
+        const { data } = await supabase
+            .from('team_members')
+            .select(`user_id, role, profile:profiles(username, full_name, avatar_url)`)
+            .eq('team_id', teamId)
+            .neq('role', 'owner');
 
         if (data) {
-            const members = data
-                .filter(m => m.profile && !Array.isArray(m.profile))
-                .map(m => {
-                    const profile = m.profile as unknown as { username: string; full_name: string; avatar_url: string };
-                    return {
-                        user_id: m.user_id,
-                        role: m.role,
-                        profile,
-                    };
-                });
+            const members = data.filter((m) => m.profile && !Array.isArray(m.profile)).map((m) => ({
+                user_id: m.user_id,
+                role: m.role,
+                profile: m.profile as unknown as { username: string; full_name: string; avatar_url: string },
+            }));
             setTeamMembers(members);
-
-            // Initialize all members to group 1
             const initial = new Map<string, number>();
-            members.forEach(m => initial.set(m.user_id, 1));
+            members.forEach((m) => initial.set(m.user_id, 1));
             setMemberGroups(initial);
         }
     };
 
-    // ============================================
-    // NAVIGATION
-    // ============================================
-
-    const canContinue = () => {
-        if (step === 1) {
-            return title.trim().length > 0;
-        }
-        return true;
-    };
+    const canContinue = () => (step === 1 ? title.trim().length > 0 : true);
 
     const handleNext = () => {
         if (!canContinue()) {
             Alert.alert('Atenção', 'Preenche os campos obrigatórios.');
             return;
         }
-        setStep(prev => Math.min(prev + 1, 3));
+        setStep((prev) => Math.min(prev + 1, 3));
     };
 
-    const handleBack = () => {
-        if (step === 1) {
-            router.back();
-        } else {
-            setStep(prev => prev - 1);
-        }
-    };
-
-    // ============================================
-    // HELPERS
-    // ============================================
+    const handleBack = () => (step === 1 ? router.back() : setStep((prev) => prev - 1));
 
     const toggleFileType = (type: string) => {
-        setAllowedTypes(prev =>
-            prev.includes(type)
-                ? prev.filter(t => t !== type)
-                : [...prev, type]
-        );
+        setAllowedTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
     };
-
-    const calculateGroups = () => {
-        const perGroup = parseInt(membersPerGroup) || 4;
-        const members = teamMemberCount - 1; // Exclui owner
-        return Math.ceil(members / perGroup);
-    };
-
-    // ============================================
-    // PUBLISH
-    // ============================================
 
     const handlePublish = async () => {
         if (!teamId || !user?.id) return;
 
         setPublishing(true);
         try {
-            // 1. Criar a tarefa
             const { data: task, error: taskError } = await supabase
                 .from('tasks')
                 .insert({
@@ -214,30 +160,17 @@ export default function CreateTaskScreen() {
 
             if (taskError) throw taskError;
 
-            // 2. Atribuir baseado no tipo
             if (assignmentType === 'team') {
-                // Atribuir a toda a equipa
-                const { error: assignError } = await supabase.rpc('assign_task_to_team', {
-                    p_task_id: task.id,
-                    p_team_id: teamId,
-                });
-                if (assignError) console.error('Assign error:', assignError);
+                await supabase.rpc('assign_task_to_team', { p_task_id: task.id, p_team_id: teamId });
             } else if (assignmentType === 'groups') {
-                // Gerar grupos aleatórios
-                const { error: groupError } = await supabase.rpc('generate_random_groups', {
+                await supabase.rpc('generate_random_groups', {
                     p_task_id: task.id,
                     p_team_id: teamId,
-                    p_members_per_group: parseInt(membersPerGroup) || 4,
+                    p_members_per_group: 4,
                 });
-                if (groupError) console.error('Group error:', groupError);
             }
-            // Se for 'individual', o professor atribui depois
 
-            Alert.alert(
-                '✅ Tarefa Publicada!',
-                'A tarefa foi criada com sucesso.',
-                [{ text: 'OK', onPress: () => router.back() }]
-            );
+            Alert.alert('🚀 Tarefa Publicada!', 'A tarefa foi criada com sucesso.', [{ text: 'OK', onPress: () => router.back() }]);
         } catch (error) {
             console.error('Error publishing task:', error);
             Alert.alert('Erro', 'Não foi possível criar a tarefa.');
@@ -251,449 +184,347 @@ export default function CreateTaskScreen() {
     // ============================================
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable onPress={handleBack} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={colors.text.primary} />
-                </Pressable>
-                <Text style={styles.headerTitle}>Nova Tarefa</Text>
-                <Text style={styles.stepIndicator}>{step}/3</Text>
-            </View>
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Pressable style={styles.backButton} onPress={handleBack}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                    </Pressable>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>🚀 Nova Tarefa</Text>
+                    </View>
+                </View>
 
-            {/* Progress Bar */}
-            <View style={styles.progressContainer}>
-                <View style={[styles.progressBar, { width: `${(step / 3) * 100}%` }]} />
-            </View>
-
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            >
-                <ScrollView
-                    style={styles.scrollView}
-                    contentContainerStyle={styles.scrollContent}
-                    showsVerticalScrollIndicator={false}
-                >
-                    {/* ================== STEP 1: DETALHES ================== */}
-                    {step === 1 && (
-                        <View style={styles.stepContainer}>
-                            <Text style={styles.stepTitle}>📝 Detalhes da Tarefa</Text>
-                            <Text style={styles.stepSubtitle}>
-                                Define as informações básicas
-                            </Text>
-
-                            {/* Título */}
-                            <View style={styles.field}>
-                                <Text style={styles.label}>Título *</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={title}
-                                    onChangeText={setTitle}
-                                    placeholder="Ex: Trabalho de Grupo - Capítulo 5"
-                                    placeholderTextColor={colors.text.tertiary}
-                                />
-                            </View>
-
-                            {/* Descrição */}
-                            <View style={styles.field}>
-                                <Text style={styles.label}>Descrição</Text>
-                                <TextInput
-                                    style={[styles.input, styles.textArea]}
-                                    value={description}
-                                    onChangeText={setDescription}
-                                    placeholder="Instruções, objetivos, critérios de avaliação..."
-                                    placeholderTextColor={colors.text.tertiary}
-                                    multiline
-                                    numberOfLines={6}
-                                    textAlignVertical="top"
-                                />
-                            </View>
-
-                            {/* Data de Entrega */}
-                            <View style={styles.field}>
-                                <Text style={styles.label}>Data de Entrega</Text>
-                                <Pressable
-                                    style={styles.dateButton}
-                                    onPress={() => setShowDatePicker(true)}
-                                >
-                                    <Ionicons
-                                        name="calendar-outline"
-                                        size={20}
-                                        color={dueDate ? colors.accent.primary : colors.text.tertiary}
-                                    />
-                                    <Text style={[
-                                        styles.dateText,
-                                        dueDate && styles.dateTextActive
-                                    ]}>
-                                        {dueDate
-                                            ? dueDate.toLocaleDateString('pt-PT', {
-                                                weekday: 'short',
-                                                day: '2-digit',
-                                                month: 'short',
-                                                hour: '2-digit',
-                                                minute: '2-digit',
-                                            })
-                                            : 'Sem prazo definido'}
-                                    </Text>
-                                    {dueDate && (
-                                        <Pressable onPress={(e) => {
-                                            e.stopPropagation();
-                                            setDueDate(null);
-                                        }}>
-                                            <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
-                                        </Pressable>
+                {/* Step Indicator */}
+                <View style={styles.stepsContainer}>
+                    {STEP_CONFIG.map((s, i) => (
+                        <React.Fragment key={s.num}>
+                            <Pressable
+                                style={[styles.stepItem, step >= s.num && styles.stepItemActive]}
+                                onPress={() => s.num <= step && setStep(s.num)}
+                            >
+                                <View style={[styles.stepCircle, step >= s.num && styles.stepCircleActive, step === s.num && styles.stepCircleCurrent]}>
+                                    {step > s.num ? (
+                                        <Ionicons name="checkmark" size={16} color="#FFF" />
+                                    ) : (
+                                        <Text style={styles.stepEmoji}>{s.emoji}</Text>
                                     )}
-                                </Pressable>
-                                {showDatePicker && (
-                                    <View style={styles.datePickerContainer}>
-                                        <DateTimePicker
-                                            value={dueDate || new Date()}
-                                            mode={Platform.OS === 'ios' ? 'datetime' : 'date'}
-                                            display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-                                            minimumDate={new Date()}
-                                            onChange={(event, date) => {
-                                                if (Platform.OS === 'android') {
-                                                    setShowDatePicker(false);
-                                                    if (event.type === 'set' && date) {
-                                                        setDueDate(date);
-                                                        // Show time picker after date is selected
-                                                        setShowTimePicker(true);
-                                                    }
-                                                } else if (date) {
-                                                    setDueDate(date);
-                                                }
-                                            }}
-                                        />
-                                        {Platform.OS === 'ios' && (
-                                            <Pressable
-                                                style={styles.datePickerDoneButton}
-                                                onPress={() => setShowDatePicker(false)}
-                                            >
-                                                <Text style={styles.datePickerDoneText}>Confirmar</Text>
+                                </View>
+                                <Text style={[styles.stepLabel, step >= s.num && styles.stepLabelActive]}>{s.label}</Text>
+                            </Pressable>
+                            {i < STEP_CONFIG.length - 1 && (
+                                <View style={[styles.stepLine, step > s.num && styles.stepLineActive]} />
+                            )}
+                        </React.Fragment>
+                    ))}
+                </View>
+
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                        {/* STEP 1: DETALHES */}
+                        {step === 1 && (
+                            <View style={styles.stepContent}>
+                                <View style={styles.stepHeader}>
+                                    <Text style={styles.stepTitle}>📝 Detalhes da Tarefa</Text>
+                                    <Text style={styles.stepSubtitle}>Define as informações básicas</Text>
+                                </View>
+
+                                <View style={styles.card}>
+                                    <Text style={styles.cardLabel}>Título *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={title}
+                                        onChangeText={setTitle}
+                                        placeholder="Ex: Trabalho de Grupo - Capítulo 5"
+                                        placeholderTextColor={COLORS.text.tertiary}
+                                    />
+                                </View>
+
+                                <View style={styles.card}>
+                                    <Text style={styles.cardLabel}>Descrição</Text>
+                                    <TextInput
+                                        style={[styles.input, styles.textArea]}
+                                        value={description}
+                                        onChangeText={setDescription}
+                                        placeholder="Instruções, objetivos, critérios..."
+                                        placeholderTextColor={COLORS.text.tertiary}
+                                        multiline
+                                        textAlignVertical="top"
+                                    />
+                                </View>
+
+                                <View style={styles.card}>
+                                    <Text style={styles.cardLabel}>Data de Entrega</Text>
+                                    <Pressable style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
+                                        <LinearGradient
+                                            colors={dueDate ? ['#6366F1', '#4F46E5'] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
+                                            style={styles.dateIconBg}
+                                        >
+                                            <Ionicons name="calendar" size={20} color={dueDate ? '#FFF' : COLORS.text.tertiary} />
+                                        </LinearGradient>
+                                        <Text style={[styles.dateText, dueDate && styles.dateTextActive]}>
+                                            {dueDate
+                                                ? dueDate.toLocaleDateString('pt-PT', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                                                : 'Sem prazo definido'}
+                                        </Text>
+                                        {dueDate && (
+                                            <Pressable onPress={() => setDueDate(null)}>
+                                                <Ionicons name="close-circle" size={20} color={COLORS.text.tertiary} />
                                             </Pressable>
                                         )}
-                                    </View>
-                                )}
-                                {/* Time picker for Android */}
-                                {showTimePicker && Platform.OS === 'android' && (
-                                    <DateTimePicker
-                                        value={dueDate || new Date()}
-                                        mode="time"
-                                        display="clock"
-                                        onChange={(event, date) => {
-                                            setShowTimePicker(false);
-                                            if (event.type === 'set' && date) {
-                                                setDueDate(date);
-                                            }
-                                        }}
-                                    />
-                                )}
-                            </View>
-
-                            {/* XP Reward */}
-                            <View style={styles.field}>
-                                <Text style={styles.label}>Recompensa XP</Text>
-                                <View style={styles.xpRow}>
-                                    <TextInput
-                                        style={[styles.input, styles.xpInput]}
-                                        value={xpReward}
-                                        onChangeText={setXpReward}
-                                        keyboardType="number-pad"
-                                        placeholder="50"
-                                        placeholderTextColor={colors.text.tertiary}
-                                    />
-                                    <View style={styles.xpBadge}>
-                                        <Ionicons name="flash" size={16} color={colors.warning.primary} />
-                                        <Text style={styles.xpBadgeText}>XP</Text>
-                                    </View>
+                                    </Pressable>
+                                    {showDatePicker && (
+                                        <View style={styles.datePickerWrap}>
+                                            <DateTimePicker
+                                                value={dueDate || new Date()}
+                                                mode={Platform.OS === 'ios' ? 'datetime' : 'date'}
+                                                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+                                                minimumDate={new Date()}
+                                                onChange={(event, date) => {
+                                                    if (Platform.OS === 'android') {
+                                                        setShowDatePicker(false);
+                                                        if (event.type === 'set' && date) {
+                                                            setDueDate(date);
+                                                            setShowTimePicker(true);
+                                                        }
+                                                    } else if (date) {
+                                                        setDueDate(date);
+                                                    }
+                                                }}
+                                            />
+                                            {Platform.OS === 'ios' && (
+                                                <Pressable style={styles.datePickerDone} onPress={() => setShowDatePicker(false)}>
+                                                    <Text style={styles.datePickerDoneText}>Confirmar</Text>
+                                                </Pressable>
+                                            )}
+                                        </View>
+                                    )}
+                                    {showTimePicker && Platform.OS === 'android' && (
+                                        <DateTimePicker
+                                            value={dueDate || new Date()}
+                                            mode="time"
+                                            display="clock"
+                                            onChange={(event, date) => {
+                                                setShowTimePicker(false);
+                                                if (event.type === 'set' && date) setDueDate(date);
+                                            }}
+                                        />
+                                    )}
                                 </View>
-                            </View>
-                        </View>
-                    )}
 
-                    {/* ================== STEP 2: CONFIGURAÇÃO ================== */}
-                    {step === 2 && (
-                        <View style={styles.stepContainer}>
-                            <Text style={styles.stepTitle}>⚙️ Configuração</Text>
-                            <Text style={styles.stepSubtitle}>
-                                Define as regras de entrega
-                            </Text>
-
-                            {/* Exigir Ficheiro */}
-                            <View style={styles.switchCard}>
-                                <View style={styles.switchContent}>
-                                    <Ionicons
-                                        name="attach"
-                                        size={24}
-                                        color={requiresFile ? colors.accent.primary : colors.text.tertiary}
-                                    />
-                                    <View style={styles.switchText}>
-                                        <Text style={styles.switchLabel}>Exigir Ficheiro</Text>
-                                        <Text style={styles.switchDescription}>
-                                            Alunos devem anexar um ficheiro
-                                        </Text>
-                                    </View>
-                                </View>
-                                <Switch
-                                    value={requiresFile}
-                                    onValueChange={setRequiresFile}
-                                    trackColor={{ false: colors.divider, true: colors.accent.primary }}
-                                    thumbColor="#FFF"
-                                />
-                            </View>
-
-                            {/* Tipos de Ficheiro */}
-                            {requiresFile && (
-                                <View style={styles.fileTypesContainer}>
-                                    <Text style={styles.smallLabel}>Tipos permitidos:</Text>
-                                    <View style={styles.fileTypesRow}>
-                                        {FILE_TYPES.map(type => (
+                                <View style={styles.card}>
+                                    <Text style={styles.cardLabel}>Recompensa XP</Text>
+                                    <View style={styles.xpRow}>
+                                        {['25', '50', '100', '150'].map((xp) => (
                                             <Pressable
-                                                key={type.id}
-                                                style={[
-                                                    styles.fileTypeChip,
-                                                    allowedTypes.includes(type.id) && styles.fileTypeChipActive,
-                                                ]}
-                                                onPress={() => toggleFileType(type.id)}
+                                                key={xp}
+                                                style={[styles.xpOption, xpReward === xp && styles.xpOptionActive]}
+                                                onPress={() => setXpReward(xp)}
                                             >
-                                                <Ionicons
-                                                    name={type.icon as any}
-                                                    size={16}
-                                                    color={allowedTypes.includes(type.id) ? '#FFF' : colors.text.secondary}
-                                                />
-                                                <Text style={[
-                                                    styles.fileTypeText,
-                                                    allowedTypes.includes(type.id) && styles.fileTypeTextActive,
-                                                ]}>
-                                                    {type.label}
-                                                </Text>
+                                                <Ionicons name="flash" size={16} color={xpReward === xp ? '#FFD700' : COLORS.text.tertiary} />
+                                                <Text style={[styles.xpOptionText, xpReward === xp && styles.xpOptionTextActive]}>{xp}</Text>
                                             </Pressable>
                                         ))}
                                     </View>
                                 </View>
-                            )}
-
-                            {/* Permitir Atraso */}
-                            <View style={styles.switchCard}>
-                                <View style={styles.switchContent}>
-                                    <Ionicons
-                                        name="time-outline"
-                                        size={24}
-                                        color={allowLate ? colors.warning.primary : colors.text.tertiary}
-                                    />
-                                    <View style={styles.switchText}>
-                                        <Text style={styles.switchLabel}>Permitir Atraso</Text>
-                                        <Text style={styles.switchDescription}>
-                                            Aceitar entregas após o prazo
-                                        </Text>
-                                    </View>
-                                </View>
-                                <Switch
-                                    value={allowLate}
-                                    onValueChange={setAllowLate}
-                                    trackColor={{ false: colors.divider, true: colors.warning.primary }}
-                                    thumbColor="#FFF"
-                                />
                             </View>
+                        )}
 
-                            {/* Nota Máxima */}
-                            <View style={styles.field}>
-                                <Text style={styles.label}>Nota Máxima</Text>
-                                <View style={styles.scoreOptionsRow}>
-                                    {['10', '20', '100'].map(score => (
-                                        <Pressable
-                                            key={score}
-                                            style={[
-                                                styles.scoreOption,
-                                                maxScore === score && styles.scoreOptionActive,
-                                            ]}
-                                            onPress={() => setMaxScore(score)}
-                                        >
-                                            <Text style={[
-                                                styles.scoreOptionText,
-                                                maxScore === score && styles.scoreOptionTextActive,
-                                            ]}>
-                                                {score}
-                                            </Text>
-                                        </Pressable>
-                                    ))}
+                        {/* STEP 2: CONFIGURAÇÃO */}
+                        {step === 2 && (
+                            <View style={styles.stepContent}>
+                                <View style={styles.stepHeader}>
+                                    <Text style={styles.stepTitle}>⚙️ Configuração</Text>
+                                    <Text style={styles.stepSubtitle}>Define as regras de entrega</Text>
                                 </View>
-                            </View>
-                        </View>
-                    )}
 
-                    {/* ================== STEP 3: ATRIBUIÇÃO ================== */}
-                    {step === 3 && (
-                        <View style={styles.stepContainer}>
-                            <Text style={styles.stepTitle}>👥 Atribuição</Text>
-                            <Text style={styles.stepSubtitle}>
-                                Quem vai realizar esta tarefa?
-                            </Text>
-
-                            {/* Segmented Control */}
-                            <View style={styles.segmentedControl}>
-                                {[
-                                    { id: 'individual', label: 'Individual', icon: 'person-outline' },
-                                    { id: 'team', label: 'Toda a Equipa', icon: 'people-outline' },
-                                    { id: 'groups', label: 'Grupos', icon: 'git-branch-outline' },
-                                ].map(option => (
-                                    <Pressable
-                                        key={option.id}
-                                        style={[
-                                            styles.segmentOption,
-                                            assignmentType === option.id && styles.segmentOptionActive,
-                                        ]}
-                                        onPress={() => setAssignmentType(option.id as AssignmentType)}
+                                {/* Require File */}
+                                <View style={styles.switchCard}>
+                                    <LinearGradient
+                                        colors={requiresFile ? ['#6366F1', '#4F46E5'] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
+                                        style={styles.switchIcon}
                                     >
-                                        <Ionicons
-                                            name={option.icon as any}
-                                            size={20}
-                                            color={assignmentType === option.id ? '#FFF' : colors.text.tertiary}
-                                        />
-                                        <Text style={[
-                                            styles.segmentLabel,
-                                            assignmentType === option.id && styles.segmentLabelActive,
-                                        ]}>
-                                            {option.label}
-                                        </Text>
-                                    </Pressable>
-                                ))}
-                            </View>
-
-                            {/* Info Cards */}
-                            {assignmentType === 'team' && (
-                                <View style={styles.infoCard}>
-                                    <Ionicons name="people" size={32} color={colors.accent.primary} />
-                                    <Text style={styles.infoCardText}>
-                                        A tarefa será atribuída a todos os{' '}
-                                        <Text style={styles.infoCardHighlight}>{teamMemberCount - 1} membros</Text>
-                                        {' '}da equipa.
-                                    </Text>
+                                        <Ionicons name="attach" size={22} color={requiresFile ? '#FFF' : COLORS.text.tertiary} />
+                                    </LinearGradient>
+                                    <View style={styles.switchText}>
+                                        <Text style={styles.switchLabel}>Exigir Ficheiro</Text>
+                                        <Text style={styles.switchDesc}>Alunos devem anexar ficheiro</Text>
+                                    </View>
+                                    <Switch
+                                        value={requiresFile}
+                                        onValueChange={setRequiresFile}
+                                        trackColor={{ false: 'rgba(255,255,255,0.1)', true: '#6366F1' }}
+                                        thumbColor="#FFF"
+                                    />
                                 </View>
-                            )}
 
-                            {assignmentType === 'individual' && (
-                                <View style={[styles.infoCard, { backgroundColor: colors.warning.light }]}>
-                                    <Ionicons name="person" size={32} color={colors.warning.primary} />
-                                    <Text style={styles.infoCardText}>
-                                        Poderás atribuir a alunos específicos depois de criar a tarefa.
-                                    </Text>
-                                </View>
-                            )}
-
-                            {assignmentType === 'groups' && (
-                                <View style={styles.groupsConfig}>
-                                    {/* Number of groups selector */}
-                                    <View style={styles.groupsInputRow}>
-                                        <Text style={styles.groupsLabel}>
-                                            Número de grupos:
-                                        </Text>
-                                        <View style={styles.groupNumberSelector}>
-                                            {['2', '3', '4', '5', '6'].map(num => (
+                                {requiresFile && (
+                                    <View style={styles.fileTypesCard}>
+                                        <Text style={styles.fileTypesLabel}>Tipos permitidos:</Text>
+                                        <View style={styles.fileTypesRow}>
+                                            {FILE_TYPES.map((type) => (
                                                 <Pressable
-                                                    key={num}
-                                                    style={[
-                                                        styles.groupNumberOption,
-                                                        numGroups === num && styles.groupNumberOptionActive
-                                                    ]}
-                                                    onPress={() => setNumGroups(num)}
+                                                    key={type.id}
+                                                    style={[styles.fileTypeChip, allowedTypes.includes(type.id) && { backgroundColor: type.color }]}
+                                                    onPress={() => toggleFileType(type.id)}
                                                 >
-                                                    <Text style={[
-                                                        styles.groupNumberText,
-                                                        numGroups === num && styles.groupNumberTextActive
-                                                    ]}>{num}</Text>
+                                                    <Ionicons name={type.icon as any} size={16} color={allowedTypes.includes(type.id) ? '#FFF' : COLORS.text.secondary} />
+                                                    <Text style={[styles.fileTypeText, allowedTypes.includes(type.id) && styles.fileTypeTextActive]}>
+                                                        {type.label}
+                                                    </Text>
                                                 </Pressable>
                                             ))}
                                         </View>
                                     </View>
+                                )}
 
-                                    {/* Member list with group assignment */}
-                                    <Text style={styles.groupsSectionTitle}>
-                                        Atribuir membros aos grupos:
-                                    </Text>
+                                {/* Allow Late */}
+                                <View style={styles.switchCard}>
+                                    <LinearGradient
+                                        colors={allowLate ? ['#F59E0B', '#D97706'] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
+                                        style={styles.switchIcon}
+                                    >
+                                        <Ionicons name="time" size={22} color={allowLate ? '#FFF' : COLORS.text.tertiary} />
+                                    </LinearGradient>
+                                    <View style={styles.switchText}>
+                                        <Text style={styles.switchLabel}>Permitir Atraso</Text>
+                                        <Text style={styles.switchDesc}>Aceitar entregas após prazo</Text>
+                                    </View>
+                                    <Switch
+                                        value={allowLate}
+                                        onValueChange={setAllowLate}
+                                        trackColor={{ false: 'rgba(255,255,255,0.1)', true: '#F59E0B' }}
+                                        thumbColor="#FFF"
+                                    />
+                                </View>
 
-                                    <View style={styles.membersList}>
-                                        {teamMembers.map(member => (
-                                            <View key={member.user_id} style={styles.memberGroupRow}>
-                                                <View style={styles.memberInfo}>
-                                                    <View style={[styles.memberAvatar, { backgroundColor: colors.accent.light }]}>
-                                                        <Text style={styles.memberAvatarText}>
-                                                            {(member.profile.full_name || member.profile.username || '?').charAt(0).toUpperCase()}
-                                                        </Text>
-                                                    </View>
-                                                    <Text style={styles.memberName} numberOfLines={1}>
-                                                        {member.profile.full_name || member.profile.username}
-                                                    </Text>
-                                                </View>
-                                                <View style={styles.groupSelector}>
-                                                    {Array.from({ length: parseInt(numGroups) }, (_, i) => i + 1).map(groupNum => (
-                                                        <Pressable
-                                                            key={groupNum}
-                                                            style={[
-                                                                styles.groupSelectorOption,
-                                                                memberGroups.get(member.user_id) === groupNum && styles.groupSelectorOptionActive
-                                                            ]}
-                                                            onPress={() => {
-                                                                const newMap = new Map(memberGroups);
-                                                                newMap.set(member.user_id, groupNum);
-                                                                setMemberGroups(newMap);
-                                                            }}
-                                                        >
-                                                            <Text style={[
-                                                                styles.groupSelectorText,
-                                                                memberGroups.get(member.user_id) === groupNum && styles.groupSelectorTextActive
-                                                            ]}>G{groupNum}</Text>
-                                                        </Pressable>
-                                                    ))}
-                                                </View>
-                                            </View>
+                                {/* Max Score */}
+                                <View style={styles.card}>
+                                    <Text style={styles.cardLabel}>Nota Máxima</Text>
+                                    <View style={styles.scoreRow}>
+                                        {['10', '20', '100'].map((score) => (
+                                            <Pressable
+                                                key={score}
+                                                style={[styles.scoreOption, maxScore === score && styles.scoreOptionActive]}
+                                                onPress={() => setMaxScore(score)}
+                                            >
+                                                <Text style={[styles.scoreOptionText, maxScore === score && styles.scoreOptionTextActive]}>{score}</Text>
+                                            </Pressable>
                                         ))}
                                     </View>
+                                </View>
+                            </View>
+                        )}
 
-                                    {/* Group summary */}
-                                    <View style={styles.groupsSummary}>
-                                        <Ionicons name="information-circle-outline" size={16} color={colors.accent.primary} />
-                                        <Text style={styles.groupsSummaryText}>
-                                            {parseInt(numGroups)} grupos • {teamMembers.length} membros atribuídos
+                        {/* STEP 3: ATRIBUIÇÃO */}
+                        {step === 3 && (
+                            <View style={styles.stepContent}>
+                                <View style={styles.stepHeader}>
+                                    <Text style={styles.stepTitle}>👥 Atribuição</Text>
+                                    <Text style={styles.stepSubtitle}>Quem vai realizar esta tarefa?</Text>
+                                </View>
+
+                                {/* Assignment Type */}
+                                <View style={styles.assignmentGrid}>
+                                    {[
+                                        { id: 'team' as AssignmentType, icon: 'people', label: 'Toda Equipa', desc: `${teamMembers.length} membros`, color: '#6366F1' },
+                                        { id: 'individual' as AssignmentType, icon: 'person', label: 'Individual', desc: 'Atribuir depois', color: '#F59E0B' },
+                                        { id: 'groups' as AssignmentType, icon: 'git-branch', label: 'Grupos', desc: 'Dividir em grupos', color: '#22C55E' },
+                                    ].map((opt) => (
+                                        <Pressable
+                                            key={opt.id}
+                                            style={[styles.assignmentCard, assignmentType === opt.id && styles.assignmentCardActive]}
+                                            onPress={() => setAssignmentType(opt.id)}
+                                        >
+                                            <LinearGradient
+                                                colors={assignmentType === opt.id ? [opt.color, opt.color] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
+                                                style={styles.assignmentIcon}
+                                            >
+                                                <Ionicons name={opt.icon as any} size={24} color={assignmentType === opt.id ? '#FFF' : COLORS.text.tertiary} />
+                                            </LinearGradient>
+                                            <Text style={[styles.assignmentLabel, assignmentType === opt.id && styles.assignmentLabelActive]}>{opt.label}</Text>
+                                            <Text style={styles.assignmentDesc}>{opt.desc}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+
+                                {/* Team Info */}
+                                {assignmentType === 'team' && (
+                                    <View style={styles.infoCard}>
+                                        <LinearGradient colors={['rgba(99,102,241,0.2)', 'rgba(99,102,241,0.05)']} style={styles.infoCardGradient}>
+                                            <Ionicons name="people" size={32} color="#6366F1" />
+                                            <Text style={styles.infoCardText}>
+                                                A tarefa será atribuída a todos os <Text style={styles.infoCardHighlight}>{teamMembers.length} membros</Text> da equipa
+                                            </Text>
+                                        </LinearGradient>
+                                    </View>
+                                )}
+
+                                {assignmentType === 'individual' && (
+                                    <View style={styles.infoCard}>
+                                        <LinearGradient colors={['rgba(245,158,11,0.2)', 'rgba(245,158,11,0.05)']} style={styles.infoCardGradient}>
+                                            <Ionicons name="person" size={32} color="#F59E0B" />
+                                            <Text style={styles.infoCardText}>Poderás atribuir a alunos específicos depois de criar a tarefa</Text>
+                                        </LinearGradient>
+                                    </View>
+                                )}
+
+                                {assignmentType === 'groups' && (
+                                    <View style={styles.groupsSection}>
+                                        <Text style={styles.groupsLabel}>Número de grupos:</Text>
+                                        <View style={styles.groupsRow}>
+                                            {['2', '3', '4', '5', '6'].map((num) => (
+                                                <Pressable
+                                                    key={num}
+                                                    style={[styles.groupOption, numGroups === num && styles.groupOptionActive]}
+                                                    onPress={() => setNumGroups(num)}
+                                                >
+                                                    <Text style={[styles.groupOptionText, numGroups === num && styles.groupOptionTextActive]}>{num}</Text>
+                                                </Pressable>
+                                            ))}
+                                        </View>
+
+                                        <Text style={styles.groupsInfo}>
+                                            <Ionicons name="information-circle" size={14} color="#22C55E" /> {parseInt(numGroups)} grupos com ~
+                                            {Math.ceil(teamMembers.length / parseInt(numGroups))} membros cada
                                         </Text>
                                     </View>
-                                </View>
-                            )}
-                        </View>
-                    )}
-                </ScrollView>
+                                )}
+                            </View>
+                        )}
+                    </ScrollView>
 
-                {/* Footer */}
-                <View style={styles.footer}>
-                    {step < 3 ? (
-                        <Pressable
-                            style={[styles.button, styles.buttonPrimary, !canContinue() && styles.buttonDisabled]}
-                            onPress={handleNext}
-                            disabled={!canContinue()}
-                        >
-                            <Text style={styles.buttonPrimaryText}>Continuar</Text>
-                            <Ionicons name="arrow-forward" size={20} color="#FFF" />
-                        </Pressable>
-                    ) : (
-                        <Pressable
-                            style={[styles.button, styles.buttonSuccess, publishing && styles.buttonDisabled]}
-                            onPress={handlePublish}
-                            disabled={publishing}
-                        >
-                            {publishing ? (
-                                <ActivityIndicator size="small" color="#FFF" />
-                            ) : (
-                                <>
-                                    <Ionicons name="rocket-outline" size={20} color="#FFF" />
-                                    <Text style={styles.buttonSuccessText}>Publicar Tarefa</Text>
-                                </>
-                            )}
-                        </Pressable>
-                    )}
-                </View>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+                    {/* Footer */}
+                    <View style={styles.footer}>
+                        {step < 3 ? (
+                            <Pressable onPress={handleNext} disabled={!canContinue()}>
+                                <LinearGradient
+                                    colors={canContinue() ? ['#6366F1', '#4F46E5'] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
+                                    style={styles.footerButton}
+                                >
+                                    <Text style={[styles.footerButtonText, !canContinue() && { color: COLORS.text.tertiary }]}>Continuar</Text>
+                                    <Ionicons name="arrow-forward" size={20} color={canContinue() ? '#FFF' : COLORS.text.tertiary} />
+                                </LinearGradient>
+                            </Pressable>
+                        ) : (
+                            <Pressable onPress={handlePublish} disabled={publishing}>
+                                <LinearGradient colors={['#22C55E', '#16A34A']} style={styles.footerButton}>
+                                    {publishing ? (
+                                        <ActivityIndicator color="#FFF" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="rocket" size={20} color="#FFF" />
+                                            <Text style={styles.footerButtonText}>Publicar Tarefa</Text>
+                                        </>
+                                    )}
+                                </LinearGradient>
+                            </Pressable>
+                        )}
+                    </View>
+                </KeyboardAvoidingView>
+            </SafeAreaView>
+        </View>
     );
 }
 
@@ -704,477 +535,412 @@ export default function CreateTaskScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
 
     // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        gap: spacing.md,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
     },
     backButton: {
-        width: 40,
-        height: 40,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: borderRadius.md,
-        backgroundColor: colors.surface,
+    },
+    headerContent: {
+        flex: 1,
+        marginLeft: SPACING.md,
     },
     headerTitle: {
-        flex: 1,
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    stepIndicator: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.accent.primary,
-        backgroundColor: colors.accent.light,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
 
-    // Progress Bar
-    progressContainer: {
-        height: 4,
-        backgroundColor: colors.divider,
+    // Steps
+    stepsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.lg,
+        gap: SPACING.sm,
     },
-    progressBar: {
-        height: '100%',
-        backgroundColor: colors.accent.primary,
+    stepItem: {
+        alignItems: 'center',
+        gap: SPACING.xs,
+    },
+    stepItemActive: {},
+    stepCircle: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    stepCircleActive: {
+        backgroundColor: '#6366F1',
+        borderColor: '#6366F1',
+    },
+    stepCircleCurrent: {
+        borderWidth: 3,
+        borderColor: 'rgba(99, 102, 241, 0.5)',
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
+    },
+    stepEmoji: {
+        fontSize: 18,
+    },
+    stepLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+    },
+    stepLabelActive: {
+        color: COLORS.text.primary,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    stepLine: {
+        flex: 1,
+        height: 2,
+        backgroundColor: COLORS.surfaceElevated,
+        maxWidth: 40,
+    },
+    stepLineActive: {
+        backgroundColor: '#6366F1',
     },
 
     // Scroll
-    scrollView: {
-        flex: 1,
-    },
     scrollContent: {
-        padding: spacing.lg,
-        paddingBottom: 100,
+        paddingHorizontal: SPACING.lg,
+        paddingBottom: 120,
     },
-
-    // Step Container
-    stepContainer: {
-        gap: spacing.lg,
+    stepContent: {
+        gap: SPACING.lg,
+    },
+    stepHeader: {
+        gap: SPACING.xs,
+        marginBottom: SPACING.sm,
     },
     stepTitle: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     stepSubtitle: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-        marginTop: -spacing.sm,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
     },
 
-    // Fields
-    field: {
-        gap: spacing.xs,
+    // Card
+    card: {
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    label: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    smallLabel: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        marginBottom: spacing.xs,
+    cardLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.md,
     },
     input: {
-        backgroundColor: colors.surface,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
         borderWidth: 1,
-        borderColor: colors.divider,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     textArea: {
-        minHeight: 140,
-        paddingTop: spacing.md,
+        height: 120,
+        textAlignVertical: 'top',
     },
 
-    // Date Button
+    // Date
     dateButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.divider,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
+        gap: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+    },
+    dateIconBg: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     dateText: {
         flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
     },
     dateTextActive: {
-        color: colors.text.primary,
+        color: COLORS.text.primary,
     },
-    datePickerContainer: {
-        marginTop: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.sm,
+    datePickerWrap: {
+        marginTop: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        overflow: 'hidden',
     },
-    datePickerDoneButton: {
-        backgroundColor: colors.accent.primary,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
+    datePickerDone: {
         alignItems: 'center',
-        marginTop: spacing.sm,
+        padding: SPACING.md,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.05)',
     },
     datePickerDoneText: {
-        color: '#FFF',
-        fontWeight: typography.weight.semibold,
-        fontSize: typography.size.base,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#6366F1',
     },
 
     // XP
     xpRow: {
         flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
-    xpInput: {
-        width: 80,
-        textAlign: 'center',
-    },
-    xpBadge: {
+    xpOption: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
-        backgroundColor: colors.warning.light,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
+        justifyContent: 'center',
+        gap: SPACING.xs,
+        paddingVertical: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        borderWidth: 2,
+        borderColor: 'transparent',
     },
-    xpBadgeText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: colors.warning.primary,
+    xpOptionActive: {
+        borderColor: '#FFD700',
+        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    },
+    xpOptionText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
+    },
+    xpOptionTextActive: {
+        color: '#FFD700',
     },
 
-    // Switch Cards
+    // Switch Card
     switchCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.md,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    switchContent: {
-        flexDirection: 'row',
+    switchIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
         alignItems: 'center',
-        gap: spacing.md,
-        flex: 1,
+        justifyContent: 'center',
     },
     switchText: {
         flex: 1,
+        marginLeft: SPACING.md,
     },
     switchLabel: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
-    switchDescription: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    switchDesc: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
 
     // File Types
-    fileTypesContainer: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginTop: -spacing.sm,
+    fileTypesCard: {
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    fileTypesLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        marginBottom: SPACING.md,
     },
     fileTypesRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     fileTypeChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
-        paddingVertical: spacing.xs,
-        paddingHorizontal: spacing.md,
-        borderRadius: borderRadius.full,
+        gap: SPACING.xs,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.full,
+        backgroundColor: COLORS.surfaceMuted,
         borderWidth: 1,
-        borderColor: colors.divider,
-        backgroundColor: colors.background,
-    },
-    fileTypeChipActive: {
-        backgroundColor: colors.accent.primary,
-        borderColor: colors.accent.primary,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     fileTypeText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
     },
     fileTypeTextActive: {
         color: '#FFF',
     },
 
-    // Score Options
-    scoreOptionsRow: {
+    // Score
+    scoreRow: {
         flexDirection: 'row',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     scoreOption: {
         flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing.lg,
-        borderRadius: borderRadius.lg,
+        paddingVertical: SPACING.lg,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
         borderWidth: 2,
-        borderColor: colors.divider,
-        backgroundColor: colors.surface,
+        borderColor: 'transparent',
     },
     scoreOptionActive: {
-        borderColor: colors.accent.primary,
-        backgroundColor: colors.accent.light,
+        borderColor: '#6366F1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
     },
     scoreOptionText: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.secondary,
     },
     scoreOptionTextActive: {
-        color: colors.accent.primary,
+        color: '#6366F1',
     },
 
-    // Segmented Control
-    segmentedControl: {
+    // Assignment Grid
+    assignmentGrid: {
         flexDirection: 'row',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.xs,
-        gap: spacing.xs,
+        gap: SPACING.md,
     },
-    segmentOption: {
+    assignmentCard: {
         flex: 1,
-        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        borderWidth: 2,
+        borderColor: 'transparent',
+        gap: SPACING.sm,
+    },
+    assignmentCardActive: {
+        borderColor: '#6366F1',
+    },
+    assignmentIcon: {
+        width: 56,
+        height: 56,
+        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.xs,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
     },
-    segmentOptionActive: {
-        backgroundColor: colors.accent.primary,
+    assignmentLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        textAlign: 'center',
     },
-    segmentLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
+    assignmentLabelActive: {
+        color: '#6366F1',
     },
-    segmentLabelActive: {
-        color: '#FFF',
+    assignmentDesc: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        textAlign: 'center',
     },
 
     // Info Card
     infoCard: {
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+    },
+    infoCardGradient: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.md,
-        backgroundColor: colors.accent.light,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
+        gap: SPACING.md,
+        padding: SPACING.lg,
     },
     infoCardText: {
         flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        lineHeight: 22,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
     },
     infoCardHighlight: {
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
 
-    // Groups Config
-    groupsConfig: {
-        gap: spacing.md,
-    },
-    groupsInputRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.md,
+    // Groups
+    groupsSection: {
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        gap: SPACING.md,
     },
     groupsLabel: {
-        flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
-    groupsInput: {
-        width: 60,
-        textAlign: 'center',
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-        backgroundColor: colors.accent.light,
-        borderRadius: borderRadius.md,
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.md,
-    },
-    groupsPreview: {
+    groupsRow: {
         flexDirection: 'row',
+        gap: SPACING.sm,
+    },
+    groupOption: {
+        flex: 1,
         alignItems: 'center',
-        gap: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
+        paddingVertical: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
         borderWidth: 2,
-        borderColor: colors.accent.primary,
-        borderStyle: 'dashed',
+        borderColor: 'transparent',
     },
-    groupsPreviewIcon: {
-        width: 48,
-        height: 48,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.accent.light,
-        borderRadius: borderRadius.lg,
+    groupOptionActive: {
+        borderColor: '#22C55E',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
     },
-    diceEmoji: {
-        fontSize: 24,
+    groupOptionText: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.secondary,
     },
-    groupsPreviewContent: {
-        flex: 1,
+    groupOptionTextActive: {
+        color: '#22C55E',
     },
-    groupsPreviewTitle: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
-    },
-    groupsPreviewText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        marginTop: 2,
-    },
-    groupsPreviewHighlight: {
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    groupsNote: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    groupsInfo: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: '#22C55E',
         textAlign: 'center',
-    },
-    groupNumberSelector: {
-        flexDirection: 'row',
-        gap: spacing.xs,
-    },
-    groupNumberOption: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.surfaceSubtle,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    groupNumberOptionActive: {
-        backgroundColor: colors.accent.primary,
-    },
-    groupNumberText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.bold,
-        color: colors.text.secondary,
-    },
-    groupNumberTextActive: {
-        color: '#FFF',
-    },
-    groupsSectionTitle: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
-        marginTop: spacing.sm,
-    },
-    membersList: {
-        gap: spacing.sm,
-    },
-    memberGroupRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-    },
-    memberInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        flex: 1,
-    },
-    memberAvatar: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    memberAvatarText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    memberName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        flex: 1,
-    },
-    groupSelector: {
-        flexDirection: 'row',
-        gap: spacing.xs,
-    },
-    groupSelectorOption: {
-        width: 36,
-        height: 32,
-        borderRadius: borderRadius.md,
-        backgroundColor: colors.surfaceSubtle,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    groupSelectorOptionActive: {
-        backgroundColor: colors.accent.primary,
-    },
-    groupSelectorText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.tertiary,
-    },
-    groupSelectorTextActive: {
-        color: '#FFF',
-    },
-    groupsSummary: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        paddingVertical: spacing.sm,
-    },
-    groupsSummaryText: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
     },
 
     // Footer
@@ -1183,36 +949,22 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        padding: spacing.lg,
-        backgroundColor: colors.background,
-        borderTopWidth: 1,
-        borderTopColor: colors.divider,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.lg,
+        paddingBottom: 40,
+        backgroundColor: COLORS.background,
     },
-    button: {
+    footerButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.sm,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
+        gap: SPACING.sm,
+        paddingVertical: SPACING.lg,
+        borderRadius: RADIUS['2xl'],
     },
-    buttonPrimary: {
-        backgroundColor: colors.accent.primary,
-    },
-    buttonSuccess: {
-        backgroundColor: colors.success.primary,
-    },
-    buttonDisabled: {
-        opacity: 0.5,
-    },
-    buttonPrimaryText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    buttonSuccessText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
+    footerButtonText: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
         color: '#FFF',
     },
 });

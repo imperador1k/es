@@ -98,10 +98,10 @@ BEGIN
     -- Buscar dados do utilizador
     SELECT current_xp INTO v_profile FROM profiles WHERE id = p_user_id;
     
-    -- Contar tarefas completadas
+    -- Contar tarefas completadas (submissions com status 'submitted' ou 'graded')
     SELECT COUNT(*) INTO v_tasks_completed
-    FROM team_task_completions
-    WHERE user_id = p_user_id;
+    FROM task_submissions
+    WHERE user_id = p_user_id AND status IN ('submitted', 'graded');
     
     -- Contar mensagens enviadas
     SELECT COUNT(*) INTO v_messages_sent

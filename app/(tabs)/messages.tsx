@@ -1,8 +1,14 @@
+/**
+ * Premium Messages Screen
+ * Design inspirado em iMessage/WhatsApp/Telegram
+ */
+
 import { ConversationWithUser, useConversations } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -15,103 +21,38 @@ import {
     Text,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
-export default function MessagesScreen() {
-    const { conversations, loading, refetch } = useConversations();
-    const { pendingRequests } = useFriends();
-    const [refreshing, setRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'messages' | 'requests'>('messages');
-
-    // Refetch quando o ecrã ganha foco (ex: volta do chat)
-    useFocusEffect(
-        useCallback(() => {
-            refetch();
-        }, [refetch])
-    );
-
-    const handleRefresh = async () => {
-        setRefreshing(true);
-        await refetch();
-        setRefreshing(false);
-    };
-
-    if (loading && conversations.length === 0) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
-                </View>
-            </SafeAreaView>
-        );
-    }
-
-    return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.title}>Mensagens</Text>
-                <View style={styles.headerActions}>
-                    <Pressable style={styles.headerButton} onPress={() => router.push('/friends/search')}>
-                        <Ionicons name="search" size={22} color={colors.text.primary} />
-                    </Pressable>
-                    <Pressable style={styles.headerButton} onPress={() => router.push('/friends')}>
-                        <Ionicons name="people" size={22} color={colors.text.primary} />
-                        {pendingRequests.length > 0 && (
-                            <View style={styles.badge}>
-                                <Text style={styles.badgeText}>{pendingRequests.length}</Text>
-                            </View>
-                        )}
-                    </Pressable>
-                </View>
-            </View>
-
-            {/* Tabs */}
-            <View style={styles.tabs}>
-                <Pressable
-                    style={[styles.tab, activeTab === 'messages' && styles.tabActive]}
-                    onPress={() => setActiveTab('messages')}
-                >
-                    <Text style={[styles.tabText, activeTab === 'messages' && styles.tabTextActive]}>
-                        Conversas
-                    </Text>
-                </Pressable>
-                <Pressable
-                    style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
-                    onPress={() => setActiveTab('requests')}
-                >
-                    <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
-                        Pedidos {pendingRequests.length > 0 && `(${pendingRequests.length})`}
-                    </Text>
-                </Pressable>
-            </View>
-
-            {/* Content */}
-            {activeTab === 'messages' ? (
-                <FlatList
-                    data={conversations}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <ConversationCard conversation={item} />}
-                    contentContainerStyle={styles.listContent}
-                    ListEmptyComponent={<EmptyConversations />}
-                    refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent.primary} />
-                    }
-                    showsVerticalScrollIndicator={false}
-                />
-            ) : (
-                <FriendRequests />
-            )}
-        </SafeAreaView>
-    );
-}
+import Animated, {
+    FadeInDown,
+    FadeInRight,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+} from 'react-native-reanimated';
 
 // ============================================
-// SUB COMPONENTS
+// TYPES & CONSTANTS
 // ============================================
-function ConversationCard({ conversation }: { conversation: ConversationWithUser }) {
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// ============================================
+// CONVERSATION CARD
+// ============================================
+
+function ConversationCard({
+    conversation,
+    index,
+}: {
+    conversation: ConversationWithUser;
+    index: number;
+}) {
     const { other_user, last_message, unread_count } = conversation;
     const hasUnread = unread_count > 0;
+    const scale = useSharedValue(1);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
 
     const formatTime = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -123,48 +64,129 @@ function ConversationCard({ conversation }: { conversation: ConversationWithUser
         return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
     };
 
+    // Avatar colors based on name
+    const getAvatarColor = (name: string) => {
+        const colors = ['#6366F1', '#EC4899', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'];
+        const index = name.charCodeAt(0) % colors.length;
+        return colors[index];
+    };
+
+    const displayName = other_user.full_name || other_user.username || 'Utilizador';
+    const avatarColor = getAvatarColor(displayName);
+
     return (
-        <Pressable
-            style={styles.conversationCard}
+        <AnimatedPressable
+            entering={FadeInDown.delay(index * 40).springify()}
+            style={[styles.conversationCard, animatedStyle]}
             onPress={() => router.push(`/dm/${conversation.id}`)}
+            onPressIn={() => { scale.value = withSpring(0.98); }}
+            onPressOut={() => { scale.value = withSpring(1); }}
         >
             {/* Avatar */}
-            {other_user.avatar_url ? (
-                <Image source={{ uri: other_user.avatar_url }} style={styles.avatar} />
-            ) : (
-                <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarInitial}>
-                        {(other_user.full_name || other_user.username || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                </View>
-            )}
+            <View style={styles.avatarContainer}>
+                {other_user.avatar_url ? (
+                    <Image source={{ uri: other_user.avatar_url }} style={styles.avatar} />
+                ) : (
+                    <LinearGradient
+                        colors={[avatarColor, `${avatarColor}CC`]}
+                        style={styles.avatarFallback}
+                    >
+                        <Text style={styles.avatarInitial}>
+                            {displayName.charAt(0).toUpperCase()}
+                        </Text>
+                    </LinearGradient>
+                )}
+                {/* Online indicator */}
+                {other_user.status === 'online' && <View style={styles.onlineIndicator} />}
+            </View>
 
             {/* Content */}
             <View style={styles.conversationContent}>
                 <View style={styles.conversationHeader}>
-                    <Text style={[styles.conversationName, hasUnread && styles.conversationNameUnread]}>
-                        {other_user.full_name || other_user.username || 'Utilizador'}
+                    <Text style={[styles.conversationName, hasUnread && styles.conversationNameUnread]} numberOfLines={1}>
+                        {displayName}
                     </Text>
                     {last_message && (
-                        <Text style={styles.conversationTime}>{formatTime(last_message.created_at)}</Text>
+                        <Text style={[styles.conversationTime, hasUnread && styles.conversationTimeUnread]}>
+                            {formatTime(last_message.created_at)}
+                        </Text>
                     )}
                 </View>
-                {last_message && (
-                    <Text style={[styles.conversationPreview, hasUnread && styles.conversationPreviewUnread]} numberOfLines={1}>
-                        {last_message.content}
-                    </Text>
+                <View style={styles.conversationFooter}>
+                    {last_message && (
+                        <Text style={[styles.conversationPreview, hasUnread && styles.conversationPreviewUnread]} numberOfLines={1}>
+                            {last_message.content}
+                        </Text>
+                    )}
+                    {hasUnread && (
+                        <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadText}>{unread_count > 9 ? '9+' : unread_count}</Text>
+                        </View>
+                    )}
+                </View>
+            </View>
+        </AnimatedPressable>
+    );
+}
+
+// ============================================
+// FRIEND REQUEST CARD
+// ============================================
+
+function FriendRequestCard({
+    item,
+    index,
+    onAccept,
+    onReject,
+    processing,
+}: {
+    item: any;
+    index: number;
+    onAccept: () => void;
+    onReject: () => void;
+    processing: boolean;
+}) {
+    const displayName = item.profile.full_name || item.profile.username || 'Utilizador';
+
+    return (
+        <Animated.View entering={FadeInRight.delay(index * 50).springify()} style={styles.requestCard}>
+            {/* Avatar */}
+            <View style={styles.avatarContainer}>
+                {item.profile.avatar_url ? (
+                    <Image source={{ uri: item.profile.avatar_url }} style={styles.avatar} />
+                ) : (
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatarFallback}>
+                        <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
+                    </LinearGradient>
                 )}
             </View>
 
-            {/* Unread Badge */}
-            {hasUnread && (
-                <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadText}>{unread_count}</Text>
-                </View>
-            )}
-        </Pressable>
+            {/* Content */}
+            <View style={styles.requestContent}>
+                <Text style={styles.requestName}>{displayName}</Text>
+                <Text style={styles.requestUsername}>@{item.profile.username}</Text>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.requestActions}>
+                <Pressable style={styles.acceptButton} onPress={onAccept} disabled={processing}>
+                    {processing ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                        <Ionicons name="checkmark" size={20} color="#FFF" />
+                    )}
+                </Pressable>
+                <Pressable style={styles.rejectButton} onPress={onReject} disabled={processing}>
+                    <Ionicons name="close" size={20} color={COLORS.text.tertiary} />
+                </Pressable>
+            </View>
+        </Animated.View>
     );
 }
+
+// ============================================
+// FRIEND REQUESTS LIST
+// ============================================
 
 function FriendRequests() {
     const { pendingRequests, acceptFriendRequest, rejectFriendRequest } = useFriends();
@@ -185,8 +207,8 @@ function FriendRequests() {
     if (pendingRequests.length === 0) {
         return (
             <View style={styles.emptyContainer}>
-                <View style={styles.emptyIcon}>
-                    <Ionicons name="people-outline" size={40} color={colors.accent.primary} />
+                <View style={styles.emptyIconContainer}>
+                    <Ionicons name="people-outline" size={48} color={COLORS.text.tertiary} />
                 </View>
                 <Text style={styles.emptyTitle}>Sem pedidos</Text>
                 <Text style={styles.emptySubtitle}>Não tens pedidos de amizade pendentes</Text>
@@ -198,58 +220,37 @@ function FriendRequests() {
         <FlatList
             data={pendingRequests}
             keyExtractor={(item) => item.friendship_id}
-            renderItem={({ item }) => (
-                <View style={styles.requestCard}>
-                    {item.profile.avatar_url ? (
-                        <Image source={{ uri: item.profile.avatar_url }} style={styles.avatar} />
-                    ) : (
-                        <View style={styles.avatarFallback}>
-                            <Text style={styles.avatarInitial}>
-                                {(item.profile.full_name || item.profile.username || 'U').charAt(0).toUpperCase()}
-                            </Text>
-                        </View>
-                    )}
-                    <View style={styles.requestContent}>
-                        <Text style={styles.requestName}>
-                            {item.profile.full_name || item.profile.username}
-                        </Text>
-                        <Text style={styles.requestUsername}>@{item.profile.username}</Text>
-                    </View>
-                    <View style={styles.requestActions}>
-                        <Pressable
-                            style={styles.acceptButton}
-                            onPress={() => handleAccept(item.friendship_id)}
-                            disabled={processing === item.friendship_id}
-                        >
-                            {processing === item.friendship_id ? (
-                                <ActivityIndicator size="small" color={colors.text.inverse} />
-                            ) : (
-                                <Ionicons name="checkmark" size={18} color={colors.text.inverse} />
-                            )}
-                        </Pressable>
-                        <Pressable
-                            style={styles.rejectButton}
-                            onPress={() => handleReject(item.friendship_id)}
-                        >
-                            <Ionicons name="close" size={18} color={colors.text.tertiary} />
-                        </Pressable>
-                    </View>
-                </View>
+            renderItem={({ item, index }) => (
+                <FriendRequestCard
+                    item={item}
+                    index={index}
+                    onAccept={() => handleAccept(item.friendship_id)}
+                    onReject={() => handleReject(item.friendship_id)}
+                    processing={processing === item.friendship_id}
+                />
             )}
             contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
         />
     );
 }
 
+// ============================================
+// EMPTY CONVERSATIONS
+// ============================================
+
 function EmptyConversations() {
     return (
         <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-                <Ionicons name="chatbubbles-outline" size={40} color={colors.accent.primary} />
+            <View style={styles.emptyIconContainer}>
+                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyIconGradient}>
+                    <Ionicons name="chatbubbles" size={40} color="#FFF" />
+                </LinearGradient>
             </View>
             <Text style={styles.emptyTitle}>Sem conversas</Text>
             <Text style={styles.emptySubtitle}>Procura amigos para começar a conversar!</Text>
             <Pressable style={styles.emptyButton} onPress={() => router.push('/friends/search')}>
+                <Ionicons name="search" size={18} color="#FFF" />
                 <Text style={styles.emptyButtonText}>Procurar Amigos</Text>
             </Pressable>
         </View>
@@ -257,12 +258,124 @@ function EmptyConversations() {
 }
 
 // ============================================
+// MAIN COMPONENT
+// ============================================
+
+export default function MessagesScreen() {
+    const { conversations, loading, refetch } = useConversations();
+    const { pendingRequests } = useFriends();
+    const [refreshing, setRefreshing] = useState(false);
+    const [activeTab, setActiveTab] = useState<'messages' | 'requests'>('messages');
+
+    useFocusEffect(
+        useCallback(() => {
+            refetch();
+        }, [refetch])
+    );
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await refetch();
+        setRefreshing(false);
+    };
+
+    if (loading && conversations.length === 0) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#6366F1" />
+                </View>
+            </View>
+        );
+    }
+
+    return (
+        <View style={styles.container}>
+            {/* ========== HEADER ========== */}
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>Mensagens</Text>
+                <View style={styles.headerActions}>
+                    <Pressable style={styles.headerButton} onPress={() => router.push('/friends/search')}>
+                        <Ionicons name="search" size={20} color={COLORS.text.primary} />
+                    </Pressable>
+                    <Pressable style={styles.headerButton} onPress={() => router.push('/friends')}>
+                        <Ionicons name="people" size={20} color={COLORS.text.primary} />
+                        {pendingRequests.length > 0 && (
+                            <View style={styles.headerBadge}>
+                                <Text style={styles.headerBadgeText}>{pendingRequests.length}</Text>
+                            </View>
+                        )}
+                    </Pressable>
+                </View>
+            </View>
+
+            {/* ========== TABS ========== */}
+            <View style={styles.tabsContainer}>
+                <Pressable
+                    style={[styles.tab, activeTab === 'messages' && styles.tabActive]}
+                    onPress={() => setActiveTab('messages')}
+                >
+                    <Ionicons
+                        name={activeTab === 'messages' ? 'chatbubbles' : 'chatbubbles-outline'}
+                        size={18}
+                        color={activeTab === 'messages' ? '#FFF' : COLORS.text.secondary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'messages' && styles.tabTextActive]}>
+                        Conversas
+                    </Text>
+                </Pressable>
+                <Pressable
+                    style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
+                    onPress={() => setActiveTab('requests')}
+                >
+                    <Ionicons
+                        name={activeTab === 'requests' ? 'person-add' : 'person-add-outline'}
+                        size={18}
+                        color={activeTab === 'requests' ? '#FFF' : COLORS.text.secondary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
+                        Pedidos
+                    </Text>
+                    {pendingRequests.length > 0 && (
+                        <View style={[styles.tabBadge, activeTab === 'requests' && styles.tabBadgeActive]}>
+                            <Text style={styles.tabBadgeText}>{pendingRequests.length}</Text>
+                        </View>
+                    )}
+                </Pressable>
+            </View>
+
+            {/* ========== CONTENT ========== */}
+            {activeTab === 'messages' ? (
+                <FlatList
+                    data={conversations}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item, index }) => <ConversationCard conversation={item} index={index} />}
+                    contentContainerStyle={styles.listContent}
+                    ListEmptyComponent={<EmptyConversations />}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={COLORS.text.secondary}
+                        />
+                    }
+                    showsVerticalScrollIndicator={false}
+                />
+            ) : (
+                <FriendRequests />
+            )}
+        </View>
+    );
+}
+
+// ============================================
 // STYLES
 // ============================================
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
@@ -275,85 +388,108 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: spacing.xl,
-        paddingTop: spacing.lg,
-        paddingBottom: spacing.md,
+        paddingTop: 60,
+        paddingHorizontal: LAYOUT.screenPadding,
+        paddingBottom: SPACING.lg,
     },
-    title: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+    headerTitle: {
+        fontSize: TYPOGRAPHY.size['3xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     headerActions: {
         flexDirection: 'row',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     headerButton: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: colors.surface,
+        backgroundColor: COLORS.surface,
         alignItems: 'center',
         justifyContent: 'center',
-        ...shadows.sm,
+        ...SHADOWS.sm,
     },
-    badge: {
+    headerBadge: {
         position: 'absolute',
         top: -4,
         right: -4,
-        minWidth: 18,
+        backgroundColor: '#EF4444',
+        width: 18,
         height: 18,
         borderRadius: 9,
-        backgroundColor: colors.danger.primary,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    badgeText: {
+    headerBadgeText: {
         fontSize: 10,
-        fontWeight: typography.weight.bold,
-        color: colors.text.inverse,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
 
     // Tabs
-    tabs: {
+    tabsContainer: {
         flexDirection: 'row',
-        paddingHorizontal: spacing.xl,
-        marginBottom: spacing.md,
-        gap: spacing.md,
+        marginHorizontal: LAYOUT.screenPadding,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: 4,
+        marginBottom: SPACING.lg,
     },
     tab: {
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.lg,
-        borderRadius: borderRadius.full,
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.xs,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.xl,
     },
     tabActive: {
-        backgroundColor: colors.text.primary,
+        backgroundColor: '#6366F1',
     },
     tabText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
     tabTextActive: {
-        color: colors.text.inverse,
+        color: '#FFF',
+    },
+    tabBadge: {
+        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    tabBadgeActive: {
+        backgroundColor: 'rgba(255,255,255,0.25)',
+    },
+    tabBadgeText: {
+        fontSize: 10,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#EF4444',
     },
 
     // List
     listContent: {
-        paddingHorizontal: spacing.xl,
-        paddingBottom: 120,
-        flexGrow: 1,
+        paddingHorizontal: LAYOUT.screenPadding,
+        paddingBottom: 150,
     },
 
     // Conversation Card
     conversationCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.md,
+        marginBottom: SPACING.sm,
+        ...SHADOWS.sm,
+    },
+    avatarContainer: {
+        position: 'relative',
+        marginRight: SPACING.md,
     },
     avatar: {
         width: 52,
@@ -364,141 +500,167 @@ const styles = StyleSheet.create({
         width: 52,
         height: 52,
         borderRadius: 26,
-        backgroundColor: colors.accent.light,
         alignItems: 'center',
         justifyContent: 'center',
     },
     avatarInitial: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+    onlineIndicator: {
+        position: 'absolute',
+        bottom: 2,
+        right: 2,
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: '#10B981',
+        borderWidth: 2,
+        borderColor: COLORS.surface,
     },
     conversationContent: {
         flex: 1,
-        marginLeft: spacing.md,
     },
     conversationHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        marginBottom: 4,
     },
     conversationName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
+        flex: 1,
     },
     conversationNameUnread: {
-        fontWeight: typography.weight.bold,
+        fontWeight: TYPOGRAPHY.weight.bold,
     },
     conversationTime: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginLeft: SPACING.sm,
+    },
+    conversationTimeUnread: {
+        color: '#6366F1',
+    },
+    conversationFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
     },
     conversationPreview: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: 2,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        flex: 1,
     },
     conversationPreviewUnread: {
-        color: colors.text.secondary,
+        color: COLORS.text.secondary,
+        fontWeight: TYPOGRAPHY.weight.medium,
     },
     unreadBadge: {
-        minWidth: 22,
-        height: 22,
-        borderRadius: 11,
-        backgroundColor: colors.accent.primary,
+        backgroundColor: '#6366F1',
+        minWidth: 20,
+        height: 20,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        marginLeft: spacing.sm,
+        paddingHorizontal: 6,
+        marginLeft: SPACING.sm,
     },
     unreadText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.bold,
-        color: colors.text.inverse,
+        fontSize: 11,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
 
     // Request Card
     requestCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        marginBottom: SPACING.sm,
+        ...SHADOWS.sm,
     },
     requestContent: {
         flex: 1,
-        marginLeft: spacing.md,
     },
     requestName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
     },
     requestUsername: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
     },
     requestActions: {
         flexDirection: 'row',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     acceptButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.success.primary,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#10B981',
         alignItems: 'center',
         justifyContent: 'center',
     },
     rejectButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.surfaceSubtle,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: COLORS.surfaceMuted,
         alignItems: 'center',
         justifyContent: 'center',
     },
 
-    // Empty
+    // Empty State
     emptyContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: spacing['3xl'],
+        paddingHorizontal: LAYOUT.screenPadding,
+        paddingVertical: SPACING['3xl'],
     },
-    emptyIcon: {
+    emptyIconContainer: {
+        marginBottom: SPACING.lg,
+    },
+    emptyIconGradient: {
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: colors.accent.light,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
     },
     emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
     },
     emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
         textAlign: 'center',
-        marginBottom: spacing.xl,
+        marginBottom: SPACING.xl,
     },
     emptyButton: {
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing['2xl'],
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
+        backgroundColor: '#6366F1',
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.full,
     },
     emptyButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 });

@@ -1,332 +1,101 @@
+/**
+ * Premium Subjects & Schedule Screen
+ * Design TripGlide: Gestão de disciplinas + Horário semanal
+ */
+
 import { AddClassModal } from '@/components/schedule/AddClassModal';
 import { AddEventModal, EventType } from '@/components/schedule/AddEventModal';
 import { QuickAddModal, QuickAddType } from '@/components/schedule/QuickAddModal';
+import { SubjectDetailModal } from '@/components/schedule/SubjectDetailModal';
 import { WeeklyScheduleGrid } from '@/components/schedule/WeeklyScheduleGrid';
-import { SUBJECT_COLORS, useSchedule, useSubjects } from '@/hooks/useSubjects';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { useSchedule, useSubjects } from '@/hooks/useSubjects';
+import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { ClassSessionWithSubject, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useCallback, useEffect, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
+    Alert,
+    FlatList,
     Pressable,
     RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
-    View,
+    View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { z } from 'zod';
+import Animated, { FadeInRight, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // ============================================
-// VALIDAÇÃO COM ZOD
+// SUBJECT CARD
 // ============================================
 
-const subjectSchema = z.object({
-    name: z.string().min(1, 'O nome é obrigatório').max(50, 'Máximo 50 caracteres'),
-    teacher_name: z.string().max(100, 'Máximo 100 caracteres').optional().or(z.literal('')),
-    room: z.string().max(20, 'Máximo 20 caracteres').optional().or(z.literal('')),
-    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor inválida'),
-});
-
-type SubjectFormData = z.infer<typeof subjectSchema>;
-
-// ============================================
-// COMPONENTE: Subject Card
-// ============================================
-
-interface SubjectCardProps {
+function SubjectCard({
+    subject,
+    index,
+    sessionsCount,
+    onPress,
+    onLongPress,
+}: {
     subject: Subject;
+    index: number;
+    sessionsCount: number;
     onPress: () => void;
     onLongPress: () => void;
-}
+}) {
+    const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
 
-function SubjectCard({ subject, onPress, onLongPress }: SubjectCardProps) {
     return (
-        <Pressable
-            style={({ pressed }) => [
-                styles.subjectCard,
-                pressed && styles.subjectCardPressed,
-            ]}
+        <AnimatedPressable
+            entering={FadeInRight.delay(index * 50).springify()}
+            style={[styles.subjectCard, animatedStyle]}
             onPress={onPress}
             onLongPress={onLongPress}
+            onPressIn={() => { scale.value = withSpring(0.97); }}
+            onPressOut={() => { scale.value = withSpring(1); }}
         >
-            <View style={[styles.colorDot, { backgroundColor: subject.color }]} />
-            <View style={styles.subjectInfo}>
-                <Text style={styles.subjectName}>{subject.name}</Text>
-                {subject.teacher_name && (
-                    <Text style={styles.subjectTeacher}>
-                        <Ionicons name="person-outline" size={12} color={colors.text.tertiary} />
-                        {' '}{subject.teacher_name}
-                    </Text>
-                )}
-                {subject.room && (
-                    <Text style={styles.subjectRoom}>
-                        <Ionicons name="location-outline" size={12} color={colors.text.tertiary} />
-                        {' '}{subject.room}
-                    </Text>
-                )}
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-        </Pressable>
-    );
-}
+            {/* Color Bar */}
+            <View style={[styles.subjectColorBar, { backgroundColor: subject.color }]} />
 
-// ============================================
-// COMPONENTE: Empty State
-// ============================================
-
-function EmptyState() {
-    return (
-        <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconContainer}>
-                <Ionicons name="book-outline" size={64} color={colors.text.tertiary} />
-            </View>
-            <Text style={styles.emptyTitle}>Sem disciplinas</Text>
-            <Text style={styles.emptyText}>
-                Adiciona as tuas disciplinas para organizar o horário e as tarefas.
-            </Text>
-        </View>
-    );
-}
-
-// ============================================
-// COMPONENTE: Color Picker
-// ============================================
-
-interface ColorPickerProps {
-    value: string;
-    onChange: (color: string) => void;
-}
-
-function ColorPicker({ value, onChange }: ColorPickerProps) {
-    return (
-        <View style={styles.colorPickerContainer}>
-            <Text style={styles.inputLabel}>Cor</Text>
-            <View style={styles.colorOptions}>
-                {SUBJECT_COLORS.map((color) => (
-                    <Pressable
-                        key={color}
-                        style={[
-                            styles.colorOption,
-                            { backgroundColor: color },
-                            value === color && styles.colorOptionSelected,
-                        ]}
-                        onPress={() => onChange(color)}
-                    >
-                        {value === color && (
-                            <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+            {/* Content */}
+            <View style={styles.subjectContent}>
+                <View style={styles.subjectHeader}>
+                    <View style={[styles.subjectIcon, { backgroundColor: `${subject.color}20` }]}>
+                        <Ionicons name="book" size={18} color={subject.color} />
+                    </View>
+                    <View style={styles.subjectTitleArea}>
+                        <Text style={styles.subjectName}>{subject.name}</Text>
+                        {sessionsCount > 0 && (
+                            <View style={styles.sessionsBadge}>
+                                <Text style={styles.sessionsBadgeText}>{sessionsCount} aula{sessionsCount > 1 ? 's' : ''}</Text>
+                            </View>
                         )}
-                    </Pressable>
-                ))}
-            </View>
-        </View>
-    );
-}
-
-// ============================================
-// COMPONENTE: Add/Edit Modal
-// ============================================
-
-interface SubjectModalProps {
-    visible: boolean;
-    onClose: () => void;
-    onSave: (data: SubjectFormData) => Promise<void>;
-    initialData?: Subject | null;
-    saving: boolean;
-}
-
-function SubjectModal({ visible, onClose, onSave, initialData, saving }: SubjectModalProps) {
-    const isEditing = !!initialData;
-
-    const { control, handleSubmit, formState: { errors }, reset } = useForm<SubjectFormData>({
-        resolver: zodResolver(subjectSchema),
-        defaultValues: {
-            name: initialData?.name || '',
-            teacher_name: initialData?.teacher_name || '',
-            room: initialData?.room || '',
-            color: initialData?.color || SUBJECT_COLORS[0],
-        },
-    });
-
-    const handleClose = () => {
-        reset();
-        onClose();
-    };
-
-    const onSubmit = async (data: SubjectFormData) => {
-        await onSave(data);
-        reset();
-    };
-
-    return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            presentationStyle="pageSheet"
-            onRequestClose={handleClose}
-        >
-            <SafeAreaView style={styles.modalContainer}>
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={styles.modalContent}
-                >
-                    {/* Header */}
-                    <View style={styles.modalHeader}>
-                        <Pressable onPress={handleClose} style={styles.modalCloseButton}>
-                            <Text style={styles.modalCloseText}>Cancelar</Text>
-                        </Pressable>
-                        <Text style={styles.modalTitle}>
-                            {isEditing ? 'Editar Disciplina' : 'Nova Disciplina'}
-                        </Text>
-                        <Pressable
-                            onPress={handleSubmit(onSubmit)}
-                            style={[styles.modalSaveButton, saving && styles.modalSaveButtonDisabled]}
-                            disabled={saving}
-                        >
-                            {saving ? (
-                                <ActivityIndicator size="small" color={colors.accent.primary} />
-                            ) : (
-                                <Text style={styles.modalSaveText}>Guardar</Text>
-                            )}
-                        </Pressable>
-                    </View>
-
-                    {/* Form */}
-                    <View style={styles.formContainer}>
-                        {/* Nome */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Nome *</Text>
-                            <Controller
-                                control={control}
-                                name="name"
-                                render={({ field: { value, onChange, onBlur } }) => (
-                                    <TextInput
-                                        style={[styles.input, errors.name && styles.inputError]}
-                                        placeholder="Ex: Matemática, Inglês..."
-                                        placeholderTextColor={colors.text.tertiary}
-                                        value={value}
-                                        onChangeText={onChange}
-                                        onBlur={onBlur}
-                                        autoFocus
-                                    />
-                                )}
-                            />
-                            {errors.name && (
-                                <Text style={styles.errorText}>{errors.name.message}</Text>
-                            )}
-                        </View>
-
-                        {/* Professor */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Professor</Text>
-                            <Controller
-                                control={control}
-                                name="teacher_name"
-                                render={({ field: { value, onChange, onBlur } }) => (
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Ex: Prof. João Silva"
-                                        placeholderTextColor={colors.text.tertiary}
-                                        value={value}
-                                        onChangeText={onChange}
-                                        onBlur={onBlur}
-                                    />
-                                )}
-                            />
-                        </View>
-
-                        {/* Sala */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Sala (default)</Text>
-                            <Controller
-                                control={control}
-                                name="room"
-                                render={({ field: { value, onChange, onBlur } }) => (
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Ex: B204, Anfiteatro 1..."
-                                        placeholderTextColor={colors.text.tertiary}
-                                        value={value}
-                                        onChangeText={onChange}
-                                        onBlur={onBlur}
-                                    />
-                                )}
-                            />
-                        </View>
-
-                        {/* Color Picker */}
-                        <Controller
-                            control={control}
-                            name="color"
-                            render={({ field: { value, onChange } }) => (
-                                <ColorPicker value={value} onChange={onChange} />
-                            )}
-                        />
-                    </View>
-                </KeyboardAvoidingView>
-            </SafeAreaView>
-        </Modal>
-    );
-}
-
-// ============================================
-// COMPONENTE: Delete Confirmation Modal
-// ============================================
-
-interface DeleteModalProps {
-    visible: boolean;
-    subject: Subject | null;
-    onClose: () => void;
-    onConfirm: () => void;
-    deleting: boolean;
-}
-
-function DeleteModal({ visible, subject, onClose, onConfirm, deleting }: DeleteModalProps) {
-    if (!subject) return null;
-
-    return (
-        <Modal
-            visible={visible}
-            transparent
-            animationType="fade"
-            onRequestClose={onClose}
-        >
-            <View style={styles.deleteModalOverlay}>
-                <View style={styles.deleteModalContent}>
-                    <View style={[styles.deleteIconContainer, { backgroundColor: subject.color + '20' }]}>
-                        <Ionicons name="trash-outline" size={32} color={colors.danger.primary} />
-                    </View>
-                    <Text style={styles.deleteTitle}>Eliminar Disciplina?</Text>
-                    <Text style={styles.deleteText}>
-                        A disciplina "{subject.name}" e todas as aulas associadas serão eliminadas permanentemente.
-                    </Text>
-                    <View style={styles.deleteButtons}>
-                        <Pressable style={styles.deleteCancelButton} onPress={onClose}>
-                            <Text style={styles.deleteCancelText}>Cancelar</Text>
-                        </Pressable>
-                        <Pressable
-                            style={[styles.deleteConfirmButton, deleting && styles.deleteConfirmButtonDisabled]}
-                            onPress={onConfirm}
-                            disabled={deleting}
-                        >
-                            {deleting ? (
-                                <ActivityIndicator size="small" color="#FFFFFF" />
-                            ) : (
-                                <Text style={styles.deleteConfirmText}>Eliminar</Text>
-                            )}
-                        </Pressable>
                     </View>
                 </View>
+
+                <View style={styles.subjectDetails}>
+                    {subject.teacher_name && (
+                        <View style={styles.subjectDetail}>
+                            <Ionicons name="person-outline" size={14} color={COLORS.text.tertiary} />
+                            <Text style={styles.subjectDetailText}>{subject.teacher_name}</Text>
+                        </View>
+                    )}
+                    {subject.room && (
+                        <View style={styles.subjectDetail}>
+                            <Ionicons name="location-outline" size={14} color={COLORS.text.tertiary} />
+                            <Text style={styles.subjectDetailText}>{subject.room}</Text>
+                        </View>
+                    )}
+                </View>
             </View>
-        </Modal>
+
+            <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
+        </AnimatedPressable>
     );
 }
 
@@ -335,337 +104,194 @@ function DeleteModal({ visible, subject, onClose, onConfirm, deleting }: DeleteM
 // ============================================
 
 export default function SubjectsScreen() {
-    const { subjects, loading, error, fetchSubjects, addSubject, updateSubject, deleteSubject } = useSubjects();
+    const { subjects, loading, fetchSubjects, deleteSubject } = useSubjects();
     const { schedule, loading: scheduleLoading, fetchSchedule, getScheduleByDay } = useSchedule();
 
-    const [modalVisible, setModalVisible] = useState(false);
-    const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-    const [classModalVisible, setClassModalVisible] = useState(false);
-    const [fabExpanded, setFabExpanded] = useState(false);
+    const [subjectModalVisible, setSubjectModalVisible] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
     const [selectedSession, setSelectedSession] = useState<ClassSessionWithSubject | null>(null);
-    const [saving, setSaving] = useState(false);
-    const [deleting, setDeleting] = useState(false);
+    const [classModalVisible, setClassModalVisible] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<'disciplinas' | 'horario'>('disciplinas');
 
     // Quick Add Modal state
     const [quickAddVisible, setQuickAddVisible] = useState(false);
     const [selectedSlot, setSelectedSlot] = useState<{ day: DayOfWeek; hour: number } | null>(null);
-
-    // Event Modal state
     const [eventModalVisible, setEventModalVisible] = useState(false);
     const [eventType, setEventType] = useState<EventType>('study');
 
-    // Buscar dados ao montar
-    useEffect(() => {
-        fetchSchedule();
-    }, []);
-
-    // Refresh handler
     const handleRefresh = useCallback(async () => {
         setRefreshing(true);
         await Promise.all([fetchSubjects(), fetchSchedule()]);
         setRefreshing(false);
     }, [fetchSubjects, fetchSchedule]);
 
-    // Organizar horário por dia
-    const scheduleByDay = getScheduleByDay();
+    const getSessionsCountForSubject = (subjectId: string) => {
+        return schedule.filter((s) => s.subject_id === subjectId).length;
+    };
 
-    // Open modal for new subject
     const handleAddNew = () => {
         setSelectedSubject(null);
-        setModalVisible(true);
+        setSubjectModalVisible(true);
     };
 
-    // Open modal for editing
-    const handleEdit = (subject: Subject) => {
+    const handleEditSubject = (subject: Subject) => {
         setSelectedSubject(subject);
-        setModalVisible(true);
+        setSubjectModalVisible(true);
     };
 
-    // Open delete confirmation
-    const handleDeletePress = (subject: Subject) => {
-        setSelectedSubject(subject);
-        setDeleteModalVisible(true);
+    const handleDeleteSubject = (subject: Subject) => {
+        Alert.alert(
+            'Eliminar Disciplina',
+            `Eliminar "${subject.name}" e todas as aulas associadas?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await deleteSubject(subject.id);
+                    },
+                },
+            ]
+        );
     };
 
-    // Save subject (create or update)
-    const handleSave = async (data: SubjectFormData) => {
-        setSaving(true);
-        try {
-            if (selectedSubject) {
-                // Update
-                await updateSubject(selectedSubject.id, {
-                    name: data.name,
-                    teacher_name: data.teacher_name || null,
-                    room: data.room || null,
-                    color: data.color,
-                });
-            } else {
-                // Create
-                await addSubject({
-                    name: data.name,
-                    teacher_name: data.teacher_name || null,
-                    room: data.room || null,
-                    color: data.color,
-                });
-            }
-            setModalVisible(false);
-            setSelectedSubject(null);
-        } catch (err) {
-            console.error('Erro ao guardar disciplina:', err);
-        } finally {
-            setSaving(false);
+    // Quick add handlers
+    const handleSlotPress = (day: DayOfWeek, hour: number) => {
+        setSelectedSlot({ day, hour });
+        setQuickAddVisible(true);
+    };
+
+    const handleQuickAddSelect = (type: QuickAddType, day: DayOfWeek, hour: number) => {
+        setQuickAddVisible(false);
+        setSelectedSlot({ day, hour });
+        if (type === 'class') {
+            setClassModalVisible(true);
+        } else {
+            setEventType(type === 'event' ? 'event' : 'study');
+            setEventModalVisible(true);
         }
     };
 
-    // Delete subject
-    const handleDelete = async () => {
-        if (!selectedSubject) return;
-
-        setDeleting(true);
-        try {
-            await deleteSubject(selectedSubject.id);
-            setDeleteModalVisible(false);
-            setSelectedSubject(null);
-        } catch (err) {
-            console.error('Erro ao eliminar disciplina:', err);
-        } finally {
-            setDeleting(false);
-        }
+    const handleSessionPress = (session: ClassSessionWithSubject) => {
+        setSelectedSession(session);
+        setClassModalVisible(true);
     };
-
-    // Render subject item
-    const renderSubject = ({ item }: { item: Subject }) => (
-        <SubjectCard
-            subject={item}
-            onPress={() => handleEdit(item)}
-            onLongPress={() => handleDeletePress(item)}
-        />
-    );
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
+        <View style={styles.container}>
+            {/* ========== HEADER ========== */}
             <View style={styles.header}>
-                <Text style={styles.title}>
-                    {activeTab === 'disciplinas' ? 'Disciplinas' : 'Horário'}
-                </Text>
-                <Text style={styles.subtitle}>
-                    {activeTab === 'disciplinas'
-                        ? `${subjects.length} ${subjects.length === 1 ? 'disciplina' : 'disciplinas'}`
-                        : `${schedule.length} ${schedule.length === 1 ? 'aula' : 'aulas'}`
-                    }
-                </Text>
+                <Text style={styles.headerTitle}>Disciplinas</Text>
+                <Pressable style={styles.addButton} onPress={handleAddNew}>
+                    <Ionicons name="add" size={24} color="#FFF" />
+                </Pressable>
             </View>
 
-            {/* Tab Selector */}
-            <View style={styles.tabContainer}>
+            {/* ========== TABS ========== */}
+            <View style={styles.tabsContainer}>
                 <Pressable
                     style={[styles.tab, activeTab === 'disciplinas' && styles.tabActive]}
                     onPress={() => setActiveTab('disciplinas')}
                 >
-                    <Ionicons
-                        name="book-outline"
-                        size={18}
-                        color={activeTab === 'disciplinas' ? colors.accent.primary : colors.text.tertiary}
-                    />
-                    <Text style={[styles.tabText, activeTab === 'disciplinas' && styles.tabTextActive]}>
-                        Disciplinas
-                    </Text>
+                    <Ionicons name={activeTab === 'disciplinas' ? 'book' : 'book-outline'} size={18} color={activeTab === 'disciplinas' ? '#FFF' : COLORS.text.secondary} />
+                    <Text style={[styles.tabText, activeTab === 'disciplinas' && styles.tabTextActive]}>Disciplinas</Text>
+                    {subjects.length > 0 && (
+                        <View style={styles.tabBadge}>
+                            <Text style={styles.tabBadgeText}>{subjects.length}</Text>
+                        </View>
+                    )}
                 </Pressable>
                 <Pressable
                     style={[styles.tab, activeTab === 'horario' && styles.tabActive]}
                     onPress={() => setActiveTab('horario')}
                 >
-                    <Ionicons
-                        name="calendar-outline"
-                        size={18}
-                        color={activeTab === 'horario' ? colors.accent.primary : colors.text.tertiary}
-                    />
-                    <Text style={[styles.tabText, activeTab === 'horario' && styles.tabTextActive]}>
-                        Horário
-                    </Text>
+                    <Ionicons name={activeTab === 'horario' ? 'calendar' : 'calendar-outline'} size={18} color={activeTab === 'horario' ? '#FFF' : COLORS.text.secondary} />
+                    <Text style={[styles.tabText, activeTab === 'horario' && styles.tabTextActive]}>Horário</Text>
                 </Pressable>
             </View>
 
-            {/* Content */}
-            {loading && subjects.length === 0 ? (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
-                    <Text style={styles.loadingText}>A carregar...</Text>
-                </View>
-            ) : error ? (
-                <View style={styles.errorContainer}>
-                    <Ionicons name="alert-circle-outline" size={48} color={colors.danger.primary} />
-                    <Text style={styles.errorText}>{error}</Text>
-                    <Pressable style={styles.retryButton} onPress={fetchSubjects}>
-                        <Text style={styles.retryText}>Tentar novamente</Text>
-                    </Pressable>
-                </View>
-            ) : activeTab === 'horario' ? (
-                /* VISTA: Horário Semanal (Grid) */
-                <WeeklyScheduleGrid
-                    onClassPress={(session) => {
-                        setSelectedSession(session);
-                        // TODO: Open edit modal for session
-                    }}
-                    onEmptySlotPress={(day, hour) => {
-                        setSelectedSlot({ day, hour });
-                        setQuickAddVisible(true);
-                    }}
+            {/* ========== CONTENT ========== */}
+            {activeTab === 'disciplinas' ? (
+                <FlatList
+                    data={subjects}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item, index }) => (
+                        <SubjectCard
+                            subject={item}
+                            index={index}
+                            sessionsCount={getSessionsCountForSubject(item.id)}
+                            onPress={() => handleEditSubject(item)}
+                            onLongPress={() => handleDeleteSubject(item)}
+                        />
+                    )}
+                    contentContainerStyle={styles.listContent}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <View style={styles.emptyIconContainer}>
+                                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyIconGradient}>
+                                    <Ionicons name="book-outline" size={40} color="#FFF" />
+                                </LinearGradient>
+                            </View>
+                            <Text style={styles.emptyTitle}>Sem disciplinas</Text>
+                            <Text style={styles.emptySubtitle}>Adiciona disciplinas e os seus horários</Text>
+                            <Pressable style={styles.emptyButton} onPress={handleAddNew}>
+                                <Ionicons name="add" size={18} color="#FFF" />
+                                <Text style={styles.emptyButtonText}>Adicionar Disciplina</Text>
+                            </Pressable>
+                        </View>
+                    }
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.text.secondary} />}
+                    showsVerticalScrollIndicator={false}
                 />
             ) : (
-                /* VISTA: Lista de Disciplinas */
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={refreshing}
-                            onRefresh={handleRefresh}
-                            tintColor={colors.accent.primary}
-                        />
-                    }
+                    style={{ flex: 1 }}
+                    contentContainerStyle={styles.scheduleContent}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.text.secondary} />}
                     showsVerticalScrollIndicator={false}
                 >
-                    {subjects.length === 0 ? (
-                        <EmptyState />
-                    ) : (
-                        subjects.map((subject) => (
-                            <SubjectCard
-                                key={subject.id}
-                                subject={subject}
-                                onPress={() => handleEdit(subject)}
-                                onLongPress={() => handleDeletePress(subject)}
-                            />
-                        ))
-                    )}
-
-                    {/* Spacer para FAB */}
-                    <View style={{ height: 120 }} />
+                    <WeeklyScheduleGrid
+                        onEmptySlotPress={handleSlotPress}
+                        onClassPress={handleSessionPress}
+                    />
+                    <View style={{ height: 150 }} />
                 </ScrollView>
             )}
 
-            {/* FAB - Expanded Menu */}
-            {fabExpanded && (
-                <Pressable
-                    style={styles.fabOverlay}
-                    onPress={() => setFabExpanded(false)}
-                >
-                    {/* Add Class Option */}
-                    <Pressable
-                        style={styles.fabOption}
-                        onPress={() => {
-                            setFabExpanded(false);
-                            setClassModalVisible(true);
-                        }}
-                    >
-                        <Text style={styles.fabOptionText}>Adicionar Aula</Text>
-                        <View style={styles.fabOptionButton}>
-                            <Ionicons name="time-outline" size={22} color={colors.accent.primary} />
-                        </View>
-                    </Pressable>
-
-                    {/* Add Subject Option */}
-                    <Pressable
-                        style={styles.fabOption}
-                        onPress={() => {
-                            setFabExpanded(false);
-                            handleAddNew();
-                        }}
-                    >
-                        <Text style={styles.fabOptionText}>Nova Disciplina</Text>
-                        <View style={styles.fabOptionButton}>
-                            <Ionicons name="book-outline" size={22} color={colors.accent.primary} />
-                        </View>
-                    </Pressable>
-                </Pressable>
-            )}
-
-            {/* FAB - Main Button */}
-            <Pressable
-                style={({ pressed }) => [
-                    styles.fab,
-                    pressed && styles.fabPressed,
-                ]}
-                onPress={() => setFabExpanded(!fabExpanded)}
-            >
-                <Ionicons
-                    name={fabExpanded ? 'close' : 'add'}
-                    size={28}
-                    color="#FFFFFF"
-                />
-            </Pressable>
-
-            {/* Add/Edit Subject Modal */}
-            <SubjectModal
-                visible={modalVisible}
-                onClose={() => {
-                    setModalVisible(false);
-                    setSelectedSubject(null);
-                }}
-                onSave={handleSave}
-                initialData={selectedSubject}
-                saving={saving}
-            />
-
-            {/* Delete Confirmation Modal */}
-            <DeleteModal
-                visible={deleteModalVisible}
+            {/* ========== MODALS ========== */}
+            <SubjectDetailModal
+                visible={subjectModalVisible}
+                onClose={() => { setSubjectModalVisible(false); setSelectedSubject(null); }}
                 subject={selectedSubject}
-                onClose={() => {
-                    setDeleteModalVisible(false);
-                    setSelectedSubject(null);
-                }}
-                onConfirm={handleDelete}
-                deleting={deleting}
+                onSuccess={handleRefresh}
             />
 
-            {/* Add Class Modal */}
             <AddClassModal
                 visible={classModalVisible}
-                onClose={() => setClassModalVisible(false)}
-                onSuccess={() => fetchSchedule()}
+                onClose={() => { setClassModalVisible(false); setSelectedSession(null); }}
+                onSuccess={handleRefresh}
+                initialData={selectedSession}
             />
 
-            {/* Quick Add Modal (from schedule grid) */}
             <QuickAddModal
                 visible={quickAddVisible}
+                onClose={() => setQuickAddVisible(false)}
+                onSelect={handleQuickAddSelect}
                 day={selectedSlot?.day ?? null}
                 hour={selectedSlot?.hour ?? null}
-                onClose={() => {
-                    setQuickAddVisible(false);
-                    setSelectedSlot(null);
-                }}
-                onSelect={(type: QuickAddType, day: DayOfWeek, hour: number) => {
-                    // Handle based on type
-                    if (type === 'class') {
-                        // Open AddClassModal
-                        setClassModalVisible(true);
-                    } else {
-                        // Open AddEventModal with the selected type
-                        setEventType(type as EventType);
-                        setEventModalVisible(true);
-                    }
-                }}
             />
 
-            {/* Add Event Modal (for meetings, study sessions, events) */}
             <AddEventModal
                 visible={eventModalVisible}
-                onClose={() => {
-                    setEventModalVisible(false);
-                    setSelectedSlot(null);
-                }}
-                onSuccess={() => {
-                    fetchSchedule();
-                }}
+                onClose={() => setEventModalVisible(false)}
+                onSuccess={handleRefresh}
                 initialDay={selectedSlot?.day}
                 initialHour={selectedSlot?.hour}
                 initialType={eventType}
             />
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -676,134 +302,152 @@ export default function SubjectsScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
-    },
-    header: {
-        paddingHorizontal: spacing.lg,
-        paddingTop: spacing.md,
-        paddingBottom: spacing.lg,
-    },
-    title: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    subtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: spacing.xs,
+        backgroundColor: COLORS.background,
     },
 
-    // Tab Selector
-    tabContainer: {
+    // Header
+    header: {
         flexDirection: 'row',
-        marginHorizontal: spacing.lg,
-        marginBottom: spacing.md,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.lg,
-        padding: spacing.xs,
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: 50,
+        paddingHorizontal: LAYOUT.screenPadding,
+        paddingBottom: SPACING.lg,
+    },
+    headerTitle: {
+        fontSize: TYPOGRAPHY.size['3xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    addButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#6366F1',
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...SHADOWS.md,
+    },
+
+    // Tabs
+    tabsContainer: {
+        flexDirection: 'row',
+        marginHorizontal: LAYOUT.screenPadding,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: 4,
+        marginBottom: SPACING.lg,
     },
     tab: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.xs,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.md,
+        gap: SPACING.xs,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.xl,
     },
     tabActive: {
-        backgroundColor: colors.surface,
-        ...shadows.sm,
+        backgroundColor: '#6366F1',
     },
     tabText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
     tabTextActive: {
-        color: colors.accent.primary,
-        fontWeight: typography.weight.semibold,
+        color: '#FFF',
     },
-
-    // Loading
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
+    tabBadge: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
     },
-    loadingText: {
-        marginTop: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-    },
-
-    // Error
-    errorContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: spacing.xl,
-    },
-    retryButton: {
-        marginTop: spacing.lg,
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.lg,
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.md,
-    },
-    retryText: {
-        color: colors.text.inverse,
-        fontWeight: typography.weight.medium,
+    tabBadgeText: {
+        fontSize: 11,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
 
     // List
     listContent: {
-        paddingHorizontal: spacing.lg,
-        paddingBottom: spacing.xl * 4, // Space for FAB
+        paddingHorizontal: LAYOUT.screenPadding,
+        paddingBottom: 150,
     },
-    listContentEmpty: {
-        flex: 1,
+    scheduleContent: {
+        paddingHorizontal: LAYOUT.screenPadding,
     },
 
     // Subject Card
     subjectCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.md,
-        borderRadius: borderRadius.lg,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        marginBottom: SPACING.md,
+        overflow: 'hidden',
+        ...SHADOWS.sm,
     },
-    subjectCardPressed: {
-        opacity: 0.8,
-        transform: [{ scale: 0.98 }],
+    subjectColorBar: {
+        width: 6,
+        height: '100%',
+        borderTopLeftRadius: RADIUS['2xl'],
+        borderBottomLeftRadius: RADIUS['2xl'],
     },
-    colorDot: {
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        marginRight: spacing.md,
-    },
-    subjectInfo: {
+    subjectContent: {
         flex: 1,
+        padding: SPACING.lg,
+    },
+    subjectHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
+        marginBottom: SPACING.sm,
+    },
+    subjectIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    subjectTitleArea: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
     },
     subjectName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
     },
-    subjectTeacher: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        marginTop: 2,
+    sessionsBadge: {
+        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 2,
+        borderRadius: RADIUS.sm,
     },
-    subjectRoom: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        marginTop: 2,
+    sessionsBadgeText: {
+        fontSize: 11,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: '#6366F1',
+    },
+    subjectDetails: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: SPACING.md,
+        marginLeft: 48,
+    },
+    subjectDetail: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    subjectDetailText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
 
     // Empty State
@@ -811,357 +455,42 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: spacing.xl,
+        paddingVertical: SPACING['3xl'],
     },
     emptyIconContainer: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        backgroundColor: colors.surfaceSubtle,
+        marginBottom: SPACING.lg,
+    },
+    emptyIconGradient: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
     },
     emptyTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
     },
-    emptyText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+    emptySubtitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
         textAlign: 'center',
-        lineHeight: 20,
+        marginBottom: SPACING.xl,
     },
-
-    // FAB
-    fab: {
-        position: 'absolute',
-        right: spacing.lg,
-        bottom: 100, // Acima da tab bar
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: colors.accent.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        elevation: 8, // Android shadow
-        shadowColor: colors.accent.dark,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
-    },
-    fabPressed: {
-        opacity: 0.9,
-        transform: [{ scale: 0.95 }],
-    },
-
-    // Modal
-    modalContainer: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    modalContent: {
-        flex: 1,
-    },
-    modalHeader: {
+    emptyButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        gap: SPACING.sm,
+        backgroundColor: '#6366F1',
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.full,
     },
-    modalCloseButton: {
-        paddingVertical: spacing.sm,
-    },
-    modalCloseText: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-    },
-    modalTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    modalSaveButton: {
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.md,
-    },
-    modalSaveButtonDisabled: {
-        opacity: 0.5,
-    },
-    modalSaveText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
-    },
-
-    // Form
-    formContainer: {
-        paddingHorizontal: spacing.lg,
-        paddingTop: spacing.lg,
-    },
-    inputGroup: {
-        marginBottom: spacing.lg,
-    },
-    inputLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
-    },
-    input: {
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.divider,
-        borderRadius: borderRadius.md,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-    },
-    inputError: {
-        borderColor: colors.danger.primary,
-    },
-    errorText: {
-        fontSize: typography.size.xs,
-        color: colors.danger.primary,
-        marginTop: spacing.xs,
-    },
-
-    // Color Picker
-    colorPickerContainer: {
-        marginBottom: spacing.lg,
-    },
-    colorOptions: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing.sm,
-    },
-    colorOption: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    colorOptionSelected: {
-        borderWidth: 3,
-        borderColor: colors.text.primary,
-    },
-
-    // Delete Modal
-    deleteModalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: spacing.lg,
-    },
-    deleteModalContent: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.xl,
-        width: '100%',
-        maxWidth: 340,
-        alignItems: 'center',
-    },
-    deleteIconContainer: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.md,
-    },
-    deleteTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
-    },
-    deleteText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        textAlign: 'center',
-        lineHeight: 20,
-        marginBottom: spacing.lg,
-    },
-    deleteButtons: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-    },
-    deleteCancelButton: {
-        flex: 1,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.md,
-        alignItems: 'center',
-    },
-    deleteCancelText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    deleteConfirmButton: {
-        flex: 1,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.danger.primary,
-        borderRadius: borderRadius.md,
-        alignItems: 'center',
-    },
-    deleteConfirmButtonDisabled: {
-        opacity: 0.6,
-    },
-    deleteConfirmText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: '#FFFFFF',
-    },
-
-    // FAB Expanded
-    fabOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.4)',
-        justifyContent: 'flex-end',
-        alignItems: 'flex-end',
-        paddingRight: spacing.lg,
-        paddingBottom: 170, // Acima do FAB
-        zIndex: 99,
-    },
-    fabOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: spacing.md,
-    },
-    fabOptionText: {
-        backgroundColor: colors.surface,
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.md,
-        borderRadius: borderRadius.md,
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        marginRight: spacing.sm,
-        ...shadows.sm,
-    },
-    fabOptionButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...shadows.md,
-    },
-    fabRotated: {
-        backgroundColor: colors.text.tertiary,
-    },
-
-    // ScrollView
-    scrollContent: {
-        paddingHorizontal: spacing.lg,
-        paddingBottom: spacing.xl,
-    },
-
-    // Section Headers
-    sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: spacing.md,
-        marginTop: spacing.sm,
-    },
-    sectionTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    sectionCount: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-
-    // Empty Schedule
-    emptySchedule: {
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.lg,
-        padding: spacing.xl,
-        alignItems: 'center',
-        marginBottom: spacing.lg,
-    },
-    emptyScheduleText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        textAlign: 'center',
-        marginTop: spacing.sm,
-    },
-
-    // Day Section
-    daySection: {
-        marginBottom: spacing.lg,
-    },
-    dayTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
-    },
-
-    // Class Card
-    classCard: {
-        flexDirection: 'row',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.md,
-        marginBottom: spacing.sm,
-        overflow: 'hidden',
-        ...shadows.sm,
-    },
-    classColorBar: {
-        width: 4,
-    },
-    classInfo: {
-        flex: 1,
-        padding: spacing.md,
-    },
-    className: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
-    },
-    classDetails: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: spacing.md,
-    },
-    classDetail: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-    },
-    classDetailText: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-    },
-    classTypeBadge: {
-        backgroundColor: colors.accent.light,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 2,
-        borderRadius: borderRadius.sm,
-    },
-    classTypeBadgeText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
+    emptyButtonText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 });

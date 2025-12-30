@@ -1,70 +1,60 @@
+/**
+ * Team Details Screen - Premium Dark Design
+ * Fixed layout with proper scroll and quick actions
+ */
+
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { useTeam } from '@/providers/TeamsProvider';
-import { notifyNewTask } from '@/services/teamNotifications';
 import { Channel } from '@/types/database.types';
-import { canUser, ROLE_LABELS } from '@/utils/permissions';
+import { canUser } from '@/utils/permissions';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
-    FlatList,
+    Animated,
+    Dimensions,
     Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
     Pressable,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const CHANNEL_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-    text: 'chatbubble-outline',
-    voice: 'mic-outline',
-    announcements: 'megaphone-outline',
-};
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const ACTION_BUTTON_SIZE = (SCREEN_WIDTH - SPACING.xl * 2 - SPACING.md * 2) / 3;
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function TeamDetailsScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
     const { profile } = useProfile();
-
-    // Usar useTeam hook para dados em realtime
     const { team, loading: teamLoading } = useTeam(id);
     const userRole = team?.role || null;
 
     const [channels, setChannels] = useState<Channel[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [memberCount, setMemberCount] = useState(0);
 
-    // Modal de Nova Tarefa
-    const [taskModalVisible, setTaskModalVisible] = useState(false);
-    const [taskTitle, setTaskTitle] = useState('');
-    const [taskDescription, setTaskDescription] = useState('');
-    const [taskDueDate, setTaskDueDate] = useState(new Date());
-    const [taskXP, setTaskXP] = useState(50);
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [creatingTask, setCreatingTask] = useState(false);
-
-    // Usar sistema de permissões centralizado
     const canCreateTask = canUser(userRole, 'CREATE_TASK');
 
-    // Carregar canais e contagem de membros (separado do team que vem do context)
-    const loadChannelsAndMembers = useCallback(async () => {
+    // Load data
+    const loadData = useCallback(async () => {
         if (!id || !user?.id) return;
 
         try {
-            // Buscar canais
             const { data: channelsData } = await supabase
                 .from('channels')
                 .select('*')
@@ -72,603 +62,505 @@ export default function TeamDetailsScreen() {
                 .order('created_at', { ascending: true });
             setChannels((channelsData as Channel[]) || []);
 
-            // Contar membros
             const { count } = await supabase
                 .from('team_members')
                 .select('*', { count: 'exact', head: true })
                 .eq('team_id', id);
             setMemberCount(count || 0);
         } catch (err) {
-            console.error('Erro ao carregar canais:', err);
+            console.error('Error loading data:', err);
         } finally {
             setLoading(false);
         }
     }, [id, user?.id]);
 
-    useEffect(() => {
-        loadChannelsAndMembers();
-    }, [loadChannelsAndMembers]);
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await loadData();
+        setRefreshing(false);
+    };
 
-    // Verificar se equipa foi encontrada
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
     useEffect(() => {
         if (!teamLoading && !team && id) {
             setError('Squad não encontrada');
         }
     }, [teamLoading, team, id]);
 
-    // Função para criar tarefa em massa
-    const handleCreateTeamTask = async () => {
-        if (!taskTitle.trim()) {
-            Alert.alert('Erro', 'O título é obrigatório');
-            return;
-        }
-        if (!id || !user?.id) return;
 
-        setCreatingTask(true);
-        try {
-            const { error: rpcError } = await supabase.rpc('assign_team_task', {
-                p_team_id: id,
-                p_title: taskTitle.trim(),
-                p_description: taskDescription.trim() || null,
-                p_due_date: taskDueDate.toISOString(),
-                p_creator_id: user.id,
-                p_xp_reward: taskXP,
-            });
 
-            if (rpcError) throw rpcError;
-
-            // Enviar notificação push para membros
-            notifyNewTask({
-                taskId: '', // RPC não retorna ID, mas não é crítico
-                taskTitle: taskTitle.trim(),
-                teamId: id,
-                teamName: team?.name || 'Equipa',
-                creatorName: profile?.full_name || profile?.username || 'Alguém',
-                creatorId: user.id,
-                dueDate: taskDueDate.toISOString(),
-            });
-
-            // Fechar modal e resetar campos
-            setTaskModalVisible(false);
-            setTaskTitle('');
-            setTaskDescription('');
-            setTaskDueDate(new Date());
-            setTaskXP(50);
-
-            // Mostrar sucesso
-            Alert.alert(
-                '✅ Tarefa Criada!',
-                `Tarefa atribuída a ${memberCount} membros da equipa!`,
-                [{ text: 'OK' }]
-            );
-        } catch (err) {
-            console.error('Erro ao criar tarefa:', err);
-            Alert.alert('Erro', 'Não foi possível criar a tarefa. Tenta novamente.');
-        } finally {
-            setCreatingTask(false);
-        }
-    };
-
-    if (loading) {
+    if (loading || teamLoading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
     if (error || !team) {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.errorContainer}>
-                    <View style={styles.errorIcon}>
-                        <Ionicons name="alert-circle" size={40} color={colors.danger.primary} />
+            <View style={styles.container}>
+                <SafeAreaView style={styles.errorContainer}>
+                    <View style={styles.errorIconContainer}>
+                        <Ionicons name="alert-circle" size={48} color="#EF4444" />
                     </View>
                     <Text style={styles.errorTitle}>{error || 'Erro'}</Text>
                     <Pressable style={styles.errorButton} onPress={() => router.back()}>
                         <Text style={styles.errorButtonText}>Voltar</Text>
                     </Pressable>
-                </View>
-            </SafeAreaView>
+                </SafeAreaView>
+            </View>
         );
     }
 
-    const teamColor = team.color || colors.accent.primary;
+    const teamColor = team.color || '#6366F1';
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                {team.icon_url ? (
-                    <Image source={{ uri: team.icon_url }} style={styles.teamAvatarImage} />
-                ) : (
-                    <View style={[styles.teamAvatar, { backgroundColor: `${teamColor}20` }]}>
-                        <Text style={[styles.teamInitial, { color: teamColor }]}>
-                            {team.name.charAt(0).toUpperCase()}
-                        </Text>
-                    </View>
-                )}
-                <View style={styles.headerContent}>
-                    <Text style={styles.teamName}>{team.name}</Text>
-                    {team.description && (
-                        <Text style={styles.teamDescription} numberOfLines={1}>{team.description}</Text>
-                    )}
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Nav Row - Fixed */}
+                <View style={styles.navRow}>
+                    <Pressable style={styles.navButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                    </Pressable>
+                    <Pressable style={styles.navButton} onPress={() => router.push(`/team/${id}/settings` as any)}>
+                        <Ionicons name="settings-outline" size={22} color={COLORS.text.primary} />
+                    </Pressable>
                 </View>
-                <Pressable
-                    style={styles.menuButton}
-                    onPress={() => router.push(`/team/${id}/settings` as any)}
-                >
-                    <Ionicons name="settings-outline" size={20} color={colors.text.tertiary} />
-                </Pressable>
-            </View>
 
-            {/* Stats - Clicável para ir à gestão de membros */}
-            <Pressable
-                style={styles.statsRow}
-                onPress={() => router.push(`/team/members?teamId=${id}` as any)}
-            >
-                <View style={styles.statItem}>
-                    <Ionicons name="people" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.statText}>{memberCount} membros</Text>
-                </View>
-                <View style={styles.statItem}>
-                    <Ionicons name="chatbubbles" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.statText}>{channels.length} canais</Text>
-                </View>
-                {userRole && (
-                    <View style={styles.statItem}>
-                        <Ionicons name="shield-checkmark" size={16} color={colors.accent.primary} />
-                        <Text style={[styles.statText, { color: colors.accent.primary }]}>
-                            {ROLE_LABELS[userRole] || userRole}
-                        </Text>
+                {/* Scrollable Content */}
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366F1" />
+                    }
+                    contentContainerStyle={styles.scrollContent}
+                >
+                    {/* Hero Gradient */}
+                    <LinearGradient
+                        colors={[`${teamColor}30`, 'transparent']}
+                        style={styles.heroGradient}
+                    />
+
+                    {/* Team Info */}
+                    <View style={styles.teamInfo}>
+                        {team.icon_url ? (
+                            <Image source={{ uri: team.icon_url }} style={styles.teamAvatar} />
+                        ) : (
+                            <LinearGradient colors={[teamColor, `${teamColor}99`]} style={styles.teamAvatarPlaceholder}>
+                                <Text style={styles.teamInitial}>{team.name.charAt(0).toUpperCase()}</Text>
+                            </LinearGradient>
+                        )}
+                        <Text style={styles.teamName}>{team.name}</Text>
+                        {team.description && (
+                            <Text style={styles.teamDescription} numberOfLines={2}>{team.description}</Text>
+                        )}
                     </View>
-                )}
-                <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
-            </Pressable>
 
-            {/* Admin Actions: Nova Tarefa (Wizard Avançado) */}
-            {canCreateTask && (
-                <Pressable
-                    style={styles.newTaskButton}
-                    onPress={() => router.push(`/team/${id}/tasks/new` as any)}
-                >
-                    <Ionicons name="clipboard-outline" size={20} color={colors.text.inverse} />
-                    <Text style={styles.newTaskButtonText}>Nova Tarefa Avançada</Text>
-                </Pressable>
-            )}
-
-            {/* Quick Actions Row */}
-            <View style={styles.quickActions}>
-                <Pressable
-                    style={styles.quickActionButton}
-                    onPress={() => channels[0] && router.push(`/team/${id}/channel/${channels[0].id}` as any)}
-                >
-                    <View style={[styles.quickActionIcon, { backgroundColor: `${colors.success.primary}15` }]}>
-                        <Ionicons name="chatbubbles" size={22} color={colors.success.primary} />
-                    </View>
-                    <Text style={styles.quickActionText}>Chat</Text>
-                </Pressable>
-
-                <Pressable
-                    style={styles.quickActionButton}
-                    onPress={() => router.push(`/team/${id}/tasks` as any)}
-                >
-                    <View style={[styles.quickActionIcon, { backgroundColor: `${colors.warning.primary}15` }]}>
-                        <Ionicons name="checkbox" size={22} color={colors.warning.primary} />
-                    </View>
-                    <Text style={styles.quickActionText}>Tarefas</Text>
-                </Pressable>
-
-                <Pressable
-                    style={styles.quickActionButton}
-                    onPress={() => router.push(`/team/${id}/files` as any)}
-                >
-                    <View style={[styles.quickActionIcon, { backgroundColor: `${colors.accent.primary}15` }]}>
-                        <Ionicons name="folder" size={22} color={colors.accent.primary} />
-                    </View>
-                    <Text style={styles.quickActionText}>Ficheiros</Text>
-                </Pressable>
-
-                <Pressable
-                    style={styles.quickActionButton}
-                    onPress={() => router.push(`/team/members?teamId=${id}` as any)}
-                >
-                    <View style={[styles.quickActionIcon, { backgroundColor: `${colors.danger.primary}15` }]}>
-                        <Ionicons name="people" size={22} color={colors.danger.primary} />
-                    </View>
-                    <Text style={styles.quickActionText}>Membros</Text>
-                </Pressable>
-
-                <Pressable
-                    style={styles.quickActionButton}
-                    onPress={() => router.push(`/team/${id}/leaderboard` as any)}
-                >
-                    <View style={[styles.quickActionIcon, { backgroundColor: '#FFD70015' }]}>
-                        <Ionicons name="trophy" size={22} color="#FFD700" />
-                    </View>
-                    <Text style={styles.quickActionText}>Ranking</Text>
-                </Pressable>
-            </View>
-
-            {/* Channels Section */}
-            <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Canais</Text>
-                <Pressable style={styles.addChannelButton}>
-                    <Ionicons name="add" size={18} color={colors.accent.primary} />
-                </Pressable>
-            </View>
-
-            {/* Channels List */}
-            <FlatList
-                data={channels}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => <ChannelCard channel={item} />}
-                contentContainerStyle={styles.channelsList}
-                ListEmptyComponent={<EmptyChannels />}
-                showsVerticalScrollIndicator={false}
-            />
-
-            {/* Modal: Nova Tarefa de Equipa */}
-            <Modal
-                visible={taskModalVisible}
-                animationType="slide"
-                presentationStyle="pageSheet"
-                onRequestClose={() => setTaskModalVisible(false)}
-            >
-                <SafeAreaView style={styles.modalContainer}>
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                        style={{ flex: 1 }}
-                    >
-                        {/* Modal Header */}
-                        <View style={styles.modalHeader}>
-                            <Pressable onPress={() => setTaskModalVisible(false)}>
-                                <Text style={styles.modalCancel}>Cancelar</Text>
-                            </Pressable>
-                            <Text style={styles.modalTitle}>Nova Tarefa</Text>
-                            <Pressable onPress={handleCreateTeamTask} disabled={creatingTask}>
-                                {creatingTask ? (
-                                    <ActivityIndicator size="small" color={colors.accent.primary} />
-                                ) : (
-                                    <Text style={styles.modalSave}>Criar</Text>
-                                )}
-                            </Pressable>
+                    {/* Stats Row */}
+                    <View style={styles.statsRow}>
+                        <Pressable style={styles.statItem} onPress={() => router.push(`/team/members?teamId=${id}` as any)}>
+                            <Text style={styles.statValue}>{memberCount}</Text>
+                            <Text style={styles.statLabel}>Membros</Text>
+                        </Pressable>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statItem}>
+                            <Text style={styles.statValue}>{channels.length}</Text>
+                            <Text style={styles.statLabel}>Canais</Text>
                         </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statItem}>
+                            <Text style={[styles.statValue, { color: teamColor }]}>
+                                {userRole === 'owner' ? 'Dono' : userRole === 'admin' ? 'Admin' : 'Membro'}
+                            </Text>
+                            <Text style={styles.statLabel}>Cargo</Text>
+                        </View>
+                    </View>
 
-                        <ScrollView style={styles.modalContent}>
-                            {/* Info */}
-                            <View style={styles.taskInfoBanner}>
-                                <Ionicons name="information-circle" size={20} color={colors.accent.primary} />
-                                <Text style={styles.taskInfoText}>
-                                    Esta tarefa será atribuída a todos os {memberCount} membros da equipa.
-                                </Text>
+                    {/* Quick Actions - Horizontal Scroll */}
+                    <Text style={styles.sectionTitle}>Ações Rápidas</Text>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.quickActionsScroll}
+                    >
+                        <QuickActionCard
+                            icon="chatbubbles"
+                            label="Chat"
+                            color="#10B981"
+                            onPress={() => channels[0] && router.push(`/team/${id}/channel/${channels[0].id}` as any)}
+                        />
+                        <QuickActionCard
+                            icon="checkbox"
+                            label="Tarefas"
+                            color="#F59E0B"
+                            onPress={() => router.push(`/team/${id}/tasks` as any)}
+                        />
+                        <QuickActionCard
+                            icon="folder"
+                            label="Ficheiros"
+                            color="#6366F1"
+                            onPress={() => router.push(`/team/${id}/files` as any)}
+                        />
+                        <QuickActionCard
+                            icon="people"
+                            label="Membros"
+                            color="#EC4899"
+                            onPress={() => router.push(`/team/members?teamId=${id}` as any)}
+                        />
+                        <QuickActionCard
+                            icon="trophy"
+                            label="Ranking"
+                            color="#FFD700"
+                            onPress={() => router.push(`/team/${id}/leaderboard` as any)}
+                        />
+                        {canCreateTask && (
+                            <QuickActionCard
+                                icon="add-circle"
+                                label="+ Tarefa"
+                                color="#8B5CF6"
+                                onPress={() => router.push(`/team/${id}/tasks/new` as any)}
+                            />
+                        )}
+                    </ScrollView>
+
+                    {/* Channels Section */}
+                    <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionTitle}>Canais</Text>
+                        <View style={styles.sectionBadge}>
+                            <Text style={styles.sectionBadgeText}>{channels.length}</Text>
+                        </View>
+                    </View>
+
+                    {channels.length === 0 ? (
+                        <View style={styles.emptyContainer}>
+                            <View style={styles.emptyIconContainer}>
+                                <Ionicons name="chatbubbles-outline" size={40} color={COLORS.text.tertiary} />
                             </View>
+                            <Text style={styles.emptyTitle}>Sem canais</Text>
+                            <Text style={styles.emptySubtitle}>Esta squad ainda não tem canais</Text>
+                        </View>
+                    ) : (
+                        channels.map((channel) => (
+                            <ChannelCard key={channel.id} channel={channel} teamId={id} />
+                        ))
+                    )}
+                </ScrollView>
 
-                            {/* Título */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Título *</Text>
-                                <TextInput
-                                    style={styles.textInput}
-                                    value={taskTitle}
-                                    onChangeText={setTaskTitle}
-                                    placeholder="Ex: Resolver Ficha 3"
-                                    placeholderTextColor={colors.text.tertiary}
-                                />
-                            </View>
-
-                            {/* Descrição */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Descrição</Text>
-                                <TextInput
-                                    style={[styles.textInput, styles.textAreaInput]}
-                                    value={taskDescription}
-                                    onChangeText={setTaskDescription}
-                                    placeholder="Instruções ou detalhes..."
-                                    placeholderTextColor={colors.text.tertiary}
-                                    multiline
-                                    numberOfLines={4}
-                                />
-                            </View>
-
-                            {/* Data de Entrega */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Data de Entrega</Text>
-                                <Pressable
-                                    style={styles.dateButton}
-                                    onPress={() => setShowDatePicker(true)}
-                                >
-                                    <Ionicons name="calendar-outline" size={20} color={colors.text.tertiary} />
-                                    <Text style={styles.dateButtonText}>
-                                        {taskDueDate.toLocaleDateString('pt-PT', {
-                                            weekday: 'short',
-                                            day: 'numeric',
-                                            month: 'long',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                        })}
-                                    </Text>
-                                </Pressable>
-                                {showDatePicker && (
-                                    <DateTimePicker
-                                        value={taskDueDate}
-                                        mode="datetime"
-                                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                                        onChange={(_event: any, date?: Date) => {
-                                            setShowDatePicker(Platform.OS === 'ios');
-                                            if (date) setTaskDueDate(date);
-                                        }}
-                                        minimumDate={new Date()}
-                                    />
-                                )}
-                            </View>
-
-                            {/* XP Reward */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Recompensa XP</Text>
-                                <View style={styles.xpSelector}>
-                                    {[25, 50, 100, 150].map((xp) => (
-                                        <Pressable
-                                            key={xp}
-                                            style={[
-                                                styles.xpOption,
-                                                taskXP === xp && styles.xpOptionSelected,
-                                            ]}
-                                            onPress={() => setTaskXP(xp)}
-                                        >
-                                            <Text
-                                                style={[
-                                                    styles.xpOptionText,
-                                                    taskXP === xp && styles.xpOptionTextSelected,
-                                                ]}
-                                            >
-                                                {xp} XP
-                                            </Text>
-                                        </Pressable>
-                                    ))}
-                                </View>
-                            </View>
-                        </ScrollView>
-                    </KeyboardAvoidingView>
-                </SafeAreaView>
-            </Modal>
-        </SafeAreaView>
-    );
-}
-
-function ChannelCard({ channel }: { channel: Channel }) {
-    const icon = CHANNEL_ICONS[channel.type] || 'chatbubble-outline';
-    return (
-        <Pressable style={styles.channelCard} onPress={() => router.push(`/channel/${channel.id}` as any)}>
-            <View style={styles.channelIcon}>
-                {channel.type === 'text' ? (
-                    <Text style={styles.channelHash}>#</Text>
-                ) : (
-                    <Ionicons name={icon} size={16} color={colors.text.tertiary} />
-                )}
-            </View>
-            <View style={styles.channelContent}>
-                <Text style={styles.channelName}>{channel.name}</Text>
-                {channel.description && (
-                    <Text style={styles.channelDescription} numberOfLines={1}>{channel.description}</Text>
-                )}
-            </View>
-            {channel.is_private && (
-                <Ionicons name="lock-closed" size={14} color={colors.text.tertiary} />
-            )}
-            <View style={styles.channelArrow}>
-                <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
-            </View>
-        </Pressable>
-    );
-}
-
-function EmptyChannels() {
-    return (
-        <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-                <Ionicons name="chatbubbles-outline" size={40} color={colors.accent.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Sem canais</Text>
-            <Text style={styles.emptySubtitle}>Esta squad ainda não tem canais.</Text>
+            </SafeAreaView>
         </View>
     );
 }
 
+// ============================================
+// QUICK ACTION CARD - Fixed size
+// ============================================
+
+function QuickActionCard({
+    icon,
+    label,
+    color,
+    onPress,
+}: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    color: string;
+    onPress: () => void;
+}) {
+    const scale = useRef(new Animated.Value(1)).current;
+
+    return (
+        <Pressable
+            onPress={onPress}
+            onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+        >
+            <Animated.View style={[styles.quickActionCard, { transform: [{ scale }] }]}>
+                <View style={[styles.quickActionIcon, { backgroundColor: `${color}20` }]}>
+                    <Ionicons name={icon} size={24} color={color} />
+                </View>
+                <Text style={styles.quickActionLabel} numberOfLines={1}>{label}</Text>
+            </Animated.View>
+        </Pressable>
+    );
+}
+
+// ============================================
+// CHANNEL CARD
+// ============================================
+
+function ChannelCard({ channel, teamId }: { channel: Channel; teamId: string }) {
+    const scale = useRef(new Animated.Value(1)).current;
+
+    return (
+        <Pressable
+            onPress={() => router.push(`/team/${teamId}/channel/${channel.id}` as any)}
+            onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+        >
+            <Animated.View style={[styles.channelCard, { transform: [{ scale }] }]}>
+                <View style={styles.channelIcon}>
+                    {channel.type === 'text' ? (
+                        <Text style={styles.channelHash}>#</Text>
+                    ) : (
+                        <Ionicons name="mic-outline" size={18} color={COLORS.text.tertiary} />
+                    )}
+                </View>
+                <View style={styles.channelContent}>
+                    <Text style={styles.channelName}>{channel.name}</Text>
+                    {channel.description && (
+                        <Text style={styles.channelDescription} numberOfLines={1}>{channel.description}</Text>
+                    )}
+                </View>
+                {channel.is_private && <Ionicons name="lock-closed" size={14} color={COLORS.text.tertiary} style={{ marginRight: SPACING.sm }} />}
+                <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />
+            </Animated.View>
+        </Pressable>
+    );
+}
+
+// ============================================
+// STYLES
+// ============================================
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
     },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+    scrollContent: {
+        paddingBottom: 100,
+        paddingTop: 60,
     },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+
+    // Nav Row
+    navRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.sm,
+        position: 'absolute',
+        top: 50,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+    },
+    navButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0, 0, 0, 0.3)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+
+    // Hero
+    heroGradient: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 200,
+    },
+
+    // Team Info
+    teamInfo: {
+        alignItems: 'center',
+        paddingHorizontal: SPACING.xl,
+        marginTop: SPACING.md,
     },
     teamAvatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
+        width: 80,
+        height: 80,
+        borderRadius: 24,
+        marginBottom: SPACING.md,
+    },
+    teamAvatarPlaceholder: {
+        width: 80,
+        height: 80,
+        borderRadius: 24,
         alignItems: 'center',
         justifyContent: 'center',
-        marginLeft: spacing.xs,
-        marginRight: spacing.md,
-    },
-    teamAvatarImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        marginLeft: spacing.xs,
-        marginRight: spacing.md,
+        marginBottom: SPACING.md,
     },
     teamInitial: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.bold,
-    },
-    headerContent: {
-        flex: 1,
+        fontSize: 32,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
     teamName: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
+        textAlign: 'center',
     },
     teamDescription: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        marginTop: 1,
-    },
-    menuButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        textAlign: 'center',
+        maxWidth: 280,
     },
 
-    // Stats
+    // Stats Row
     statsRow: {
         flexDirection: 'row',
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-        gap: spacing.xl,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: SPACING.xl,
+        marginBottom: SPACING.xl,
+        paddingHorizontal: SPACING.xl,
     },
     statItem: {
-        flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
+        paddingHorizontal: SPACING.xl,
     },
-    statText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    statValue: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    statLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
+    },
+    statDivider: {
+        width: 1,
+        height: 30,
+        backgroundColor: 'rgba(255,255,255,0.1)',
     },
 
     // Section
-    sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: spacing.xl,
-        paddingTop: spacing.lg,
-        paddingBottom: spacing.md,
-    },
     sectionTitle: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.tertiary,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
+        paddingHorizontal: SPACING.xl,
+        marginBottom: SPACING.md,
     },
-    addChannelButton: {
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        backgroundColor: colors.accent.light,
+    sectionHeaderRow: {
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        paddingHorizontal: SPACING.xl,
+        marginTop: SPACING.xl,
+        marginBottom: SPACING.md,
+    },
+    sectionBadge: {
+        marginLeft: SPACING.sm,
+        backgroundColor: COLORS.surfaceMuted,
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 2,
+        borderRadius: RADIUS.sm,
+    },
+    sectionBadgeText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
     },
 
-    // Channels List
-    channelsList: {
-        paddingHorizontal: spacing.xl,
-        paddingBottom: spacing['3xl'],
-        flexGrow: 1,
+    // Quick Actions - Horizontal scroll
+    quickActionsScroll: {
+        paddingHorizontal: SPACING.xl,
+        gap: SPACING.md,
     },
+    quickActionCard: {
+        width: 90,
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        paddingVertical: SPACING.lg,
+        paddingHorizontal: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    quickActionIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: SPACING.sm,
+    },
+    quickActionLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
+        textAlign: 'center',
+    },
+
+    // Channels
     channelCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        marginHorizontal: SPACING.xl,
+        marginBottom: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     channelIcon: {
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        backgroundColor: colors.surfaceSubtle,
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: COLORS.surfaceMuted,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: spacing.md,
+        marginRight: SPACING.md,
     },
     channelHash: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.bold,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.tertiary,
     },
     channelContent: {
         flex: 1,
     },
     channelName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
     channelDescription: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
         marginTop: 2,
-    },
-    channelArrow: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: colors.surfaceSubtle,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: spacing.sm,
     },
 
     // Empty
     emptyContainer: {
-        flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing['5xl'],
+        paddingVertical: 40,
     },
-    emptyIcon: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
-        backgroundColor: colors.accent.light,
+    emptyIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
+        marginBottom: SPACING.lg,
     },
     emptyTitle: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
     },
     emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
 
     // Error
@@ -676,200 +568,173 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: spacing['2xl'],
     },
-    errorIcon: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
-        backgroundColor: colors.danger.light,
+    errorIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
+        marginBottom: SPACING.lg,
     },
     errorTitle: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xl,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xl,
     },
     errorButton: {
-        backgroundColor: colors.surface,
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.xl,
     },
     errorButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-    },
-
-    // New Task Button (Admin)
-    newTaskButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        marginHorizontal: spacing.xl,
-        marginTop: spacing.lg,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.lg,
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
-    },
-    newTaskButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
 
     // Modal
-    modalContainer: {
+    modalWrapper: {
         flex: 1,
-        backgroundColor: colors.background,
+        justifyContent: 'flex-end',
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    modalContent: {
+        backgroundColor: COLORS.surface,
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        padding: SPACING.xl,
+        paddingBottom: 50,
+        maxHeight: '85%',
+    },
+    modalHandle: {
+        width: 40,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        alignSelf: 'center',
+        marginBottom: SPACING.lg,
     },
     modalHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    modalCancel: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
+        justifyContent: 'space-between',
+        marginBottom: SPACING.xl,
     },
     modalTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    modalSave: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
-    },
-    modalContent: {
-        flex: 1,
-        paddingHorizontal: spacing.lg,
-        paddingTop: spacing.lg,
+    modalClose: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.surfaceMuted,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
-    // Task Info Banner
-    taskInfoBanner: {
+    // Info Banner
+    infoBanner: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        padding: spacing.md,
-        backgroundColor: colors.accent.subtle,
-        borderRadius: borderRadius.md,
-        marginBottom: spacing.xl,
+        gap: SPACING.sm,
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginBottom: SPACING.xl,
     },
-    taskInfoText: {
+    infoBannerText: {
         flex: 1,
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: '#6366F1',
     },
 
-    // Form Inputs
-    inputGroup: {
-        marginBottom: spacing.lg,
+    // Form
+    formSection: {
+        marginBottom: SPACING.lg,
     },
-    inputLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
+    formLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.sm,
     },
-    textInput: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.md,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+    formInput: {
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
         borderWidth: 1,
-        borderColor: colors.divider,
-    },
-    textAreaInput: {
-        height: 100,
-        textAlignVertical: 'top',
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     dateButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.md,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
+        gap: SPACING.sm,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     dateButtonText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
     },
 
     // XP Selector
     xpSelector: {
         flexDirection: 'row',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     xpOption: {
         flex: 1,
         alignItems: 'center',
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.md,
-        backgroundColor: colors.surface,
+        paddingVertical: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     xpOptionSelected: {
-        backgroundColor: colors.accent.primary,
-        borderColor: colors.accent.primary,
+        backgroundColor: '#6366F1',
+        borderColor: '#6366F1',
     },
     xpOptionText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
     xpOptionTextSelected: {
-        color: colors.text.inverse,
+        color: '#FFF',
     },
 
-    // Quick Actions
-    quickActions: {
+    // Submit
+    submitButton: {
         flexDirection: 'row',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        gap: spacing.sm,
-        justifyContent: 'space-between',
-    },
-    quickActionButton: {
-        flex: 1,
-        alignItems: 'center',
-        gap: spacing.xs,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        ...shadows.sm,
-    },
-    quickActionIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+        gap: SPACING.sm,
+        backgroundColor: '#6366F1',
+        paddingVertical: SPACING.lg,
+        borderRadius: RADIUS.xl,
+        marginTop: SPACING.lg,
     },
-    quickActionText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
+    submitButtonDisabled: {
+        opacity: 0.6,
+    },
+    submitText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 });

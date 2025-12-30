@@ -106,7 +106,7 @@ CREATE TABLE public.events (
   start_time timestamp with time zone NOT NULL,
   end_time timestamp with time zone NOT NULL,
   location text,
-  type text DEFAULT 'class'::text CHECK (type = ANY (ARRAY['class'::text, 'exam'::text, 'study'::text, 'social'::text])),
+  type text DEFAULT 'class'::text CHECK (type = ANY (ARRAY['class'::text, 'exam'::text, 'test'::text, 'study'::text, 'social'::text, 'presentation'::text, 'assignment'::text, 'holiday'::text, 'other'::text])),
   google_event_id text,
   is_synced boolean DEFAULT false,
   recurrence_rule text,
@@ -172,7 +172,7 @@ CREATE TABLE public.notifications (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
   actor_id uuid,
-  type USER-DEFINED NOT NULL,
+  type text NOT NULL,
   title text NOT NULL,
   content text,
   resource_id uuid,
@@ -379,6 +379,7 @@ CREATE TABLE public.task_submissions (
   submitted_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   is_late boolean DEFAULT false,
+  comment text,
   CONSTRAINT task_submissions_pkey PRIMARY KEY (id),
   CONSTRAINT task_submissions_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
   CONSTRAINT task_submissions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
@@ -436,15 +437,6 @@ CREATE TABLE public.team_members (
   CONSTRAINT team_members_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
   CONSTRAINT team_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
-CREATE TABLE public.team_task_completions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  task_id uuid NOT NULL,
-  user_id uuid NOT NULL,
-  completed_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT team_task_completions_pkey PRIMARY KEY (id),
-  CONSTRAINT team_task_completions_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
-  CONSTRAINT team_task_completions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
-);
 CREATE TABLE public.teams (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   name text NOT NULL,
@@ -490,6 +482,19 @@ CREATE TABLE public.user_education (
   CONSTRAINT user_education_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id),
   CONSTRAINT user_education_university_id_fkey FOREIGN KEY (university_id) REFERENCES public.universities(id),
   CONSTRAINT user_education_degree_id_fkey FOREIGN KEY (degree_id) REFERENCES public.degrees(id)
+);
+CREATE TABLE public.user_goals (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  target_value integer NOT NULL,
+  current_value integer DEFAULT 0,
+  goal_type text NOT NULL CHECK (goal_type = ANY (ARRAY['study_minutes'::text, 'tasks_completed'::text, 'streak_days'::text, 'xp_earned'::text])),
+  deadline timestamp with time zone,
+  is_completed boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_goals_pkey PRIMARY KEY (id),
+  CONSTRAINT user_goals_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.user_inventory (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),

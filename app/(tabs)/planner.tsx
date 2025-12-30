@@ -1,26 +1,36 @@
 /**
- * Planner Screen (formerly Quests)
- * Unified view of Team Tasks + Personal Todos
+ * Premium Planner Screen v2
+ * Separação visual: Pessoal vs Equipas
  */
 
 import { CreateTodoModal } from '@/components/CreateTodoModal';
 import { TaskDetailModal } from '@/components/TaskDetailModal';
 import { CreateTodoInput, PersonalTodo, usePersonalTodos } from '@/hooks/usePersonalTodos';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
-    FlatList,
+    Dimensions,
     Pressable,
     RefreshControl,
+    ScrollView,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, {
+    FadeInDown,
+    FadeInRight,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+} from 'react-native-reanimated';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
 // TYPES
@@ -47,12 +57,157 @@ interface UnifiedItem {
     priority: 'low' | 'medium' | 'high';
     team_name?: string;
     team_color?: string;
-    subject_name?: string;
-    subject_color?: string;
+    team_id?: string;
     original: TeamTask | PersonalTodo;
 }
 
-type DateGroup = 'overdue' | 'today' | 'tomorrow' | 'this_week' | 'later' | 'no_date';
+type ViewMode = 'personal' | 'teams' | 'all';
+type StatusFilter = 'pending' | 'completed';
+
+// ============================================
+// ANIMATED COMPONENTS
+// ============================================
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// ============================================
+// PERSONAL TASK CARD
+// ============================================
+
+function PersonalTaskCard({
+    item,
+    index,
+    onToggle,
+    onPress,
+}: {
+    item: UnifiedItem;
+    index: number;
+    onToggle: () => void;
+    onPress: () => void;
+}) {
+    const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    const priorityColors = {
+        high: '#EF4444',
+        medium: '#F59E0B',
+        low: '#10B981',
+    };
+
+    return (
+        <AnimatedPressable
+            entering={FadeInDown.delay(index * 40).springify()}
+            style={[styles.personalCard, animatedStyle]}
+            onPress={onPress}
+            onPressIn={() => { scale.value = withSpring(0.98); }}
+            onPressOut={() => { scale.value = withSpring(1); }}
+        >
+            {/* Checkbox */}
+            <Pressable style={styles.checkbox} onPress={onToggle}>
+                <View style={[
+                    styles.checkboxCircle,
+                    { borderColor: priorityColors[item.priority] },
+                    item.is_completed && { backgroundColor: COLORS.success, borderColor: COLORS.success }
+                ]}>
+                    {item.is_completed && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                </View>
+            </Pressable>
+
+            {/* Content */}
+            <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, item.is_completed && styles.cardTitleDone]} numberOfLines={1}>
+                    {item.title}
+                </Text>
+                <View style={styles.cardMeta}>
+                    {item.due_date && (
+                        <View style={styles.dueBadge}>
+                            <Ionicons name="time-outline" size={10} color={COLORS.text.tertiary} />
+                            <Text style={styles.dueText}>{formatDueDate(item.due_date)}</Text>
+                        </View>
+                    )}
+                    <View style={[styles.priorityDot, { backgroundColor: priorityColors[item.priority] }]} />
+                </View>
+            </View>
+        </AnimatedPressable>
+    );
+}
+
+// ============================================
+// TEAM TASK CARD (More detailed)
+// ============================================
+
+function TeamTaskCard({
+    item,
+    index,
+    onPress,
+}: {
+    item: UnifiedItem;
+    index: number;
+    onPress: () => void;
+}) {
+    const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    return (
+        <AnimatedPressable
+            entering={FadeInRight.delay(index * 50).springify()}
+            style={[styles.teamCard, animatedStyle]}
+            onPress={onPress}
+            onPressIn={() => { scale.value = withSpring(0.97); }}
+            onPressOut={() => { scale.value = withSpring(1); }}
+        >
+            {/* Team Color Bar */}
+            <LinearGradient
+                colors={[item.team_color || '#6366F1', `${item.team_color || '#6366F1'}80`]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.teamColorBar}
+            />
+
+            <View style={styles.teamCardContent}>
+                {/* Team Badge */}
+                <View style={[styles.teamBadge, { backgroundColor: `${item.team_color || '#6366F1'}20` }]}>
+                    <Ionicons name="people" size={12} color={item.team_color || '#6366F1'} />
+                    <Text style={[styles.teamBadgeText, { color: item.team_color || '#6366F1' }]}>
+                        {item.team_name || 'Equipa'}
+                    </Text>
+                </View>
+
+                {/* Title */}
+                <Text style={[styles.teamCardTitle, item.is_completed && styles.cardTitleDone]} numberOfLines={2}>
+                    {item.title}
+                </Text>
+
+                {/* Footer */}
+                <View style={styles.teamCardFooter}>
+                    {item.due_date && (
+                        <View style={styles.dueBadge}>
+                            <Ionicons name="calendar-outline" size={12} color={COLORS.text.tertiary} />
+                            <Text style={styles.dueText}>{formatDueDate(item.due_date)}</Text>
+                        </View>
+                    )}
+                    {item.is_completed ? (
+                        <View style={styles.completedTag}>
+                            <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                            <Text style={styles.completedTagText}>Entregue</Text>
+                        </View>
+                    ) : (
+                        <View style={styles.pendingTag}>
+                            <Ionicons name="time" size={14} color="#F59E0B" />
+                            <Text style={styles.pendingTagText}>Pendente</Text>
+                        </View>
+                    )}
+                </View>
+            </View>
+
+            <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} style={styles.chevron} />
+        </AnimatedPressable>
+    );
+}
 
 // ============================================
 // MAIN COMPONENT
@@ -66,360 +221,312 @@ export default function PlannerScreen() {
     const [tasksLoading, setTasksLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
-    const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('pending');
+    const [viewMode, setViewMode] = useState<ViewMode>('personal');
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
     const [selectedTask, setSelectedTask] = useState<UnifiedItem | null>(null);
 
     // Fetch team tasks
     const fetchTasks = useCallback(async () => {
         if (!user?.id) return;
-
         try {
-            // Get teams where user is member
             const { data: memberships } = await supabase
                 .from('team_members')
                 .select('team_id')
                 .eq('user_id', user.id);
 
             const teamIds = memberships?.map(m => m.team_id) || [];
-
             if (teamIds.length === 0) {
                 setTasks([]);
                 setTasksLoading(false);
                 return;
             }
 
-            // Get tasks from those teams (excluding deleted and created by me)
-            const { data: taskData, error: taskError } = await supabase
+            const { data: taskData } = await supabase
                 .from('tasks')
-                .select(`
-                    id, title, description, due_date, status, team_id, created_by,
-                    team:teams(name, color)
-                `)
+                .select(`id, title, description, due_date, status, team_id, created_by, team:teams(name, color)`)
                 .in('team_id', teamIds)
                 .is('deleted_at', null)
-                .neq('created_by', user.id)  // Exclude tasks I created
+                .neq('created_by', user.id)
                 .order('due_date', { ascending: true, nullsFirst: false });
 
-            if (taskError) {
-                console.error('Error fetching tasks:', taskError);
-                setTasks([]);
-                setTasksLoading(false);
-                return;
-            }
-
-            // Get my submissions for these tasks (to check completion status)
             const { data: submissionsData } = await supabase
                 .from('task_submissions')
-                .select('task_id, status, submitted_at')
+                .select('task_id, status')
                 .eq('user_id', user.id);
 
-            // Create map of my submissions
-            const mySubmissions = new Map<string, { status: string; submitted_at: string | null }>();
-            (submissionsData || []).forEach(s => {
-                mySubmissions.set(s.task_id, { status: s.status, submitted_at: s.submitted_at });
-            });
+            const mySubmissions = new Map<string, string>();
+            (submissionsData || []).forEach(s => mySubmissions.set(s.task_id, s.status));
 
-            // Process and merge with submission status
-            const processed = (taskData || []).map(t => {
-                const mySubmission = mySubmissions.get(t.id);
-                return {
-                    ...t,
-                    team: Array.isArray(t.team) ? t.team[0] : t.team,
-                    // Submitted = completed for display purposes
-                    my_completed: mySubmission?.status === 'submitted' || mySubmission?.status === 'graded',
-                };
-            });
+            const processed = (taskData || []).map(t => ({
+                ...t,
+                team: Array.isArray(t.team) ? t.team[0] : t.team,
+                my_completed: mySubmissions.get(t.id) === 'submitted' || mySubmissions.get(t.id) === 'graded',
+            }));
 
             setTasks(processed);
         } catch (err) {
-            console.error('Error fetching tasks:', err);
+            console.error('Error:', err);
         } finally {
             setTasksLoading(false);
         }
     }, [user?.id]);
 
-    useEffect(() => {
-        fetchTasks();
-    }, [fetchTasks]);
+    useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-    // Refresh handler
     const handleRefresh = async () => {
         setRefreshing(true);
         await Promise.all([fetchTasks(), refreshTodos()]);
         setRefreshing(false);
     };
 
-    // Merge and group items
-    const groupedItems = useMemo(() => {
-        // Convert to unified format
-        const unified: UnifiedItem[] = [
-            // Team tasks
-            ...tasks.map(task => ({
-                id: task.id,
-                type: 'task' as const,
-                title: task.title,
-                description: task.description,
-                due_date: task.due_date,
-                is_completed: task.my_completed || false,
-                priority: 'medium' as const,
-                team_name: task.team?.name,
-                team_color: task.team?.color,
-                original: task,
-            })),
-            // Personal todos
-            ...todos.map(todo => ({
-                id: todo.id,
-                type: 'todo' as const,
-                title: todo.title,
-                description: todo.description,
-                due_date: todo.due_date,
-                is_completed: todo.is_completed,
-                priority: todo.priority,
-                original: todo,
-            })),
-        ];
+    // Convert to unified format
+    const personalItems = useMemo(() => {
+        return todos.map(todo => ({
+            id: todo.id,
+            type: 'todo' as const,
+            title: todo.title,
+            description: todo.description,
+            due_date: todo.due_date,
+            is_completed: todo.is_completed,
+            priority: todo.priority,
+            original: todo,
+        }));
+    }, [todos]);
 
-        // Filter
-        const filtered = unified.filter(item => {
-            if (filter === 'pending') return !item.is_completed;
-            if (filter === 'completed') return item.is_completed;
-            return true;
-        });
+    const teamItems = useMemo(() => {
+        return tasks.map(task => ({
+            id: task.id,
+            type: 'task' as const,
+            title: task.title,
+            description: task.description,
+            due_date: task.due_date,
+            is_completed: task.my_completed || false,
+            priority: 'medium' as const,
+            team_name: task.team?.name,
+            team_color: task.team?.color,
+            team_id: task.team_id,
+            original: task,
+        }));
+    }, [tasks]);
 
-        // Group by date
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-        const endOfWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    // Filter by status
+    const filteredPersonal = personalItems.filter(i =>
+        statusFilter === 'pending' ? !i.is_completed : i.is_completed
+    );
+    const filteredTeam = teamItems.filter(i =>
+        statusFilter === 'pending' ? !i.is_completed : i.is_completed
+    );
 
-        const groups: Record<DateGroup, UnifiedItem[]> = {
-            overdue: [],
-            today: [],
-            tomorrow: [],
-            this_week: [],
-            later: [],
-            no_date: [],
-        };
+    // Stats
+    const personalPending = personalItems.filter(i => !i.is_completed).length;
+    const teamPending = teamItems.filter(i => !i.is_completed).length;
 
-        filtered.forEach(item => {
-            if (!item.due_date) {
-                groups.no_date.push(item);
-            } else {
-                const dueDate = new Date(item.due_date);
-                if (dueDate < today) {
-                    groups.overdue.push(item);
-                } else if (dueDate < tomorrow) {
-                    groups.today.push(item);
-                } else if (dueDate < new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000)) {
-                    groups.tomorrow.push(item);
-                } else if (dueDate < endOfWeek) {
-                    groups.this_week.push(item);
-                } else {
-                    groups.later.push(item);
-                }
-            }
-        });
-
-        // Sort each group by priority
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        Object.values(groups).forEach(group => {
-            group.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-        });
-
-        return groups;
-    }, [tasks, todos, filter]);
-
-    // Render section
-    const renderSection = (title: string, items: UnifiedItem[], icon: string, color: string) => {
-        if (items.length === 0) return null;
-
-        return (
-            <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                    <Ionicons name={icon as any} size={18} color={color} />
-                    <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
-                    <View style={[styles.sectionBadge, { backgroundColor: color + '20' }]}>
-                        <Text style={[styles.sectionBadgeText, { color }]}>{items.length}</Text>
-                    </View>
-                </View>
-                {items.map(item => (
-                    <ItemCard
-                        key={item.id}
-                        item={item}
-                        onToggle={() => item.type === 'todo' && toggleTodo(item.id)}
-                        onPress={() => setSelectedTask(item)}
-                    />
-                ))}
-            </View>
-        );
-    };
-
-    // Handle create todo
     const handleCreateTodo = async (input: CreateTodoInput) => {
         await createTodo(input);
     };
 
-    // Loading state
     if (tasksLoading && todosLoading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    const totalPending = Object.values(groupedItems).flat().filter(i => !i.is_completed).length;
-
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
+        <View style={styles.container}>
+            <ScrollView
+                style={styles.scrollView}
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.text.secondary} />}
+            >
+                {/* ========== HEADER ========== */}
+                <View style={styles.header}>
                     <Text style={styles.headerTitle}>Planner</Text>
-                    <Text style={styles.headerSubtitle}>
-                        {totalPending} tarefa{totalPending !== 1 ? 's' : ''} pendente{totalPending !== 1 ? 's' : ''}
-                    </Text>
-                </View>
-            </View>
-
-            {/* Filter Tabs */}
-            <View style={styles.filterRow}>
-                {(['pending', 'all', 'completed'] as const).map(f => (
-                    <Pressable
-                        key={f}
-                        style={[styles.filterTab, filter === f && styles.filterTabActive]}
-                        onPress={() => setFilter(f)}
-                    >
-                        <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                            {f === 'pending' ? 'Pendentes' : f === 'all' ? 'Todas' : 'Concluídas'}
-                        </Text>
+                    <Pressable style={styles.addButton} onPress={() => setShowCreateModal(true)}>
+                        <Ionicons name="add" size={24} color="#FFF" />
                     </Pressable>
-                ))}
-            </View>
+                </View>
 
-            {/* Content */}
-            <FlatList
-                data={[1]} // Dummy data, we render sections manually
-                keyExtractor={() => 'content'}
-                renderItem={() => (
-                    <View style={styles.content}>
-                        {renderSection('Atrasadas', groupedItems.overdue, 'alert-circle', '#EF4444')}
-                        {renderSection('Hoje', groupedItems.today, 'today', colors.accent.primary)}
-                        {renderSection('Amanhã', groupedItems.tomorrow, 'calendar', '#F59E0B')}
-                        {renderSection('Esta Semana', groupedItems.this_week, 'calendar-outline', '#10B981')}
-                        {renderSection('Mais Tarde', groupedItems.later, 'time-outline', colors.text.tertiary)}
-                        {renderSection('Sem Data', groupedItems.no_date, 'help-circle-outline', colors.text.tertiary)}
-
-                        {/* Empty state */}
-                        {Object.values(groupedItems).every(g => g.length === 0) && (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="checkmark-done-circle" size={64} color={colors.accent.primary} />
-                                <Text style={styles.emptyTitle}>
-                                    {filter === 'pending' ? 'Tudo em dia!' : 'Sem tarefas'}
-                                </Text>
-                                <Text style={styles.emptySubtitle}>
-                                    Clica no + para adicionar uma tarefa pessoal
-                                </Text>
+                {/* ========== VIEW MODE TABS ========== */}
+                <View style={styles.viewModeContainer}>
+                    <Pressable
+                        style={[styles.viewModeTab, viewMode === 'personal' && styles.viewModeTabActive]}
+                        onPress={() => setViewMode('personal')}
+                    >
+                        <Ionicons name="person" size={18} color={viewMode === 'personal' ? '#FFF' : COLORS.text.secondary} />
+                        <Text style={[styles.viewModeText, viewMode === 'personal' && styles.viewModeTextActive]}>
+                            Pessoal
+                        </Text>
+                        {personalPending > 0 && (
+                            <View style={[styles.viewModeBadge, viewMode === 'personal' && styles.viewModeBadgeActive]}>
+                                <Text style={styles.viewModeBadgeText}>{personalPending}</Text>
                             </View>
                         )}
-                    </View>
-                )}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-                }
-                showsVerticalScrollIndicator={false}
-            />
+                    </Pressable>
 
-            {/* FAB */}
+                    <Pressable
+                        style={[styles.viewModeTab, viewMode === 'teams' && styles.viewModeTabActive]}
+                        onPress={() => setViewMode('teams')}
+                    >
+                        <Ionicons name="people" size={18} color={viewMode === 'teams' ? '#FFF' : COLORS.text.secondary} />
+                        <Text style={[styles.viewModeText, viewMode === 'teams' && styles.viewModeTextActive]}>
+                            Equipas
+                        </Text>
+                        {teamPending > 0 && (
+                            <View style={[styles.viewModeBadge, viewMode === 'teams' && styles.viewModeBadgeActive]}>
+                                <Text style={styles.viewModeBadgeText}>{teamPending}</Text>
+                            </View>
+                        )}
+                    </Pressable>
+                </View>
+
+                {/* ========== STATUS FILTER ========== */}
+                <View style={styles.statusFilter}>
+                    <Pressable
+                        style={[styles.statusChip, statusFilter === 'pending' && styles.statusChipActive]}
+                        onPress={() => setStatusFilter('pending')}
+                    >
+                        <Ionicons name="time-outline" size={14} color={statusFilter === 'pending' ? '#FFF' : COLORS.text.tertiary} />
+                        <Text style={[styles.statusChipText, statusFilter === 'pending' && styles.statusChipTextActive]}>Pendentes</Text>
+                    </Pressable>
+                    <Pressable
+                        style={[styles.statusChip, statusFilter === 'completed' && styles.statusChipActive]}
+                        onPress={() => setStatusFilter('completed')}
+                    >
+                        <Ionicons name="checkmark-circle" size={14} color={statusFilter === 'completed' ? '#FFF' : COLORS.text.tertiary} />
+                        <Text style={[styles.statusChipText, statusFilter === 'completed' && styles.statusChipTextActive]}>Concluídas</Text>
+                    </Pressable>
+                </View>
+
+                {/* ========== CONTENT ========== */}
+                <View style={styles.content}>
+                    {/* PERSONAL VIEW */}
+                    {viewMode === 'personal' && (
+                        <Animated.View entering={FadeInDown.springify()}>
+                            <View style={styles.sectionHeader}>
+                                <View style={styles.sectionIconContainer}>
+                                    <LinearGradient colors={['#10B981', '#059669']} style={styles.sectionIcon}>
+                                        <Ionicons name="person" size={18} color="#FFF" />
+                                    </LinearGradient>
+                                </View>
+                                <View>
+                                    <Text style={styles.sectionTitle}>As Minhas Tarefas</Text>
+                                    <Text style={styles.sectionSubtitle}>Organiza o teu dia-a-dia</Text>
+                                </View>
+                            </View>
+
+                            {filteredPersonal.length > 0 ? (
+                                <View style={styles.personalList}>
+                                    {filteredPersonal.map((item, index) => (
+                                        <PersonalTaskCard
+                                            key={item.id}
+                                            item={item}
+                                            index={index}
+                                            onToggle={() => toggleTodo(item.id)}
+                                            onPress={() => setSelectedTask(item)}
+                                        />
+                                    ))}
+                                </View>
+                            ) : (
+                                <View style={styles.emptyState}>
+                                    <Ionicons name={statusFilter === 'pending' ? 'checkmark-done-circle' : 'list'} size={48} color={COLORS.text.tertiary} />
+                                    <Text style={styles.emptyTitle}>
+                                        {statusFilter === 'pending' ? 'Tudo em dia!' : 'Sem tarefas concluídas'}
+                                    </Text>
+                                    {statusFilter === 'pending' && (
+                                        <Pressable style={styles.emptyButton} onPress={() => setShowCreateModal(true)}>
+                                            <Ionicons name="add" size={18} color="#FFF" />
+                                            <Text style={styles.emptyButtonText}>Nova Tarefa</Text>
+                                        </Pressable>
+                                    )}
+                                </View>
+                            )}
+                        </Animated.View>
+                    )}
+
+                    {/* TEAMS VIEW */}
+                    {viewMode === 'teams' && (
+                        <Animated.View entering={FadeInDown.springify()}>
+                            <View style={styles.sectionHeader}>
+                                <View style={styles.sectionIconContainer}>
+                                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.sectionIcon}>
+                                        <Ionicons name="people" size={18} color="#FFF" />
+                                    </LinearGradient>
+                                </View>
+                                <View>
+                                    <Text style={styles.sectionTitle}>Tarefas das Equipas</Text>
+                                    <Text style={styles.sectionSubtitle}>Colabora com os teus colegas</Text>
+                                </View>
+                            </View>
+
+                            {filteredTeam.length > 0 ? (
+                                <View style={styles.teamList}>
+                                    {filteredTeam.map((item, index) => (
+                                        <TeamTaskCard
+                                            key={item.id}
+                                            item={item}
+                                            index={index}
+                                            onPress={() => setSelectedTask(item)}
+                                        />
+                                    ))}
+                                </View>
+                            ) : (
+                                <View style={styles.emptyState}>
+                                    <Ionicons name={statusFilter === 'pending' ? 'rocket' : 'trophy'} size={48} color={COLORS.text.tertiary} />
+                                    <Text style={styles.emptyTitle}>
+                                        {statusFilter === 'pending' ? 'Sem tarefas de equipa pendentes' : 'Nenhuma entrega feita'}
+                                    </Text>
+                                    <Text style={styles.emptySubtitle}>As tarefas dos teus squads aparecem aqui</Text>
+                                </View>
+                            )}
+                        </Animated.View>
+                    )}
+                </View>
+
+                <View style={{ height: 150 }} />
+            </ScrollView>
+
+            {/* ========== FAB ========== */}
             <Pressable style={styles.fab} onPress={() => setShowCreateModal(true)}>
-                <Ionicons name="add" size={28} color="#FFF" />
+                <LinearGradient colors={['#10B981', '#059669']} style={styles.fabGradient}>
+                    <Ionicons name="add" size={28} color="#FFF" />
+                </LinearGradient>
             </Pressable>
 
-            {/* Create Modal */}
+            {/* ========== MODALS ========== */}
             <CreateTodoModal
                 visible={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 onSubmit={handleCreateTodo}
             />
 
-            {/* Task Detail Modal */}
             <TaskDetailModal
                 visible={selectedTask !== null}
                 onClose={() => setSelectedTask(null)}
-                onUpdate={handleRefresh}
                 task={selectedTask}
+                onUpdate={() => { fetchTasks(); refreshTodos(); }}
             />
-        </SafeAreaView>
+        </View>
     );
 }
 
 // ============================================
-// ITEM CARD COMPONENT
+// HELPERS
 // ============================================
 
-function ItemCard({ item, onToggle, onPress }: { item: UnifiedItem; onToggle: () => void; onPress: () => void }) {
-    const priorityColors = {
-        low: '#10B981',
-        medium: '#F59E0B',
-        high: '#EF4444',
-    };
+function formatDueDate(dueDate: string): string {
+    const date = new Date(dueDate);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
 
-    const formatDueDate = (dateStr: string | null) => {
-        if (!dateStr) return null;
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
-    };
-
-    return (
-        <Pressable style={[styles.card, item.is_completed && styles.cardCompleted]} onPress={onPress}>
-            {/* Checkbox / Type indicator */}
-            <Pressable
-                style={[
-                    styles.checkbox,
-                    item.type === 'task' && styles.checkboxTask,
-                    item.is_completed && styles.checkboxChecked
-                ]}
-                onPress={item.type === 'todo' ? onToggle : undefined}
-            >
-                {item.is_completed ? (
-                    <Ionicons name="checkmark" size={14} color="#FFF" />
-                ) : item.type === 'task' ? (
-                    <Ionicons name="document-text" size={14} color={colors.accent.primary} />
-                ) : null}
-            </Pressable>
-
-            {/* Content */}
-            <View style={styles.cardContent}>
-                <Text style={[styles.cardTitle, item.is_completed && styles.cardTitleCompleted]}>
-                    {item.title}
-                </Text>
-
-                <View style={styles.cardMeta}>
-                    {/* Team badge */}
-                    {item.team_name && (
-                        <View style={[styles.badge, { backgroundColor: (item.team_color || colors.accent.primary) + '20' }]}>
-                            <Text style={[styles.badgeText, { color: item.team_color || colors.accent.primary }]}>
-                                {item.team_name}
-                            </Text>
-                        </View>
-                    )}
-
-                    {/* Due date */}
-                    {item.due_date && (
-                        <View style={styles.dueDateBadge}>
-                            <Ionicons name="time-outline" size={12} color={colors.text.tertiary} />
-                            <Text style={styles.dueDateText}>{formatDueDate(item.due_date)}</Text>
-                        </View>
-                    )}
-                </View>
-            </View>
-
-            {/* Priority indicator */}
-            <View style={[styles.priorityDot, { backgroundColor: priorityColors[item.priority] }]} />
-        </Pressable>
-    );
+    if (date < today) return 'Atrasado';
+    if (date < tomorrow) return 'Hoje';
+    if (date < new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000)) return 'Amanhã';
+    return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
 }
 
 // ============================================
@@ -429,175 +536,309 @@ function ItemCard({ item, onToggle, onPress }: { item: UnifiedItem; onToggle: ()
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
+    },
+    scrollView: {
+        flex: 1,
     },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
     },
+
+    // Header
     header: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: 60,
+        paddingHorizontal: LAYOUT.screenPadding,
+        paddingBottom: SPACING.lg,
     },
     headerTitle: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size['3xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: 2,
+    addButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#6366F1',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    filterRow: {
+
+    // View Mode Tabs
+    viewModeContainer: {
         flexDirection: 'row',
-        paddingHorizontal: spacing.lg,
-        marginBottom: spacing.md,
-        gap: spacing.sm,
+        marginHorizontal: LAYOUT.screenPadding,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: 4,
+        marginBottom: SPACING.lg,
     },
-    filterTab: {
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
-        backgroundColor: colors.surface,
+    viewModeTab: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.xs,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.xl,
     },
-    filterTabActive: {
-        backgroundColor: colors.accent.primary,
+    viewModeTabActive: {
+        backgroundColor: '#6366F1',
     },
-    filterText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        fontWeight: typography.weight.medium,
+    viewModeText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
-    filterTextActive: {
+    viewModeTextActive: {
         color: '#FFF',
     },
+    viewModeBadge: {
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    viewModeBadgeActive: {
+        backgroundColor: 'rgba(255,255,255,0.25)',
+    },
+    viewModeBadgeText: {
+        fontSize: 10,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+
+    // Status Filter
+    statusFilter: {
+        flexDirection: 'row',
+        gap: SPACING.sm,
+        paddingHorizontal: LAYOUT.screenPadding,
+        marginBottom: SPACING.xl,
+    },
+    statusChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.xs,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.full,
+        backgroundColor: COLORS.surface,
+    },
+    statusChipActive: {
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    },
+    statusChipText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+    },
+    statusChipTextActive: {
+        color: '#6366F1',
+    },
+
+    // Content
     content: {
-        paddingHorizontal: spacing.lg,
-        paddingBottom: 100,
+        paddingHorizontal: LAYOUT.screenPadding,
     },
-    section: {
-        marginBottom: spacing.lg,
-    },
+
+    // Section Header
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        marginBottom: spacing.sm,
+        gap: SPACING.md,
+        marginBottom: SPACING.xl,
     },
-    sectionTitle: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        flex: 1,
-    },
-    sectionBadge: {
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 2,
-        borderRadius: borderRadius.full,
-    },
-    sectionBadgeText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.bold,
-    },
-    card: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
-    },
-    cardCompleted: {
-        opacity: 0.6,
-    },
-    checkbox: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: colors.border,
+    sectionIconContainer: {},
+    sectionIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: spacing.md,
     },
-    checkboxTask: {
-        borderColor: colors.accent.primary,
-        backgroundColor: colors.accent.light,
+    sectionTitle: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    checkboxChecked: {
-        backgroundColor: colors.accent.primary,
-        borderColor: colors.accent.primary,
+    sectionSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+    },
+
+    // Personal List
+    personalList: {
+        gap: SPACING.sm,
+    },
+    personalCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        gap: SPACING.md,
+        ...SHADOWS.sm,
+    },
+    checkbox: {
+        padding: 4,
+    },
+    checkboxCircle: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     cardContent: {
         flex: 1,
     },
     cardTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
         marginBottom: 4,
     },
-    cardTitleCompleted: {
+    cardTitleDone: {
         textDecorationLine: 'line-through',
-        color: colors.text.tertiary,
+        color: COLORS.text.tertiary,
     },
     cardMeta: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
-    badge: {
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 2,
-        borderRadius: borderRadius.sm,
-    },
-    badgeText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-    },
-    dueDateBadge: {
+    dueBadge: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
     },
-    dueDateText: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+    dueText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
     },
     priorityDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        marginLeft: spacing.sm,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
     },
+
+    // Team List
+    teamList: {
+        gap: SPACING.md,
+    },
+    teamCard: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+        ...SHADOWS.sm,
+    },
+    teamColorBar: {
+        width: 4,
+    },
+    teamCardContent: {
+        flex: 1,
+        padding: SPACING.lg,
+        gap: SPACING.sm,
+    },
+    teamBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
+        alignSelf: 'flex-start',
+    },
+    teamBadgeText: {
+        fontSize: 10,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+    },
+    teamCardTitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+    },
+    teamCardFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    completedTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    completedTagText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.success,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    pendingTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    pendingTagText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: '#F59E0B',
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    chevron: {
+        alignSelf: 'center',
+        marginRight: SPACING.md,
+    },
+
+    // Empty State
     emptyState: {
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing['5xl'],
+        paddingVertical: SPACING['3xl'],
+        gap: SPACING.md,
     },
     emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginTop: spacing.md,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
     },
     emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: spacing.xs,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        textAlign: 'center',
     },
+    emptyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.xs,
+        backgroundColor: '#10B981',
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.full,
+        marginTop: SPACING.md,
+    },
+    emptyButtonText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
+    },
+
+    // FAB
     fab: {
         position: 'absolute',
-        bottom: 24,
-        right: 24,
+        bottom: 120,
+        right: LAYOUT.screenPadding,
+        ...SHADOWS.lg,
+    },
+    fabGradient: {
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: colors.accent.primary,
         alignItems: 'center',
         justifyContent: 'center',
-        ...shadows.lg,
     },
 });

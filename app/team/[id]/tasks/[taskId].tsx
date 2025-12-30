@@ -1,11 +1,11 @@
 /**
- * Task Detail Screen
+ * Task Detail Screen - Premium Dark Design
  * Visualização da tarefa e sistema de entrega
  * Professor vê entregas, Aluno pode submeter
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import {
     getTask,
@@ -19,31 +19,26 @@ import {
 } from '@/services/taskService';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
+    KeyboardAvoidingView,
     Linking,
     Modal,
+    Platform,
     Pressable,
     RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    View
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// ============================================
-// TYPES
-// ============================================
-
-interface TeamMember {
-    user_id: string;
-    role: string;
-}
 
 // ============================================
 // COMPONENT
@@ -53,7 +48,6 @@ export default function TaskDetailScreen() {
     const { id: teamId, taskId } = useLocalSearchParams<{ id: string; taskId: string }>();
     const { user } = useAuthContext();
 
-    // State
     const [task, setTask] = useState<Task | null>(null);
     const [submission, setSubmission] = useState<TaskSubmission | null>(null);
     const [allSubmissions, setAllSubmissions] = useState<TaskSubmission[]>([]);
@@ -62,19 +56,16 @@ export default function TaskDetailScreen() {
     const [isTeacher, setIsTeacher] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
-    // Submission form
     const [linkUrl, setLinkUrl] = useState('');
     const [comment, setComment] = useState('');
     const [selectedFile, setSelectedFile] = useState<{ uri: string; name: string; type: string } | null>(null);
 
-    // Grading modal
     const [gradingModalVisible, setGradingModalVisible] = useState(false);
     const [gradingSubmission, setGradingSubmission] = useState<TaskSubmission | null>(null);
     const [gradeScore, setGradeScore] = useState('');
     const [gradeFeedback, setGradeFeedback] = useState('');
     const [grading, setGrading] = useState(false);
 
-    // Load data
     useEffect(() => {
         if (taskId && teamId && user?.id) {
             loadData();
@@ -84,18 +75,12 @@ export default function TaskDetailScreen() {
 
     const loadData = async () => {
         if (!taskId || !user?.id) return;
-
         setLoading(true);
         try {
-            // Load task
             const taskData = await getTask(taskId);
             setTask(taskData);
-
-            // Load user's submission
             const userSubmission = await getUserSubmission(taskId, user.id);
             setSubmission(userSubmission);
-
-            // Load all submissions for teacher
             if (isTeacher) {
                 const submissions = await getTaskSubmissions(taskId);
                 setAllSubmissions(submissions);
@@ -109,7 +94,6 @@ export default function TaskDetailScreen() {
 
     const checkTeacherRole = async () => {
         if (!teamId || !user?.id) return;
-
         try {
             const { data } = await supabase
                 .from('team_members')
@@ -121,7 +105,6 @@ export default function TaskDetailScreen() {
             const teacherRoles = ['owner', 'admin', 'moderator'];
             setIsTeacher(data ? teacherRoles.includes(data.role) : false);
 
-            // Reload submissions if teacher
             if (data && teacherRoles.includes(data.role) && taskId) {
                 const submissions = await getTaskSubmissions(taskId);
                 setAllSubmissions(submissions);
@@ -144,7 +127,7 @@ export default function TaskDetailScreen() {
     const handlePickFile = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
-                type: task?.config?.allowed_file_types?.map(t => {
+                type: task?.config?.allowed_file_types?.map((t) => {
                     const mimeTypes: Record<string, string> = {
                         pdf: 'application/pdf',
                         jpg: 'image/jpeg',
@@ -158,13 +141,8 @@ export default function TaskDetailScreen() {
             });
 
             if (result.canceled || !result.assets?.[0]) return;
-
             const file = result.assets[0];
-            setSelectedFile({
-                uri: file.uri,
-                name: file.name,
-                type: file.mimeType || 'application/octet-stream',
-            });
+            setSelectedFile({ uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' });
         } catch (err) {
             console.error('Error picking file:', err);
             Alert.alert('Erro', 'Não foi possível selecionar o ficheiro.');
@@ -174,7 +152,6 @@ export default function TaskDetailScreen() {
     const handleSubmit = async () => {
         if (!task || !user?.id || !teamId) return;
 
-        // Validate
         if (task.config?.requires_file_upload && !selectedFile && !submission?.file_url) {
             Alert.alert('Erro', 'É obrigatório anexar um ficheiro.');
             return;
@@ -187,37 +164,23 @@ export default function TaskDetailScreen() {
             let fileType = submission?.file_type;
             let fileSize = submission?.file_size;
 
-            // Upload file if selected
             if (selectedFile) {
-                const uploadResult = await uploadSubmissionFile(
-                    teamId,
-                    task.id,
-                    user.id,
-                    selectedFile
-                );
-
+                const uploadResult = await uploadSubmissionFile(teamId, task.id, user.id, selectedFile);
                 if (uploadResult) {
                     fileUrl = uploadResult.url;
                     fileName = selectedFile.name;
                     fileType = selectedFile.type;
-                    // fileSize = selectedFile.size; // Not available from DocumentPicker
                 }
             }
 
-            // Submit
-            const result = await submitTask(
-                task.id,
-                user.id,
-                {
-                    content: comment,
-                    file_url: fileUrl || undefined,
-                    file_name: fileName || undefined,
-                    file_type: fileType || undefined,
-                    file_size: fileSize || undefined,
-                    link_url: linkUrl || undefined,
-                },
-                task.due_date || undefined
-            );
+            const result = await submitTask(task.id, user.id, {
+                content: comment,
+                file_url: fileUrl || undefined,
+                file_name: fileName || undefined,
+                file_type: fileType || undefined,
+                file_size: fileSize || undefined,
+                link_url: linkUrl || undefined,
+            }, task.due_date || undefined);
 
             if (result) {
                 setSubmission(result);
@@ -252,13 +215,7 @@ export default function TaskDetailScreen() {
 
         setGrading(true);
         try {
-            const success = await gradeSubmission(
-                gradingSubmission.id,
-                user.id,
-                score,
-                gradeFeedback
-            );
-
+            const success = await gradeSubmission(gradingSubmission.id, user.id, score, gradeFeedback);
             if (success) {
                 Alert.alert('✅', 'Nota atribuída com sucesso!');
                 setGradingModalVisible(false);
@@ -275,7 +232,7 @@ export default function TaskDetailScreen() {
     };
 
     // ============================================
-    // RENDER HELPERS
+    // HELPERS
     // ============================================
 
     const isOverdue = task?.due_date ? new Date() > new Date(task.due_date) : false;
@@ -283,10 +240,10 @@ export default function TaskDetailScreen() {
 
     const getStatusColor = (status: string) => {
         switch (status) {
-            case 'submitted': return colors.warning.primary;
-            case 'graded': return colors.success.primary;
-            case 'returned': return colors.danger.primary;
-            default: return colors.text.tertiary;
+            case 'submitted': return '#F59E0B';
+            case 'graded': return '#22C55E';
+            case 'returned': return '#EF4444';
+            default: return COLORS.text.tertiary;
         }
     };
 
@@ -300,411 +257,337 @@ export default function TaskDetailScreen() {
     };
 
     // ============================================
-    // RENDER
+    // LOADING
     // ============================================
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
+                    <Text style={styles.loadingText}>A carregar tarefa...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
     if (!task) {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.errorContainer}>
-                    <Ionicons name="alert-circle" size={48} color={colors.text.tertiary} />
-                    <Text style={styles.errorText}>Tarefa não encontrada</Text>
+            <View style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <Ionicons name="alert-circle" size={48} color={COLORS.text.tertiary} />
+                    <Text style={styles.loadingText}>Tarefa não encontrada</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable onPress={() => router.back()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={colors.text.primary} />
-                </Pressable>
-                <Text style={styles.headerTitle} numberOfLines={1}>
-                    {task.title}
-                </Text>
-                {isTeacher ? (
-                    <Pressable
-                        onPress={() => router.push(`/team/${teamId}/tasks/${taskId}/analytics` as any)}
-                        style={styles.analyticsButton}
-                    >
-                        <Ionicons name="bar-chart" size={20} color={colors.accent.primary} />
+        <View style={styles.container}>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
                     </Pressable>
-                ) : (
-                    <View style={{ width: 40 }} />
-                )}
-            </View>
-
-            <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                }
-            >
-                {/* Task Info Card */}
-                <View style={styles.taskCard}>
-                    <View style={styles.taskHeader}>
-                        <View style={[styles.typeBadge, { backgroundColor: colors.accent.light }]}>
-                            <Ionicons name="document-text" size={16} color={colors.accent.primary} />
-                            <Text style={styles.typeBadgeText}>Tarefa</Text>
-                        </View>
-                        <View style={styles.xpBadge}>
-                            <Ionicons name="flash" size={14} color={colors.warning.primary} />
-                            <Text style={styles.xpBadgeText}>{task.xp_reward} XP</Text>
-                        </View>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle} numberOfLines={1}>{task.title}</Text>
                     </View>
-
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-
-                    {task.description && (
-                        <Text style={styles.taskDescription}>{task.description}</Text>
+                    {isTeacher && (
+                        <Pressable
+                            style={styles.analyticsBtn}
+                            onPress={() => router.push(`/team/${teamId}/tasks/${taskId}/analytics` as any)}
+                        >
+                            <Ionicons name="bar-chart" size={20} color="#6366F1" />
+                        </Pressable>
                     )}
-
-                    {/* Due Date */}
-                    {task.due_date && (
-                        <View style={[styles.dueDateRow, isOverdue && styles.dueDateOverdue]}>
-                            <Ionicons
-                                name="calendar"
-                                size={18}
-                                color={isOverdue ? colors.danger.primary : colors.text.secondary}
-                            />
-                            <Text style={[
-                                styles.dueDateText,
-                                isOverdue && styles.dueDateTextOverdue,
-                            ]}>
-                                {isOverdue ? 'Prazo expirado: ' : 'Prazo: '}
-                                {new Date(task.due_date).toLocaleDateString('pt-PT', {
-                                    day: '2-digit',
-                                    month: 'long',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                })}
-                            </Text>
-                        </View>
-                    )}
-
-                    {/* Config Info */}
-                    <View style={styles.configInfo}>
-                        {task.config?.requires_file_upload && (
-                            <View style={styles.configItem}>
-                                <Ionicons name="attach" size={16} color={colors.text.tertiary} />
-                                <Text style={styles.configItemText}>
-                                    Ficheiro obrigatório ({task.config.allowed_file_types?.join(', ')})
-                                </Text>
-                            </View>
-                        )}
-                        <View style={styles.configItem}>
-                            <Ionicons name="star" size={16} color={colors.text.tertiary} />
-                            <Text style={styles.configItemText}>
-                                Nota máxima: {task.config?.max_score || 20}
-                            </Text>
-                        </View>
-                    </View>
                 </View>
 
-                {/* Student View: Submission Form */}
-                {!isTeacher && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>📤 A Tua Entrega</Text>
-
-                        {/* Current Submission Status */}
-                        {submission && (
-                            <View style={[styles.statusCard, { borderColor: getStatusColor(submission.status) }]}>
-                                <View style={styles.statusHeader}>
-                                    <View style={[styles.statusDot, { backgroundColor: getStatusColor(submission.status) }]} />
-                                    <Text style={styles.statusText}>{getStatusLabel(submission.status)}</Text>
-                                    {submission.score !== null && (
-                                        <Text style={styles.scoreText}>
-                                            {submission.score}/{task.config?.max_score || 20}
-                                        </Text>
-                                    )}
-                                </View>
-                                {submission.file_name && (
-                                    <Pressable
-                                        style={styles.fileLink}
-                                        onPress={() => Linking.openURL(submission.file_url!)}
-                                    >
-                                        <Ionicons name="document" size={18} color={colors.accent.primary} />
-                                        <Text style={styles.fileLinkText}>{submission.file_name}</Text>
-                                    </Pressable>
-                                )}
-                                {submission.feedback && (
-                                    <View style={styles.feedbackBox}>
-                                        <Text style={styles.feedbackLabel}>Feedback do Professor:</Text>
-                                        <Text style={styles.feedbackText}>{submission.feedback}</Text>
-                                    </View>
-                                )}
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />}
+                >
+                    {/* Task Info Card */}
+                    <View style={styles.taskCard}>
+                        <View style={styles.taskHeader}>
+                            <View style={styles.typeBadge}>
+                                <Ionicons name="document-text" size={16} color="#6366F1" />
+                                <Text style={styles.typeBadgeText}>Tarefa</Text>
                             </View>
-                        )}
-
-                        {/* Submission Form */}
-                        {canSubmit && (!submission || submission.status !== 'graded') && (
-                            <View style={styles.submitForm}>
-                                {/* File Upload */}
-                                <Pressable style={styles.uploadButton} onPress={handlePickFile}>
-                                    <Ionicons
-                                        name={selectedFile ? 'document' : 'cloud-upload-outline'}
-                                        size={24}
-                                        color={colors.accent.primary}
-                                    />
-                                    <Text style={styles.uploadButtonText}>
-                                        {selectedFile ? selectedFile.name : 'Anexar Ficheiro'}
-                                    </Text>
-                                </Pressable>
-
-                                {/* Link */}
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.label}>Link (opcional)</Text>
-                                    <TextInput
-                                        style={styles.input}
-                                        value={linkUrl}
-                                        onChangeText={setLinkUrl}
-                                        placeholder="https://..."
-                                        placeholderTextColor={colors.text.tertiary}
-                                        autoCapitalize="none"
-                                        keyboardType="url"
-                                    />
-                                </View>
-
-                                {/* Comment */}
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.label}>Comentário (opcional)</Text>
-                                    <TextInput
-                                        style={[styles.input, styles.textArea]}
-                                        value={comment}
-                                        onChangeText={setComment}
-                                        placeholder="Notas ou observações..."
-                                        placeholderTextColor={colors.text.tertiary}
-                                        multiline
-                                        numberOfLines={3}
-                                    />
-                                </View>
-
-                                {/* Submit Button */}
-                                <Pressable
-                                    style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-                                    onPress={handleSubmit}
-                                    disabled={submitting}
-                                >
-                                    {submitting ? (
-                                        <ActivityIndicator size="small" color="#FFF" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="send" size={20} color="#FFF" />
-                                            <Text style={styles.submitButtonText}>
-                                                {submission ? 'Atualizar Entrega' : 'Entregar'}
-                                            </Text>
-                                        </>
-                                    )}
-                                </Pressable>
-
-                                {isOverdue && task.config?.allow_late_submissions && (
-                                    <Text style={styles.lateWarning}>
-                                        ⚠️ Entrega em atraso
-                                    </Text>
-                                )}
+                            <View style={styles.xpBadge}>
+                                <Ionicons name="flash" size={14} color="#FFD700" />
+                                <Text style={styles.xpBadgeText}>{task.xp_reward} XP</Text>
                             </View>
-                        )}
+                        </View>
 
-                        {!canSubmit && !submission && (
-                            <View style={styles.closedCard}>
-                                <Ionicons name="lock-closed" size={32} color={colors.text.tertiary} />
-                                <Text style={styles.closedText}>
-                                    O prazo de entrega terminou
+                        <Text style={styles.taskTitle}>{task.title}</Text>
+                        {task.description && <Text style={styles.taskDescription}>{task.description}</Text>}
+
+                        {/* Due Date */}
+                        {task.due_date && (
+                            <View style={[styles.dueRow, isOverdue && styles.dueRowOverdue]}>
+                                <Ionicons name="calendar" size={18} color={isOverdue ? '#EF4444' : COLORS.text.secondary} />
+                                <Text style={[styles.dueText, isOverdue && styles.dueTextOverdue]}>
+                                    {isOverdue ? 'Prazo expirado: ' : 'Prazo: '}
+                                    {new Date(task.due_date).toLocaleDateString('pt-PT', {
+                                        day: '2-digit',
+                                        month: 'long',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                    })}
                                 </Text>
                             </View>
                         )}
-                    </View>
-                )}
 
-                {/* Teacher View: All Submissions */}
-                {isTeacher && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>
-                            📋 Entregas ({allSubmissions.length})
-                        </Text>
-
-                        {allSubmissions.length === 0 ? (
-                            <View style={styles.emptyCard}>
-                                <Ionicons name="file-tray-outline" size={48} color={colors.text.tertiary} />
-                                <Text style={styles.emptyText}>Nenhuma entrega ainda</Text>
+                        {/* Config Info */}
+                        <View style={styles.configList}>
+                            {task.config?.requires_file_upload && (
+                                <View style={styles.configItem}>
+                                    <Ionicons name="attach" size={16} color={COLORS.text.tertiary} />
+                                    <Text style={styles.configText}>
+                                        Ficheiro obrigatório ({task.config.allowed_file_types?.join(', ')})
+                                    </Text>
+                                </View>
+                            )}
+                            <View style={styles.configItem}>
+                                <Ionicons name="star" size={16} color={COLORS.text.tertiary} />
+                                <Text style={styles.configText}>Nota máxima: {task.config?.max_score || 20}</Text>
                             </View>
-                        ) : (
-                            <View style={styles.submissionsList}>
-                                {allSubmissions.map(sub => (
-                                    <Pressable
-                                        key={sub.id}
-                                        style={styles.submissionCard}
-                                        onPress={() => handleOpenGrading(sub)}
-                                    >
-                                        <View style={styles.submissionHeader}>
-                                            <View style={styles.submissionUser}>
-                                                <View style={styles.userAvatarSmall}>
-                                                    <Text style={styles.userAvatarText}>
-                                                        {(sub as any).user?.username?.[0]?.toUpperCase() || '?'}
-                                                    </Text>
-                                                </View>
-                                                <View>
-                                                    <Text style={styles.userName}>
-                                                        {(sub as any).user?.full_name || (sub as any).user?.username}
-                                                    </Text>
-                                                    <Text style={styles.submittedAt}>
-                                                        {new Date(sub.submitted_at).toLocaleDateString('pt-PT')}
-                                                        {sub.is_late && ' (atrasado)'}
-                                                    </Text>
-                                                </View>
-                                            </View>
-                                            <View style={[
-                                                styles.submissionStatus,
-                                                { backgroundColor: getStatusColor(sub.status) + '20' },
-                                            ]}>
-                                                <Text style={[
-                                                    styles.submissionStatusText,
-                                                    { color: getStatusColor(sub.status) },
-                                                ]}>
-                                                    {sub.score !== null
-                                                        ? `${sub.score}/${task.config?.max_score || 20}`
-                                                        : getStatusLabel(sub.status)}
-                                                </Text>
-                                            </View>
+                        </View>
+                    </View>
+
+                    {/* Student View: Submission */}
+                    {!isTeacher && (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>📤 A Tua Entrega</Text>
+
+                            {submission && (
+                                <View style={[styles.statusCard, { borderColor: getStatusColor(submission.status) }]}>
+                                    <View style={styles.statusHeader}>
+                                        <View style={[styles.statusDot, { backgroundColor: getStatusColor(submission.status) }]} />
+                                        <Text style={styles.statusText}>{getStatusLabel(submission.status)}</Text>
+                                        {submission.score !== null && (
+                                            <Text style={styles.scoreText}>{submission.score}/{task.config?.max_score || 20}</Text>
+                                        )}
+                                    </View>
+                                    {submission.file_name && (
+                                        <Pressable style={styles.fileLink} onPress={() => Linking.openURL(submission.file_url!)}>
+                                            <Ionicons name="document" size={18} color="#6366F1" />
+                                            <Text style={styles.fileLinkText}>{submission.file_name}</Text>
+                                        </Pressable>
+                                    )}
+                                    {submission.feedback && (
+                                        <View style={styles.feedbackBox}>
+                                            <Text style={styles.feedbackLabel}>Feedback do Professor:</Text>
+                                            <Text style={styles.feedbackText}>{submission.feedback}</Text>
                                         </View>
-                                        {sub.file_name && (
-                                            <View style={styles.submissionFile}>
-                                                <Ionicons name="attach" size={14} color={colors.text.tertiary} />
-                                                <Text style={styles.submissionFileName}>{sub.file_name}</Text>
-                                            </View>
+                                    )}
+                                </View>
+                            )}
+
+                            {canSubmit && (!submission || submission.status !== 'graded') && (
+                                <View style={styles.submitForm}>
+                                    <Pressable style={styles.uploadButton} onPress={handlePickFile}>
+                                        <LinearGradient
+                                            colors={selectedFile ? ['#22C55E', '#16A34A'] : ['#6366F1', '#4F46E5']}
+                                            style={styles.uploadGradient}
+                                        >
+                                            <Ionicons name={selectedFile ? 'document' : 'cloud-upload-outline'} size={24} color="#FFF" />
+                                        </LinearGradient>
+                                        <Text style={styles.uploadText}>
+                                            {selectedFile ? selectedFile.name : 'Anexar Ficheiro'}
+                                        </Text>
+                                    </Pressable>
+
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.inputLabel}>Link (opcional)</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={linkUrl}
+                                            onChangeText={setLinkUrl}
+                                            placeholder="https://..."
+                                            placeholderTextColor={COLORS.text.tertiary}
+                                            autoCapitalize="none"
+                                            keyboardType="url"
+                                        />
+                                    </View>
+
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.inputLabel}>Comentário (opcional)</Text>
+                                        <TextInput
+                                            style={[styles.input, { height: 80 }]}
+                                            value={comment}
+                                            onChangeText={setComment}
+                                            placeholder="Notas ou observações..."
+                                            placeholderTextColor={COLORS.text.tertiary}
+                                            multiline
+                                            textAlignVertical="top"
+                                        />
+                                    </View>
+
+                                    <Pressable style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
+                                        {submitting ? (
+                                            <ActivityIndicator color="#FFF" />
+                                        ) : (
+                                            <>
+                                                <Ionicons name="send" size={20} color="#FFF" />
+                                                <Text style={styles.submitButtonText}>
+                                                    {submission ? 'Atualizar Entrega' : 'Entregar'}
+                                                </Text>
+                                            </>
                                         )}
                                     </Pressable>
-                                ))}
-                            </View>
-                        )}
-                    </View>
-                )}
-            </ScrollView>
 
-            {/* Grading Modal */}
-            <Modal
-                visible={gradingModalVisible}
-                animationType="slide"
-                presentationStyle="pageSheet"
-                onRequestClose={() => setGradingModalVisible(false)}
-            >
-                <SafeAreaView style={styles.modalContainer} edges={['top']}>
-                    <View style={styles.modalHeader}>
-                        <Pressable onPress={() => setGradingModalVisible(false)}>
-                            <Text style={styles.modalCancel}>Cancelar</Text>
-                        </Pressable>
-                        <Text style={styles.modalTitle}>Avaliar</Text>
-                        <Pressable onPress={handleGrade} disabled={grading}>
-                            {grading ? (
-                                <ActivityIndicator size="small" color={colors.accent.primary} />
-                            ) : (
-                                <Text style={styles.modalSave}>Guardar</Text>
-                            )}
-                        </Pressable>
-                    </View>
-
-                    <ScrollView style={styles.modalContent}>
-                        {gradingSubmission && (
-                            <>
-                                {/* Student Info */}
-                                <View style={styles.gradingStudentInfo}>
-                                    <Text style={styles.gradingStudentName}>
-                                        {(gradingSubmission as any).user?.full_name}
-                                    </Text>
-                                    <Text style={styles.gradingSubmittedAt}>
-                                        Entregue: {new Date(gradingSubmission.submitted_at).toLocaleString('pt-PT')}
-                                    </Text>
+                                    {isOverdue && task.config?.allow_late_submissions && (
+                                        <Text style={styles.lateWarning}>⚠️ Entrega em atraso</Text>
+                                    )}
                                 </View>
+                            )}
 
-                                {/* File Link */}
-                                {gradingSubmission.file_url && (
-                                    <Pressable
-                                        style={styles.gradingFileLink}
-                                        onPress={() => Linking.openURL(gradingSubmission.file_url!)}
-                                    >
-                                        <Ionicons name="document" size={24} color={colors.accent.primary} />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.gradingFileName}>
-                                                {gradingSubmission.file_name}
-                                            </Text>
-                                            <Text style={styles.gradingFileAction}>
-                                                Toca para abrir
-                                            </Text>
-                                        </View>
-                                        <Ionicons name="open-outline" size={20} color={colors.text.tertiary} />
-                                    </Pressable>
-                                )}
+                            {!canSubmit && !submission && (
+                                <View style={styles.closedCard}>
+                                    <Ionicons name="lock-closed" size={32} color={COLORS.text.tertiary} />
+                                    <Text style={styles.closedText}>O prazo de entrega terminou</Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
 
-                                {/* Link */}
-                                {gradingSubmission.link_url && (
-                                    <Pressable
-                                        style={styles.gradingFileLink}
-                                        onPress={() => Linking.openURL(gradingSubmission.link_url!)}
-                                    >
-                                        <Ionicons name="link" size={24} color={colors.accent.primary} />
-                                        <Text style={styles.gradingLinkUrl}>
-                                            {gradingSubmission.link_url}
-                                        </Text>
-                                    </Pressable>
-                                )}
+                    {/* Teacher View: Submissions */}
+                    {isTeacher && (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>📋 Entregas ({allSubmissions.length})</Text>
 
-                                {/* Student Comment */}
-                                {gradingSubmission.content && (
-                                    <View style={styles.gradingComment}>
-                                        <Text style={styles.gradingCommentLabel}>Comentário do aluno:</Text>
-                                        <Text style={styles.gradingCommentText}>
-                                            {gradingSubmission.content}
+                            {allSubmissions.length === 0 ? (
+                                <View style={styles.emptyCard}>
+                                    <Ionicons name="file-tray-outline" size={48} color={COLORS.text.tertiary} />
+                                    <Text style={styles.emptyText}>Nenhuma entrega ainda</Text>
+                                </View>
+                            ) : (
+                                allSubmissions.map((sub) => (
+                                    <SubmissionCard
+                                        key={sub.id}
+                                        sub={sub}
+                                        maxScore={task.config?.max_score || 20}
+                                        onPress={() => handleOpenGrading(sub)}
+                                    />
+                                ))
+                            )}
+                        </View>
+                    )}
+                </ScrollView>
+
+                {/* Grading Modal */}
+                <Modal visible={gradingModalVisible} animationType="slide" transparent onRequestClose={() => setGradingModalVisible(false)}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
+                        <Pressable style={styles.modalBackdrop} onPress={() => setGradingModalVisible(false)} />
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHandle} />
+                            <Text style={styles.modalTitle}>Avaliar Entrega</Text>
+
+                            {gradingSubmission && (
+                                <>
+                                    <View style={styles.gradingInfo}>
+                                        <Text style={styles.gradingName}>{(gradingSubmission as any).user?.full_name}</Text>
+                                        <Text style={styles.gradingDate}>
+                                            {new Date(gradingSubmission.submitted_at).toLocaleString('pt-PT')}
                                         </Text>
                                     </View>
-                                )}
 
-                                {/* Score */}
-                                <View style={styles.gradeInputGroup}>
-                                    <Text style={styles.gradeLabel}>
-                                        Nota (0-{task?.config?.max_score || 20})
-                                    </Text>
-                                    <TextInput
-                                        style={styles.gradeInput}
-                                        value={gradeScore}
-                                        onChangeText={setGradeScore}
-                                        keyboardType="number-pad"
-                                        placeholder="0"
-                                        placeholderTextColor={colors.text.tertiary}
-                                    />
-                                </View>
+                                    {gradingSubmission.file_url && (
+                                        <Pressable style={styles.gradingFile} onPress={() => Linking.openURL(gradingSubmission.file_url!)}>
+                                            <Ionicons name="document" size={24} color="#6366F1" />
+                                            <Text style={styles.gradingFileName}>{gradingSubmission.file_name}</Text>
+                                            <Ionicons name="open-outline" size={18} color={COLORS.text.tertiary} />
+                                        </Pressable>
+                                    )}
 
-                                {/* Feedback */}
-                                <View style={styles.gradeInputGroup}>
-                                    <Text style={styles.gradeLabel}>Feedback</Text>
-                                    <TextInput
-                                        style={[styles.input, styles.textArea]}
-                                        value={gradeFeedback}
-                                        onChangeText={setGradeFeedback}
-                                        placeholder="Comentários sobre o trabalho..."
-                                        placeholderTextColor={colors.text.tertiary}
-                                        multiline
-                                        numberOfLines={4}
-                                    />
-                                </View>
-                            </>
-                        )}
-                    </ScrollView>
-                </SafeAreaView>
-            </Modal>
-        </SafeAreaView>
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.inputLabel}>Nota (0-{task?.config?.max_score || 20})</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={gradeScore}
+                                            onChangeText={setGradeScore}
+                                            keyboardType="number-pad"
+                                            placeholder="0"
+                                            placeholderTextColor={COLORS.text.tertiary}
+                                        />
+                                    </View>
+
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.inputLabel}>Feedback</Text>
+                                        <TextInput
+                                            style={[styles.input, { height: 100 }]}
+                                            value={gradeFeedback}
+                                            onChangeText={setGradeFeedback}
+                                            placeholder="Comentários sobre o trabalho..."
+                                            placeholderTextColor={COLORS.text.tertiary}
+                                            multiline
+                                            textAlignVertical="top"
+                                        />
+                                    </View>
+
+                                    <View style={styles.modalButtons}>
+                                        <Pressable style={styles.modalBtnCancel} onPress={() => setGradingModalVisible(false)}>
+                                            <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+                                        </Pressable>
+                                        <Pressable style={styles.modalBtnConfirm} onPress={handleGrade} disabled={grading}>
+                                            {grading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.modalBtnConfirmText}>Guardar Nota</Text>}
+                                        </Pressable>
+                                    </View>
+                                </>
+                            )}
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
+            </SafeAreaView>
+        </View>
+    );
+}
+
+// ============================================
+// SUBMISSION CARD
+// ============================================
+
+function SubmissionCard({
+    sub,
+    maxScore,
+    onPress,
+}: {
+    sub: TaskSubmission;
+    maxScore: number;
+    onPress: () => void;
+}) {
+    const scale = useRef(new Animated.Value(1)).current;
+    const statusColor = sub.status === 'graded' ? '#22C55E' : '#F59E0B';
+
+    return (
+        <Pressable
+            onPress={onPress}
+            onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+        >
+            <Animated.View style={[styles.subCard, { transform: [{ scale }] }]}>
+                <View style={styles.subAvatarPlaceholder}>
+                    <Text style={styles.subAvatarText}>
+                        {(sub as any).user?.username?.[0]?.toUpperCase() || '?'}
+                    </Text>
+                </View>
+                <View style={styles.subInfo}>
+                    <Text style={styles.subName}>{(sub as any).user?.full_name || (sub as any).user?.username}</Text>
+                    <Text style={styles.subDate}>
+                        {new Date(sub.submitted_at).toLocaleDateString('pt-PT')}
+                        {sub.is_late && ' (atrasado)'}
+                    </Text>
+                </View>
+                <View style={[styles.subStatus, { backgroundColor: `${statusColor}20` }]}>
+                    <Text style={[styles.subStatusText, { color: statusColor }]}>
+                        {sub.score !== null ? `${sub.score}/${maxScore}` : 'Avaliar'}
+                    </Text>
+                </View>
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -715,172 +598,167 @@ export default function TaskDetailScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        gap: SPACING.md,
     },
-    errorContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.md,
+    loadingText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
     },
-    errorText: {
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
+    scrollContent: {
+        paddingBottom: 100,
     },
 
     // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
     },
     backButton: {
-        width: 40,
-        height: 40,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    headerContent: {
+        flex: 1,
+        marginHorizontal: SPACING.md,
     },
     headerTitle: {
-        flex: 1,
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        textAlign: 'center',
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    analyticsButton: {
-        width: 40,
-        height: 40,
+    analyticsBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: 'rgba(99, 102, 241, 0.15)',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: colors.accent.light,
-        borderRadius: borderRadius.md,
-    },
-
-    // Content
-    scrollView: {
-        flex: 1,
-    },
-    scrollContent: {
-        paddingBottom: spacing.xl,
     },
 
     // Task Card
     taskCard: {
-        backgroundColor: colors.surface,
-        margin: spacing.lg,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
-        ...shadows.md,
+        backgroundColor: COLORS.surfaceElevated,
+        marginHorizontal: SPACING.lg,
+        marginTop: SPACING.md,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.xl,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     taskHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: spacing.md,
+        marginBottom: SPACING.md,
     },
     typeBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
-        paddingVertical: spacing.xs,
-        paddingHorizontal: spacing.sm,
-        borderRadius: borderRadius.full,
+        gap: SPACING.xs,
+        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+        paddingVertical: SPACING.xs,
+        paddingHorizontal: SPACING.sm,
+        borderRadius: RADIUS.full,
     },
     typeBadgeText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: '#6366F1',
     },
     xpBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
+        gap: SPACING.xs,
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
+        paddingVertical: SPACING.xs,
+        paddingHorizontal: SPACING.sm,
+        borderRadius: RADIUS.full,
     },
     xpBadgeText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: colors.warning.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFD700',
     },
     taskTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.sm,
     },
     taskDescription: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
         lineHeight: 22,
-        marginBottom: spacing.md,
+        marginBottom: SPACING.md,
     },
-    dueDateRow: {
+    dueRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.background,
-        padding: spacing.sm,
-        borderRadius: borderRadius.md,
-        marginBottom: spacing.md,
+        gap: SPACING.sm,
+        backgroundColor: COLORS.surfaceMuted,
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginBottom: SPACING.md,
     },
-    dueDateOverdue: {
-        backgroundColor: colors.danger.light,
+    dueRowOverdue: {
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
     },
-    dueDateText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+    dueText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
     },
-    dueDateTextOverdue: {
-        color: colors.danger.primary,
-        fontWeight: typography.weight.medium,
+    dueTextOverdue: {
+        color: '#EF4444',
     },
-    configInfo: {
-        borderTopWidth: 1,
-        borderTopColor: colors.divider,
-        paddingTop: spacing.md,
-        gap: spacing.xs,
+    configList: {
+        gap: SPACING.sm,
     },
     configItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
-    configItemText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    configText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
 
     // Section
     section: {
-        paddingHorizontal: spacing.lg,
-        marginTop: spacing.md,
+        marginTop: SPACING.xl,
+        paddingHorizontal: SPACING.lg,
     },
     sectionTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.md,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.md,
     },
 
     // Status Card
     statusCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.lg,
+        borderWidth: 1,
         borderLeftWidth: 4,
-        marginBottom: spacing.md,
+        marginBottom: SPACING.md,
     },
     statusHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     statusDot: {
         width: 10,
@@ -889,304 +767,267 @@ const styles = StyleSheet.create({
     },
     statusText: {
         flex: 1,
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
     scoreText: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.success.primary,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#22C55E',
     },
     fileLink: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        marginTop: spacing.sm,
-        paddingTop: spacing.sm,
-        borderTopWidth: 1,
-        borderTopColor: colors.divider,
+        gap: SPACING.sm,
+        marginTop: SPACING.md,
+        padding: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
     },
     fileLinkText: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
+        flex: 1,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: '#6366F1',
     },
     feedbackBox: {
-        backgroundColor: colors.background,
-        borderRadius: borderRadius.md,
-        padding: spacing.md,
-        marginTop: spacing.sm,
+        marginTop: SPACING.md,
+        padding: SPACING.md,
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        borderRadius: RADIUS.lg,
     },
     feedbackLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
-        marginBottom: spacing.xs,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: '#22C55E',
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        marginBottom: SPACING.xs,
     },
     feedbackText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.primary,
     },
 
     // Submit Form
     submitForm: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
+        gap: SPACING.lg,
     },
     uploadButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        borderWidth: 2,
-        borderStyle: 'dashed',
-        borderColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.xl,
-        marginBottom: spacing.md,
+        gap: SPACING.md,
+        backgroundColor: COLORS.surfaceElevated,
+        padding: SPACING.md,
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    uploadButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.accent.primary,
+    uploadGradient: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    uploadText: {
+        flex: 1,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
     },
     inputGroup: {
-        marginBottom: spacing.md,
+        gap: SPACING.sm,
     },
-    label: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.xs,
+    inputLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
     input: {
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
         borderWidth: 1,
-        borderColor: colors.divider,
-        borderRadius: borderRadius.md,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-    },
-    textArea: {
-        minHeight: 80,
-        textAlignVertical: 'top',
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     submitButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.success.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.md,
-    },
-    submitButtonDisabled: {
-        opacity: 0.7,
+        gap: SPACING.sm,
+        backgroundColor: '#6366F1',
+        paddingVertical: SPACING.lg,
+        borderRadius: RADIUS.xl,
     },
     submitButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
         color: '#FFF',
     },
     lateWarning: {
         textAlign: 'center',
-        fontSize: typography.size.sm,
-        color: colors.warning.primary,
-        marginTop: spacing.sm,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: '#F59E0B',
     },
 
     // Closed Card
     closedCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.xl,
         alignItems: 'center',
-        gap: spacing.md,
+        padding: SPACING['2xl'],
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        gap: SPACING.md,
     },
     closedText: {
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
     },
 
     // Empty Card
     emptyCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.xl,
         alignItems: 'center',
-        gap: spacing.md,
+        padding: SPACING['2xl'],
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        gap: SPACING.md,
     },
     emptyText: {
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
     },
 
-    // Submissions List
-    submissionsList: {
-        gap: spacing.sm,
-    },
-    submissionCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-    },
-    submissionHeader: {
+    // Submission Card
+    subCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        marginBottom: SPACING.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    submissionUser: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-    userAvatarSmall: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.accent.primary,
+    subAvatarPlaceholder: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    userAvatarText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
+    subAvatarText: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#6366F1',
     },
-    userName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+    subInfo: {
+        flex: 1,
+        marginLeft: SPACING.md,
     },
-    submittedAt: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    subName: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
-    submissionStatus: {
-        paddingVertical: spacing.xs,
-        paddingHorizontal: spacing.sm,
-        borderRadius: borderRadius.full,
+    subDate: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
-    submissionStatusText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
+    subStatus: {
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.lg,
     },
-    submissionFile: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        marginTop: spacing.sm,
-    },
-    submissionFileName: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    subStatusText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.semibold,
     },
 
     // Modal
-    modalContainer: {
+    modalWrapper: {
         flex: 1,
-        backgroundColor: colors.background,
+        justifyContent: 'flex-end',
     },
-    modalHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    modalCancel: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-    },
-    modalTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    modalSave: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
     },
     modalContent: {
-        padding: spacing.lg,
+        backgroundColor: COLORS.surface,
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        padding: SPACING.xl,
+        paddingBottom: 50,
     },
-    gradingStudentInfo: {
-        marginBottom: spacing.lg,
+    modalHandle: {
+        width: 40,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        alignSelf: 'center',
+        marginBottom: SPACING.lg,
     },
-    gradingStudentName: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+    modalTitle: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xl,
+        textAlign: 'center',
     },
-    gradingSubmittedAt: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: 2,
+    gradingInfo: {
+        alignItems: 'center',
+        marginBottom: SPACING.lg,
     },
-    gradingFileLink: {
+    gradingName: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.primary,
+    },
+    gradingDate: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+    },
+    gradingFile: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.md,
+        gap: SPACING.md,
+        backgroundColor: COLORS.surfaceMuted,
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginBottom: SPACING.lg,
     },
     gradingFileName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-    },
-    gradingFileAction: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
-    },
-    gradingLinkUrl: {
         flex: 1,
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: '#6366F1',
     },
-    gradingComment: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.lg,
+    modalButtons: {
+        flexDirection: 'row',
+        gap: SPACING.md,
+        marginTop: SPACING.lg,
     },
-    gradingCommentLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
-        marginBottom: spacing.xs,
+    modalBtnCancel: {
+        flex: 1,
+        paddingVertical: SPACING.lg,
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceMuted,
+        borderRadius: RADIUS.xl,
     },
-    gradingCommentText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+    modalBtnCancelText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
-    gradeInputGroup: {
-        marginBottom: spacing.lg,
+    modalBtnConfirm: {
+        flex: 1,
+        paddingVertical: SPACING.lg,
+        alignItems: 'center',
+        backgroundColor: '#6366F1',
+        borderRadius: RADIUS.xl,
     },
-    gradeLabel: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
-    },
-    gradeInput: {
-        backgroundColor: colors.surface,
-        borderWidth: 2,
-        borderColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        textAlign: 'center',
+    modalBtnConfirmText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 });
