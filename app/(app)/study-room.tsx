@@ -1,8 +1,7 @@
 /**
- * Study Room Page
- * Real-time Study Sessions with Custom Room Creation
- * V2: Chat + Vibe Sync (Synchronized Radio)
- * V3: Floating Reactions + Unread Badge
+ * 📚 Study Room - PREMIUM REDESIGN V2
+ * Complete structural redesign with modern layout
+ * Features: Immersive room view, modern cards, glassmorphism
  */
 
 import { FloatingReactions } from '@/components/FloatingReactions';
@@ -10,15 +9,17 @@ import { StudyRoomChat } from '@/components/StudyRoomChat';
 import { useStartConversation } from '@/hooks/useDMs';
 import { useStudyRoomAudio } from '@/hooks/useStudyRoomAudio';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
     Dimensions,
     Image,
     Keyboard,
@@ -32,7 +33,9 @@ import {
     TouchableWithoutFeedback,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
 // TYPES
@@ -58,7 +61,7 @@ interface Participant {
     user_id: string;
     focus_minutes: number;
     status: string;
-    joined_at: string; // For DJ determination
+    joined_at: string;
     profile?: {
         id: string;
         username: string;
@@ -82,7 +85,119 @@ interface Reaction {
 
 const REACTION_EMOJIS = ['🔥', '💪', '👋', '☕', '🎉', '❤️', '👏', '🙌'];
 const ROOM_EMOJIS = ['📚', '🎧', '☕', '🌧️', '🌲', '🔥', '💻', '🧠', '✨', '🎮'];
-const ROOM_COLORS = ['#1F2937', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#6366F1'];
+const ROOM_COLORS = ['#6366F1', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#14B8A6'];
+
+// ============================================
+// ROOM CARD COMPONENT - Premium Design
+// ============================================
+
+function RoomCard({ room, onJoin }: { room: StudyRoom; onJoin: () => void }) {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const isActive = (room.participant_count || 0) > 0;
+
+    const handlePressIn = () => {
+        Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
+    };
+    const handlePressOut = () => {
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+    };
+
+    return (
+        <Animated.View style={[{ transform: [{ scale: scaleAnim }] }]}>
+            <Pressable onPress={onJoin} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+                <LinearGradient
+                    colors={room.background_color
+                        ? [room.background_color, `${room.background_color}CC`]
+                        : ['#1E1E2E', '#2D2D3F']
+                    }
+                    style={styles.roomCard}
+                >
+                    {/* Glow effect for active rooms */}
+                    {isActive && <View style={[styles.roomGlow, { backgroundColor: room.background_color || '#6366F1' }]} />}
+
+                    {/* Top row: emoji + icons */}
+                    <View style={styles.roomCardTop}>
+                        <View style={styles.roomEmojiWrap}>
+                            <Text style={styles.roomCardEmoji}>{room.emoji}</Text>
+                        </View>
+                        <View style={styles.roomCardIcons}>
+                            {room.password && (
+                                <View style={styles.roomIconBadge}>
+                                    <Ionicons name="lock-closed" size={12} color="#FFF" />
+                                </View>
+                            )}
+                            {room.music_url && (
+                                <View style={[styles.roomIconBadge, { backgroundColor: '#10B981' }]}>
+                                    <Ionicons name="musical-note" size={12} color="#FFF" />
+                                </View>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* Room name */}
+                    <Text style={styles.roomCardName} numberOfLines={1}>{room.name}</Text>
+
+                    {/* Room description */}
+                    <Text style={styles.roomCardDesc} numberOfLines={1}>
+                        {room.is_custom ? '✨ Custom Room' : (room.description || 'Sala de estudo')}
+                    </Text>
+
+                    {/* Bottom: participants */}
+                    <View style={styles.roomCardBottom}>
+                        <View style={styles.roomParticipants}>
+                            {isActive && (
+                                <View style={styles.liveDot} />
+                            )}
+                            <Ionicons name="people" size={14} color={isActive ? '#10B981' : COLORS.text.tertiary} />
+                            <Text style={[styles.roomParticipantsText, isActive && { color: '#10B981' }]}>
+                                {room.participant_count}/{room.max_participants}
+                            </Text>
+                        </View>
+                        <View style={styles.joinBtn}>
+                            <Text style={styles.joinBtnText}>Entrar</Text>
+                            <Ionicons name="arrow-forward" size={14} color="#FFF" />
+                        </View>
+                    </View>
+                </LinearGradient>
+            </Pressable>
+        </Animated.View>
+    );
+}
+
+// ============================================
+// PARTICIPANT AVATAR COMPONENT
+// ============================================
+
+function ParticipantAvatar({ participant, isMe, onPress }: { participant: Participant; isMe: boolean; onPress?: () => void }) {
+    const isFocusing = participant.status === 'focusing';
+
+    return (
+        <Pressable onPress={onPress} style={styles.participantItem}>
+            <View style={styles.participantAvatarWrap}>
+                {participant.profile?.avatar_url ? (
+                    <Image source={{ uri: participant.profile.avatar_url }} style={styles.participantAvatar} />
+                ) : (
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.participantAvatar}>
+                        <Text style={styles.avatarInitial}>
+                            {(participant.profile?.username || 'U')[0].toUpperCase()}
+                        </Text>
+                    </LinearGradient>
+                )}
+                {/* Status ring */}
+                <View style={[styles.statusRing, { borderColor: isFocusing ? '#10B981' : '#F59E0B' }]} />
+                {isMe && (
+                    <View style={styles.meBadge}>
+                        <Text style={styles.meBadgeText}>Tu</Text>
+                    </View>
+                )}
+            </View>
+            <Text style={styles.participantName} numberOfLines={1}>
+                {participant.profile?.username || 'User'}
+            </Text>
+            <Text style={styles.participantTime}>{participant.focus_minutes}m</Text>
+        </Pressable>
+    );
+}
 
 // ============================================
 // MAIN COMPONENT
@@ -91,7 +206,9 @@ const ROOM_COLORS = ['#1F2937', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#3B
 export default function StudyRoomScreen() {
     const { user } = useAuthContext();
     const { startOrGetConversation } = useStartConversation();
+    const insets = useSafeAreaInsets();
     const [startingDM, setStartingDM] = useState(false);
+    const headerAnim = useRef(new Animated.Value(0)).current;
 
     // State
     const [loading, setLoading] = useState(true);
@@ -114,22 +231,20 @@ export default function StudyRoomScreen() {
     const [floatingEmojis, setFloatingEmojis] = useState<Array<{ id: string; emoji: string; x: number }>>([]);
     const showChatRef = useRef(showChat);
 
-    // Keep ref in sync with state for Realtime callbacks
     useEffect(() => {
         showChatRef.current = showChat;
-        if (showChat) {
-            setUnreadMessages(0); // Reset unread when chat opens
-        }
+        if (showChat) setUnreadMessages(0);
     }, [showChat]);
 
-    // DJ Logic: owner OR first participant (by joined_at) can control music
-    const isOwner = currentRoom?.created_by === user?.id;
+    useEffect(() => {
+        Animated.spring(headerAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }).start();
+    }, []);
 
-    // Check if user is the DJ (first participant in rooms without owner)
+    // DJ Logic
+    const isOwner = currentRoom?.created_by === user?.id;
     const isDJ = (() => {
         if (!currentRoom || !user?.id) return false;
         if (currentRoom.created_by) return currentRoom.created_by === user.id;
-        // For rooms without owner, first participant is DJ
         if (participants.length > 0) {
             const sortedByJoinTime = [...participants].sort(
                 (a, b) => new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
@@ -149,7 +264,7 @@ export default function StudyRoomScreen() {
         stopAndCleanup
     } = useStudyRoomAudio({
         roomId: currentRoom?.id || null,
-        isOwner: isDJ  // Pass isDJ instead of isOwner for music control
+        isOwner: isDJ
     });
 
     // Modal states
@@ -161,36 +276,30 @@ export default function StudyRoomScreen() {
     // Create room form
     const [newRoomName, setNewRoomName] = useState('');
     const [newRoomEmoji, setNewRoomEmoji] = useState('📚');
-    const [newRoomColor, setNewRoomColor] = useState('#1F2937');
+    const [newRoomColor, setNewRoomColor] = useState('#6366F1');
     const [newRoomMusic, setNewRoomMusic] = useState('');
     const [newRoomPrivate, setNewRoomPrivate] = useState(false);
     const [newRoomPassword, setNewRoomPassword] = useState('');
     const [creating, setCreating] = useState(false);
 
     // ============================================
-    // FETCH ROOMS
+    // DATA FETCHING (same as before)
     // ============================================
 
     const fetchRooms = useCallback(async () => {
         try {
             const { data, error } = await supabase
                 .from('study_rooms')
-                .select(`
-                    id, name, description, emoji, theme, max_participants,
-                    music_url, background_color, is_custom, password, created_by,
-                    study_room_participants(count)
-                `)
+                .select(`id, name, description, emoji, theme, max_participants, music_url, background_color, is_custom, password, created_by, study_room_participants(count)`)
                 .or('is_public.eq.true,created_by.eq.' + user?.id)
                 .order('is_custom', { ascending: true })
                 .order('name');
 
             if (error) throw error;
-
             const roomsWithCount = (data || []).map(room => ({
                 ...room,
                 participant_count: room.study_room_participants?.[0]?.count || 0,
             }));
-
             setRooms(roomsWithCount);
         } catch (err) {
             console.error('Error fetching rooms:', err);
@@ -199,16 +308,10 @@ export default function StudyRoomScreen() {
         }
     }, [user?.id]);
 
-    // ============================================
-    // CHECK CURRENT ROOM
-    // ============================================
-
     const checkCurrentRoom = useCallback(async () => {
         if (!user?.id) return;
-
         try {
             const { data } = await supabase.rpc('get_my_current_room');
-
             if (data?.room) {
                 setCurrentRoom(data.room);
                 setFocusMinutes(data.participation?.focus_minutes || 0);
@@ -219,18 +322,11 @@ export default function StudyRoomScreen() {
         }
     }, [user?.id]);
 
-    // ============================================
-    // FETCH PARTICIPANTS
-    // ============================================
-
     const fetchParticipants = async (roomId: string) => {
         try {
             const { data } = await supabase
                 .from('study_room_participants')
-                .select(`
-                    id, user_id, focus_minutes, status, joined_at,
-                    profiles(id, username, full_name, avatar_url, current_tier)
-                `)
+                .select(`id, user_id, focus_minutes, status, joined_at, profiles(id, username, full_name, avatar_url, current_tier)`)
                 .eq('room_id', roomId)
                 .order('joined_at');
 
@@ -238,7 +334,6 @@ export default function StudyRoomScreen() {
                 ...p,
                 profile: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles,
             })) as Participant[];
-
             setParticipants(mapped);
         } catch (err) {
             console.error('Error fetching participants:', err);
@@ -246,32 +341,26 @@ export default function StudyRoomScreen() {
     };
 
     // ============================================
-    // JOIN ROOM
+    // ROOM ACTIONS
     // ============================================
 
     const handleJoinRoom = async (room: StudyRoom) => {
-        // Check if room has password
         if (room.password && room.created_by !== user?.id) {
             setPendingRoom(room);
             setPasswordInput('');
             setShowPasswordModal(true);
             return;
         }
-
         await joinRoom(room.id);
     };
 
     const joinRoom = async (roomId: string, password?: string) => {
         try {
             const rpcName = password ? 'join_study_room_with_password' : 'join_study_room';
-            const params = password
-                ? { p_room_id: roomId, p_password: password }
-                : { p_room_id: roomId };
-
+            const params = password ? { p_room_id: roomId, p_password: password } : { p_room_id: roomId };
             const { data, error } = await supabase.rpc(rpcName, params);
 
             if (error) throw error;
-
             if (data?.success) {
                 setCurrentRoom(data.room);
                 setFocusMinutes(0);
@@ -287,27 +376,15 @@ export default function StudyRoomScreen() {
         }
     };
 
-    // ============================================
-    // LEAVE ROOM
-    // ============================================
-
     const leaveRoom = async () => {
         try {
-            // Stop audio and cleanup
             await stopAndCleanup();
             setShowChat(false);
-
             const { data, error } = await supabase.rpc('leave_study_room');
-
             if (error) throw error;
-
             if (data?.xp_earned > 0) {
-                Alert.alert(
-                    '🎉 Sessão Terminada!',
-                    `Estudaste ${data.focus_minutes} minutos e ganhaste ${data.xp_earned} XP!`
-                );
+                Alert.alert('🎉 Sessão Terminada!', `Estudaste ${data.focus_minutes} minutos e ganhaste ${data.xp_earned} XP!`);
             }
-
             setCurrentRoom(null);
             setParticipants([]);
             setFocusMinutes(0);
@@ -317,16 +394,11 @@ export default function StudyRoomScreen() {
         }
     };
 
-    // ============================================
-    // CREATE CUSTOM ROOM
-    // ============================================
-
     const createRoom = async () => {
         if (!newRoomName.trim()) {
             Alert.alert('Erro', 'Dá um nome à tua sala');
             return;
         }
-
         setCreating(true);
         try {
             const { data, error } = await supabase.rpc('create_custom_room', {
@@ -339,18 +411,10 @@ export default function StudyRoomScreen() {
             });
 
             if (error) throw error;
-
             if (data?.success) {
                 setShowCreateModal(false);
                 resetCreateForm();
-
-                // Fetch room details
-                const { data: roomData } = await supabase
-                    .from('study_rooms')
-                    .select('*')
-                    .eq('id', data.room_id)
-                    .single();
-
+                const { data: roomData } = await supabase.from('study_rooms').select('*').eq('id', data.room_id).single();
                 if (roomData) {
                     setCurrentRoom(roomData);
                     await fetchParticipants(data.room_id);
@@ -369,47 +433,33 @@ export default function StudyRoomScreen() {
     const resetCreateForm = () => {
         setNewRoomName('');
         setNewRoomEmoji('📚');
-        setNewRoomColor('#1F2937');
+        setNewRoomColor('#6366F1');
         setNewRoomMusic('');
         setNewRoomPrivate(false);
         setNewRoomPassword('');
     };
 
-    // ============================================
-    // DELETE MY ROOM
-    // ============================================
-
     const deleteMyRoom = async () => {
-        Alert.alert(
-            'Apagar Sala',
-            'Tens a certeza que queres apagar a tua sala?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Apagar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            const { error } = await supabase.rpc('delete_my_room');
-                            if (error) throw error;
-                            setCurrentRoom(null);
-                            await fetchRooms();
-                        } catch (err: any) {
-                            Alert.alert('Erro', err.message);
-                        }
-                    },
+        Alert.alert('Apagar Sala', 'Tens a certeza que queres apagar a tua sala?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Apagar', style: 'destructive',
+                onPress: async () => {
+                    try {
+                        const { error } = await supabase.rpc('delete_my_room');
+                        if (error) throw error;
+                        setCurrentRoom(null);
+                        await fetchRooms();
+                    } catch (err: any) {
+                        Alert.alert('Erro', err.message);
+                    }
                 },
-            ]
-        );
+            },
+        ]);
     };
-
-    // ============================================
-    // SEND REACTION
-    // ============================================
 
     const sendReaction = async (emoji: string, toUserId?: string) => {
         if (!currentRoom) return;
-
         try {
             await supabase.rpc('send_room_reaction', {
                 p_room_id: currentRoom.id,
@@ -430,68 +480,29 @@ export default function StudyRoomScreen() {
 
         const participantsChannel = supabase
             .channel(`room-${currentRoom.id}-participants`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'study_room_participants',
-                    filter: `room_id=eq.${currentRoom.id}`,
-                },
-                () => fetchParticipants(currentRoom.id)
-            )
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_participants', filter: `room_id=eq.${currentRoom.id}` }, () => fetchParticipants(currentRoom.id))
             .subscribe();
 
-        // Reactions Realtime - now with floating emojis!
         const reactionsChannel = supabase
             .channel(`room-${currentRoom.id}-reactions`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'study_room_reactions',
-                    filter: `room_id=eq.${currentRoom.id}`,
-                },
-                (payload) => {
-                    const reaction = payload.new as Reaction;
-                    setReactions(prev => [...prev, reaction].slice(-10));
-
-                    // Add floating emoji with random X position
-                    const screenWidth = Dimensions.get('window').width;
-                    const floatingId = `${reaction.id}-${Date.now()}`;
-                    setFloatingEmojis(prev => [...prev, {
-                        id: floatingId,
-                        emoji: reaction.emoji,
-                        x: Math.random() * (screenWidth - 60) + 30,
-                    }]);
-
-                    setTimeout(() => {
-                        setReactions(prev => prev.filter(r => r.id !== reaction.id));
-                    }, 3000);
-                }
-            )
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'study_room_reactions', filter: `room_id=eq.${currentRoom.id}` }, (payload) => {
+                const reaction = payload.new as Reaction;
+                setReactions(prev => [...prev, reaction].slice(-10));
+                const screenWidth = Dimensions.get('window').width;
+                const floatingId = `${reaction.id}-${Date.now()}`;
+                setFloatingEmojis(prev => [...prev, { id: floatingId, emoji: reaction.emoji, x: Math.random() * (screenWidth - 60) + 30 }]);
+                setTimeout(() => { setReactions(prev => prev.filter(r => r.id !== reaction.id)); }, 3000);
+            })
             .subscribe();
 
-        // Messages Realtime - for unread badge (only when chat is closed)
         const messagesChannel = supabase
             .channel(`room-${currentRoom.id}-messages`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'study_room_messages',
-                    filter: `room_id=eq.${currentRoom.id}`,
-                },
-                (payload) => {
-                    const msg = payload.new as { user_id: string };
-                    // Only increment if chat is closed AND message is not from me
-                    if (!showChatRef.current && msg.user_id !== user?.id) {
-                        setUnreadMessages(prev => prev + 1);
-                    }
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'study_room_messages', filter: `room_id=eq.${currentRoom.id}` }, (payload) => {
+                const msg = payload.new as { user_id: string };
+                if (!showChatRef.current && msg.user_id !== user?.id) {
+                    setUnreadMessages(prev => prev + 1);
                 }
-            )
+            })
             .subscribe();
 
         return () => {
@@ -501,1405 +512,627 @@ export default function StudyRoomScreen() {
         };
     }, [currentRoom?.id, user?.id]);
 
-    // Presence heartbeat
     useEffect(() => {
         if (!currentRoom) return;
-
         const interval = setInterval(async () => {
-            await supabase.rpc('update_study_presence', {
-                p_status: 'focusing',
-                p_add_minutes: 1,
-            });
+            await supabase.rpc('update_study_presence', { p_status: 'focusing', p_add_minutes: 1 });
             setFocusMinutes(prev => prev + 1);
         }, 60000);
-
         return () => clearInterval(interval);
     }, [currentRoom]);
 
-    // Initial load
     useEffect(() => {
         fetchRooms();
         checkCurrentRoom();
     }, []);
 
     // ============================================
-    // RENDER
+    // RENDER - LOADING
     // ============================================
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
+                    <Text style={styles.loadingText}>A carregar salas...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    // If in a room, show room view
+    // ============================================
+    // RENDER - IN ROOM (Immersive View)
+    // ============================================
+
     if (currentRoom) {
         const isMyRoom = currentRoom.created_by === user?.id;
 
         return (
-            <SafeAreaView style={[styles.container, currentRoom.background_color ? { backgroundColor: currentRoom.background_color } : null]} edges={['top']}>
-                {/* Room Header */}
-                <View style={styles.roomHeader}>
-                    <Pressable style={styles.leaveButton} onPress={leaveRoom}>
-                        <Ionicons name="exit-outline" size={24} color={colors.accent.primary} />
-                        <Text style={styles.leaveText}>Sair</Text>
-                    </Pressable>
-
-                    <View style={styles.roomInfo}>
-                        <Text style={styles.roomEmoji}>{currentRoom.emoji}</Text>
-                        <Text style={styles.roomName}>{currentRoom.name}</Text>
-                    </View>
-
-                    <View style={styles.roomHeaderRight}>
-                        {/* Participants Button */}
-                        <Pressable
-                            style={styles.musicButton}
-                            onPress={() => setShowParticipantsDrawer(true)}
-                        >
-                            <Ionicons name="people-outline" size={20} color={colors.accent.primary} />
-                            <View style={styles.participantCountBadge}>
-                                <Text style={styles.participantCountText}>{participants.length}</Text>
-                            </View>
-                        </Pressable>
-
-                        {/* Chat Toggle with Unread Badge */}
-                        <Pressable
-                            style={[
-                                styles.musicButton,
-                                showChat && { backgroundColor: colors.accent.primary }
-                            ]}
-                            onPress={() => {
-                                setShowChat(!showChat);
-                                if (!showChat) setUnreadMessages(0); // Reset on open
-                            }}
-                        >
-                            <Ionicons
-                                name={showChat ? "chatbubbles" : "chatbubbles-outline"}
-                                size={20}
-                                color={showChat ? "#FFF" : colors.accent.primary}
-                            />
-                            {unreadMessages > 0 && !showChat && (
-                                <View style={styles.unreadBadge}>
-                                    <Text style={styles.unreadBadgeText}>
-                                        {unreadMessages > 9 ? '9+' : unreadMessages}
-                                    </Text>
-                                </View>
-                            )}
-                        </Pressable>
-
-                        {/* DJ: Music Picker / Listener: Now Playing */}
-                        {isOwner ? (
-                            <Pressable
-                                style={[
-                                    styles.musicButton,
-                                    isRoomPlaying && { backgroundColor: colors.success.primary }
-                                ]}
-                                onPress={() => setShowStationPicker(true)}
-                            >
-                                <Ionicons
-                                    name="radio"
-                                    size={20}
-                                    color={isRoomPlaying ? "#FFF" : colors.accent.primary}
-                                />
-                            </Pressable>
-                        ) : (
-                            currentTrackName !== 'Nenhuma' && (
-                                <View style={styles.nowPlayingBadge}>
-                                    <Text style={styles.nowPlayingText}>🎵 {currentTrackName}</Text>
-                                </View>
-                            )
-                        )}
-
-                        <View style={styles.focusTimer}>
-                            <Ionicons name="time-outline" size={16} color={colors.success.primary} />
-                            <Text style={styles.focusTime}>{focusMinutes}m</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* Owner Actions */}
-                {isMyRoom && (
-                    <View style={styles.ownerBar}>
-                        <Text style={styles.ownerText}>🏠 A tua sala</Text>
-                        <Pressable style={styles.deleteButton} onPress={deleteMyRoom}>
-                            <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                            <Text style={styles.deleteText}>Apagar</Text>
-                        </Pressable>
-                    </View>
-                )}
-
-                {/* 🎵 MUSIC CONTROL BANNER */}
-                <View style={styles.musicBanner}>
-                    <View style={styles.musicBannerLeft}>
-                        <Text style={styles.musicBannerEmoji}>
-                            {isRoomPlaying ? '🎵' : '🔇'}
-                        </Text>
-                        <View>
-                            <Text style={styles.musicBannerTitle}>
-                                {currentTrackName === 'Nenhuma' ? 'Sem música' : currentTrackName}
-                            </Text>
-                            <Text style={styles.musicBannerSubtitle}>
-                                {isDJ ? '🎧 Tu és o DJ' : 'O DJ controla a música'}
-                            </Text>
-                        </View>
-                    </View>
-
-                    {/* Music Controls - Only for DJ */}
-                    {isDJ ? (
-                        <View style={styles.musicBannerControls}>
-                            {currentTrackName !== 'Nenhuma' && (
-                                <Pressable
-                                    style={styles.musicControlBtn}
-                                    onPress={toggleRoomMusic}
-                                >
-                                    <Ionicons
-                                        name={isRoomPlaying ? "pause" : "play"}
-                                        size={20}
-                                        color="#FFF"
-                                    />
-                                </Pressable>
-                            )}
-                            <Pressable
-                                style={styles.musicPickerBtn}
-                                onPress={() => setShowStationPicker(true)}
-                            >
-                                <Ionicons name="radio" size={20} color="#FFF" />
-                                <Text style={styles.musicPickerBtnText}>Mudar</Text>
-                            </Pressable>
-                        </View>
-                    ) : (
-                        <View style={styles.djBadge}>
-                            <Ionicons name="headset" size={16} color={colors.text.tertiary} />
-                        </View>
-                    )}
-                </View>
-
-                {/* Floating Reactions - Animated */}
-                <FloatingReactions
-                    reactions={floatingEmojis}
-                    onAnimationComplete={(id: string) => {
-                        setFloatingEmojis(prev => prev.filter(e => e.id !== id));
-                    }}
+            <View style={[styles.container, currentRoom.background_color ? { backgroundColor: currentRoom.background_color } : null]}>
+                {/* Gradient overlay */}
+                <LinearGradient
+                    colors={['rgba(0,0,0,0.7)', 'transparent', 'rgba(0,0,0,0.5)']}
+                    style={StyleSheet.absoluteFill}
                 />
 
-                {/* Participants Grid */}
-                <ScrollView style={styles.participantsScroll}>
-                    <Text style={styles.sectionTitle}>
-                        👥 {participants.length} Estudantes Online
-                    </Text>
+                {/* Floating Reactions */}
+                <FloatingReactions
+                    reactions={floatingEmojis}
+                    onAnimationComplete={(id: string) => { setFloatingEmojis(prev => prev.filter(e => e.id !== id)); }}
+                />
 
-                    <View style={styles.participantsGrid}>
-                        {participants.map((p) => (
-                            <Pressable
-                                key={p.id}
-                                style={styles.participantCard}
-                                onPress={() => {
-                                    if (p.user_id !== user?.id) {
-                                        sendReaction('👋', p.user_id);
-                                    }
-                                }}
-                            >
-                                {p.profile?.avatar_url ? (
-                                    <Image
-                                        source={{ uri: p.profile.avatar_url }}
-                                        style={styles.participantAvatar}
-                                    />
-                                ) : (
-                                    <View style={styles.participantAvatarPlaceholder}>
-                                        <Text style={styles.avatarInitial}>
-                                            {(p.profile?.username || 'U')[0].toUpperCase()}
-                                        </Text>
-                                    </View>
-                                )}
-                                <Text style={styles.participantName} numberOfLines={1}>
-                                    {p.profile?.username || 'User'}
-                                </Text>
-                                <View style={styles.participantStatus}>
-                                    <View style={[
-                                        styles.statusDot,
-                                        { backgroundColor: p.status === 'focusing' ? colors.success.primary : colors.warning.primary }
-                                    ]} />
-                                    <Text style={styles.participantTime}>{p.focus_minutes}m</Text>
-                                </View>
-                                {p.user_id === user?.id && (
-                                    <View style={styles.youBadge}>
-                                        <Text style={styles.youText}>Tu</Text>
-                                    </View>
-                                )}
-                            </Pressable>
-                        ))}
-                    </View>
-                </ScrollView>
-
-                {/* Reaction Bar */}
-                <View style={styles.reactionBar}>
-                    <Text style={styles.reactionLabel}>Enviar incentivo:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        {REACTION_EMOJIS.map((emoji) => (
-                            <Pressable
-                                key={emoji}
-                                style={styles.reactionButton}
-                                onPress={() => sendReaction(emoji)}
-                            >
-                                <Text style={styles.reactionEmoji}>{emoji}</Text>
-                            </Pressable>
-                        ))}
-                    </ScrollView>
-                </View>
-
-                {/* Now Playing Bar (for DJ) */}
-                {isOwner && currentTrackName !== 'Nenhuma' && (
-                    <View style={styles.nowPlayingBar}>
-                        <Text style={styles.nowPlayingBarText}>
-                            {isRoomPlaying ? '🎵' : '⏸️'} {currentTrackName}
-                        </Text>
-                        <Pressable onPress={toggleRoomMusic} style={styles.nowPlayingControl}>
-                            <Ionicons
-                                name={isRoomPlaying ? "pause" : "play"}
-                                size={18}
-                                color="#FFF"
-                            />
+                <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                    {/* Premium Header */}
+                    <BlurView intensity={60} tint="dark" style={styles.inRoomHeader}>
+                        <Pressable style={styles.leaveBtn} onPress={leaveRoom}>
+                            <Ionicons name="arrow-back" size={22} color="#FFF" />
                         </Pressable>
-                    </View>
-                )}
 
-                {/* Chat Overlay */}
-                {showChat && (
-                    <View style={styles.chatOverlay}>
-                        <StudyRoomChat
-                            roomId={currentRoom.id}
-                            onNewMessage={() => {
-                                if (!showChat) {
-                                    setUnreadMessages(prev => prev + 1);
-                                }
-                            }}
-                        />
-                    </View>
-                )}
-
-                {/* Station Picker Modal (DJ Only) */}
-                <Modal
-                    visible={showStationPicker}
-                    animationType="slide"
-                    transparent
-                    onRequestClose={() => setShowStationPicker(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.stationPickerModal}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>🎵 Escolher Vibe</Text>
-                                <Pressable onPress={() => setShowStationPicker(false)}>
-                                    <Ionicons name="close" size={24} color={colors.text.primary} />
-                                </Pressable>
+                        <View style={styles.roomTitleWrap}>
+                            <Text style={styles.roomTitleEmoji}>{currentRoom.emoji}</Text>
+                            <View>
+                                <Text style={styles.roomTitle} numberOfLines={1}>{currentRoom.name}</Text>
+                                <Text style={styles.roomSubtitle}>
+                                    {participants.length} estudantes • {focusMinutes}m de foco
+                                </Text>
                             </View>
-                            <Text style={styles.stationPickerSubtitle}>
-                                Todos na sala vão ouvir a mesma música
-                            </Text>
+                        </View>
+
+                        <View style={styles.headerActions}>
+                            {/* Participants Button */}
+                            <Pressable
+                                style={styles.headerBtn}
+                                onPress={() => setShowParticipantsDrawer(true)}
+                            >
+                                <Ionicons name="people" size={20} color="#FFF" />
+                                <View style={styles.countBadge}>
+                                    <Text style={styles.countBadgeText}>{participants.length}</Text>
+                                </View>
+                            </Pressable>
+
+                            {/* Chat Button */}
+                            <Pressable
+                                style={[styles.headerBtn, showChat && styles.headerBtnActive]}
+                                onPress={() => { setShowChat(!showChat); if (!showChat) setUnreadMessages(0); }}
+                            >
+                                <Ionicons name={showChat ? "chatbubbles" : "chatbubbles-outline"} size={20} color="#FFF" />
+                                {unreadMessages > 0 && !showChat && (
+                                    <View style={styles.unreadBadge}>
+                                        <Text style={styles.unreadText}>{unreadMessages > 9 ? '9+' : unreadMessages}</Text>
+                                    </View>
+                                )}
+                            </Pressable>
+
+                            {/* Settings/Delete for owner */}
+                            {isMyRoom && (
+                                <Pressable style={styles.headerBtn} onPress={deleteMyRoom}>
+                                    <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                                </Pressable>
+                            )}
+                        </View>
+                    </BlurView>
+
+                    {/* Music Control Card */}
+                    <View style={styles.musicCard}>
+                        <LinearGradient colors={['rgba(99, 102, 241, 0.3)', 'rgba(139, 92, 246, 0.2)']} style={styles.musicCardGradient}>
+                            <View style={styles.musicCardLeft}>
+                                <View style={styles.musicIcon}>
+                                    <Text style={styles.musicIconText}>{isRoomPlaying ? '🎵' : '🔇'}</Text>
+                                </View>
+                                <View style={styles.musicInfo}>
+                                    <Text style={styles.musicTitle}>{currentTrackName === 'Nenhuma' ? 'Sem música' : currentTrackName}</Text>
+                                    <Text style={styles.musicSubtitle}>{isDJ ? '🎧 Tu controlas a música' : 'O DJ controla'}</Text>
+                                </View>
+                            </View>
+                            {isDJ && (
+                                <View style={styles.musicControls}>
+                                    {currentTrackName !== 'Nenhuma' && (
+                                        <Pressable style={styles.musicControlBtn} onPress={toggleRoomMusic}>
+                                            <Ionicons name={isRoomPlaying ? "pause" : "play"} size={18} color="#FFF" />
+                                        </Pressable>
+                                    )}
+                                    <Pressable style={styles.musicPickerBtn} onPress={() => setShowStationPicker(true)}>
+                                        <Ionicons name="radio" size={16} color="#FFF" />
+                                    </Pressable>
+                                </View>
+                            )}
+                        </LinearGradient>
+                    </View>
+
+                    {/* Participants Section */}
+                    <View style={styles.participantsSection}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>👥 Estudantes Online</Text>
+                            <View style={styles.liveBadge}>
+                                <View style={styles.liveDotSmall} />
+                                <Text style={styles.liveText}>{participants.length} LIVE</Text>
+                            </View>
+                        </View>
+
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.participantsScroll}>
+                            {participants.map((p) => (
+                                <ParticipantAvatar
+                                    key={p.id}
+                                    participant={p}
+                                    isMe={p.user_id === user?.id}
+                                    onPress={() => { if (p.user_id !== user?.id) sendReaction('👋', p.user_id); }}
+                                />
+                            ))}
+                        </ScrollView>
+                    </View>
+
+                    {/* Focus Timer Card */}
+                    <View style={styles.focusCard}>
+                        <LinearGradient colors={['rgba(16, 185, 129, 0.2)', 'rgba(16, 185, 129, 0.1)']} style={styles.focusCardGradient}>
+                            <Ionicons name="timer-outline" size={28} color="#10B981" />
+                            <View style={styles.focusInfo}>
+                                <Text style={styles.focusTime}>{focusMinutes}</Text>
+                                <Text style={styles.focusLabel}>minutos de foco</Text>
+                            </View>
+                            <View style={styles.focusBadge}>
+                                <Text style={styles.focusBadgeText}>🔥 Em modo foco</Text>
+                            </View>
+                        </LinearGradient>
+                    </View>
+
+                    {/* Reaction Bar */}
+                    <BlurView intensity={80} tint="dark" style={styles.reactionBar}>
+                        <Text style={styles.reactionLabel}>Enviar:</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            {REACTION_EMOJIS.map((emoji) => (
+                                <Pressable key={emoji} style={styles.reactionBtn} onPress={() => sendReaction(emoji)}>
+                                    <Text style={styles.reactionEmoji}>{emoji}</Text>
+                                </Pressable>
+                            ))}
+                        </ScrollView>
+                    </BlurView>
+
+                    {/* Chat Overlay */}
+                    {showChat && (
+                        <View style={styles.chatOverlay}>
+                            <StudyRoomChat roomId={currentRoom.id} onNewMessage={() => { if (!showChat) setUnreadMessages(prev => prev + 1); }} onClose={() => setShowChat(false)} />
+                        </View>
+                    )}
+                </SafeAreaView>
+
+                {/* Station Picker Modal */}
+                <Modal visible={showStationPicker} animationType="slide" transparent onRequestClose={() => setShowStationPicker(false)}>
+                    <View style={styles.modalOverlay}>
+                        <BlurView intensity={100} tint="dark" style={styles.stationModal}>
+                            <View style={styles.modalHandle} />
+                            <Text style={styles.modalTitle}>🎵 Escolher Vibe</Text>
+                            <Text style={styles.modalSubtitle}>Todos na sala vão ouvir a mesma música</Text>
                             <ScrollView style={styles.stationsList}>
                                 {vibeStations.map((station) => (
                                     <Pressable
                                         key={station.id}
-                                        style={[
-                                            styles.stationItem,
-                                            currentTrackName === station.name && styles.stationItemActive
-                                        ]}
-                                        onPress={async () => {
-                                            await changeStation(station);
-                                            setShowStationPicker(false);
-                                        }}
+                                        style={[styles.stationItem, currentTrackName === station.name && styles.stationItemActive]}
+                                        onPress={async () => { await changeStation(station); setShowStationPicker(false); }}
                                     >
                                         <Text style={styles.stationEmoji}>{station.emoji}</Text>
                                         <Text style={styles.stationName}>{station.name}</Text>
-                                        {currentTrackName === station.name && (
-                                            <Ionicons name="checkmark-circle" size={20} color={colors.success.primary} />
-                                        )}
+                                        {currentTrackName === station.name && <Ionicons name="checkmark-circle" size={22} color="#10B981" />}
                                     </Pressable>
                                 ))}
                             </ScrollView>
-                        </View>
+                        </BlurView>
                     </View>
                 </Modal>
 
-                {/* Participants Drawer */}
-                <Modal
-                    visible={showParticipantsDrawer}
-                    animationType="slide"
-                    transparent
-                    onRequestClose={() => setShowParticipantsDrawer(false)}
-                >
+                {/* Participants Drawer Modal */}
+                <Modal visible={showParticipantsDrawer} animationType="slide" transparent onRequestClose={() => setShowParticipantsDrawer(false)}>
                     <View style={styles.modalOverlay}>
-                        <View style={styles.participantsDrawer}>
-                            <View style={styles.participantsDrawerHeader}>
-                                <Text style={styles.participantsDrawerTitle}>
-                                    👥 Participantes ({participants.length})
-                                </Text>
+                        <BlurView intensity={100} tint="dark" style={styles.participantsModal}>
+                            <View style={styles.modalHandle} />
+                            <View style={styles.participantsModalHeader}>
+                                <Text style={styles.modalTitle}>👥 Participantes ({participants.length})</Text>
                                 <Pressable onPress={() => setShowParticipantsDrawer(false)}>
-                                    <Ionicons name="close" size={24} color={colors.text.primary} />
+                                    <Ionicons name="close" size={24} color="#FFF" />
                                 </Pressable>
                             </View>
 
-                            <ScrollView>
-                                {participants.map((p, index) => {
-                                    const isParticipantDJ = index === 0 && !currentRoom.created_by;
-                                    const isOwnerDJ = p.user_id === currentRoom.created_by;
-                                    const showDJBadge = isParticipantDJ || isOwnerDJ;
-
-                                    return (
-                                        <View key={p.id} style={styles.participantItem}>
-                                            <View style={styles.participantItemAvatar}>
-                                                <Text style={styles.participantItemAvatarText}>
-                                                    {p.profile?.full_name?.[0] || p.profile?.username?.[0] || '?'}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.participantItemInfo}>
-                                                <Text style={styles.participantItemName}>
-                                                    {p.profile?.full_name || p.profile?.username}
-                                                    {p.user_id === user?.id ? ' (Tu)' : ''}
-                                                </Text>
-                                                <Text style={styles.participantItemStatus}>
-                                                    ⏱️ {p.focus_minutes}m de foco
-                                                </Text>
-                                                {showDJBadge && (
-                                                    <Text style={styles.participantItemDJ}>🎧 DJ</Text>
-                                                )}
-                                            </View>
-                                            {p.user_id !== user?.id && (
-                                                <View style={styles.participantItemActions}>
-                                                    <Pressable
-                                                        style={styles.participantAction}
-                                                        onPress={() => {
-                                                            setShowParticipantsDrawer(false);
-                                                            router.push(`/public-profile/${p.user_id}` as any);
-                                                        }}
-                                                    >
-                                                        <Ionicons name="person-outline" size={18} color={colors.text.secondary} />
-                                                    </Pressable>
-                                                    <Pressable
-                                                        style={[styles.participantAction, startingDM && { opacity: 0.5 }]}
-                                                        disabled={startingDM}
-                                                        onPress={async () => {
-                                                            setStartingDM(true);
-                                                            try {
-                                                                const conversationId = await startOrGetConversation(p.user_id);
-                                                                if (conversationId) {
-                                                                    setShowParticipantsDrawer(false);
-                                                                    router.push(`/dm/${conversationId}` as any);
-                                                                }
-                                                            } catch (err) {
-                                                                console.error('Error starting DM:', err);
-                                                            } finally {
-                                                                setStartingDM(false);
-                                                            }
-                                                        }}
-                                                    >
-                                                        {startingDM ? (
-                                                            <ActivityIndicator size="small" color={colors.text.secondary} />
-                                                        ) : (
-                                                            <Ionicons name="chatbubble-outline" size={18} color={colors.text.secondary} />
-                                                        )}
-                                                    </Pressable>
-                                                </View>
+                            <ScrollView style={styles.participantsList}>
+                                {participants.map((p) => (
+                                    <View key={p.id} style={styles.participantRow}>
+                                        <View style={styles.participantRowLeft}>
+                                            {p.profile?.avatar_url ? (
+                                                <Image source={{ uri: p.profile.avatar_url }} style={styles.participantRowAvatar} />
+                                            ) : (
+                                                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.participantRowAvatar}>
+                                                    <Text style={styles.participantRowInitial}>{(p.profile?.username || 'U')[0].toUpperCase()}</Text>
+                                                </LinearGradient>
                                             )}
+                                            <View style={styles.participantRowInfo}>
+                                                <View style={styles.participantRowNameRow}>
+                                                    <Text style={styles.participantRowName}>{p.profile?.username || 'User'}</Text>
+                                                    {p.user_id === user?.id && <View style={styles.youTag}><Text style={styles.youTagText}>Tu</Text></View>}
+                                                    {p.user_id === currentRoom?.created_by && <View style={styles.djTag}><Text style={styles.djTagText}>🎧 DJ</Text></View>}
+                                                </View>
+                                                <Text style={styles.participantRowStatus}>
+                                                    {p.status === 'focusing' ? '🟢 Focando' : '🟡 Pausa'} • {p.focus_minutes}m
+                                                </Text>
+                                            </View>
                                         </View>
-                                    );
-                                })}
+                                        {p.user_id !== user?.id && (
+                                            <View style={styles.participantRowActions}>
+                                                <Pressable
+                                                    style={styles.participantRowBtn}
+                                                    onPress={() => { setShowParticipantsDrawer(false); router.push(`/public-profile/${p.user_id}` as any); }}
+                                                >
+                                                    <Ionicons name="person" size={18} color="#6366F1" />
+                                                </Pressable>
+                                                <Pressable
+                                                    style={styles.participantRowBtn}
+                                                    onPress={async () => {
+                                                        setShowParticipantsDrawer(false);
+                                                        setStartingDM(true);
+                                                        try {
+                                                            const convId = await startOrGetConversation(p.user_id);
+                                                            if (convId) router.push(`/dm/${convId}` as any);
+                                                        } finally { setStartingDM(false); }
+                                                    }}
+                                                >
+                                                    <Ionicons name="chatbubble" size={18} color="#6366F1" />
+                                                </Pressable>
+                                                <Pressable
+                                                    style={styles.participantRowBtn}
+                                                    onPress={() => sendReaction('👋', p.user_id)}
+                                                >
+                                                    <Text style={{ fontSize: 18 }}>👋</Text>
+                                                </Pressable>
+                                            </View>
+                                        )}
+                                    </View>
+                                ))}
                             </ScrollView>
-                        </View>
+                        </BlurView>
                     </View>
                 </Modal>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    // Room Selection View
+    // ============================================
+    // RENDER - ROOM SELECTION (Premium Grid)
+    // ============================================
+
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <Pressable style={styles.backButton} onPress={() => router.back()}>
-                        <Ionicons name="arrow-back" size={24} color={colors.text.primary} />
+        <View style={styles.container}>
+            <LinearGradient colors={['rgba(99, 102, 241, 0.1)', 'transparent']} style={styles.bgGradient} />
+
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Premium Header */}
+                <Animated.View style={[styles.header, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
+                    <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
                     </Pressable>
-                    <View>
-                        <Text style={styles.headerTitle}>🎧 Study Rooms</Text>
-                        <Text style={styles.headerSubtitle}>Estuda com os teus colegas</Text>
+                    <View style={styles.headerCenter}>
+                        <Text style={styles.headerEmoji}>🎧</Text>
+                        <View>
+                            <Text style={styles.headerTitle}>Study Rooms</Text>
+                            <Text style={styles.headerSubtitle}>Estuda com os teus colegas</Text>
+                        </View>
                     </View>
-                </View>
+                </Animated.View>
 
-                {/* Info Banner */}
-                <LinearGradient
-                    colors={['#10B981', '#059669']}
-                    style={styles.infoBanner}
-                >
-                    <Ionicons name="people" size={24} color="#FFF" />
-                    <View style={styles.infoBannerText}>
-                        <Text style={styles.infoBannerTitle}>Estudo em Grupo</Text>
-                        <Text style={styles.infoBannerSubtitle}>
-                            Entra numa sala ou cria a tua própria!
-                        </Text>
-                    </View>
-                </LinearGradient>
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {/* Stats Banner */}
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.statsBanner}>
+                        <View style={styles.statItem}>
+                            <Text style={styles.statNumber}>{rooms.length}</Text>
+                            <Text style={styles.statLabel}>Salas</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statItem}>
+                            <Text style={styles.statNumber}>{rooms.reduce((acc, r) => acc + (r.participant_count || 0), 0)}</Text>
+                            <Text style={styles.statLabel}>Online</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statItem}>
+                            <Text style={styles.statNumber}>{rooms.filter(r => r.music_url).length}</Text>
+                            <Text style={styles.statLabel}>Com Música</Text>
+                        </View>
+                    </LinearGradient>
 
-                {/* Rooms List */}
-                <Text style={styles.sectionTitle}>Salas Disponíveis</Text>
-
-                {rooms.map((room) => (
-                    <Pressable
-                        key={room.id}
-                        style={[
-                            styles.roomCard,
-                            room.is_custom && styles.customRoomCard,
-                            room.background_color && { borderLeftColor: room.background_color, borderLeftWidth: 4 }
-                        ]}
-                        onPress={() => handleJoinRoom(room)}
-                    >
-                        <Text style={styles.roomCardEmoji}>{room.emoji}</Text>
-                        <View style={styles.roomCardInfo}>
-                            <View style={styles.roomCardNameRow}>
-                                <Text style={styles.roomCardName}>{room.name}</Text>
-                                {room.password && (
-                                    <Ionicons name="lock-closed" size={14} color={colors.text.tertiary} />
-                                )}
-                                {room.music_url && (
-                                    <Ionicons name="musical-notes" size={14} color={colors.accent.primary} />
-                                )}
+                    {/* Active Rooms */}
+                    {rooms.filter(r => (r.participant_count || 0) > 0).length > 0 && (
+                        <>
+                            <View style={styles.sectionHeaderRow}>
+                                <Text style={styles.sectionTitleMain}>🔴 Salas Ativas</Text>
+                                <View style={styles.liveIndicator}>
+                                    <View style={styles.liveDot} />
+                                    <Text style={styles.liveCountText}>{rooms.filter(r => (r.participant_count || 0) > 0).length}</Text>
+                                </View>
                             </View>
-                            <Text style={styles.roomCardDescription}>
-                                {room.is_custom ? 'Sala Personalizada' : (room.description || 'Sala de estudo')}
-                            </Text>
-                        </View>
-                        <View style={styles.roomCardMeta}>
-                            <Ionicons name="people-outline" size={16} color={colors.text.tertiary} />
-                            <Text style={styles.roomCardCount}>
-                                {room.participant_count}/{room.max_participants}
-                            </Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-                    </Pressable>
-                ))}
-            </ScrollView>
+                            <View style={styles.roomsGrid}>
+                                {rooms.filter(r => (r.participant_count || 0) > 0).map((room) => (
+                                    <RoomCard key={room.id} room={room} onJoin={() => handleJoinRoom(room)} />
+                                ))}
+                            </View>
+                        </>
+                    )}
 
-            {/* FAB - Create Room */}
-            <Pressable style={styles.fab} onPress={() => setShowCreateModal(true)}>
-                <LinearGradient
-                    colors={['#7C3AED', '#5B21B6']}
-                    style={styles.fabGradient}
-                >
-                    <Ionicons name="add" size={28} color="#FFF" />
-                </LinearGradient>
-            </Pressable>
+                    {/* All Rooms */}
+                    <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionTitleMain}>📚 Todas as Salas</Text>
+                    </View>
+                    <View style={styles.roomsGrid}>
+                        {rooms.filter(r => (r.participant_count || 0) === 0).map((room) => (
+                            <RoomCard key={room.id} room={room} onJoin={() => handleJoinRoom(room)} />
+                        ))}
+                    </View>
+
+                    {rooms.length === 0 && (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyEmoji}>📚</Text>
+                            <Text style={styles.emptyTitle}>Nenhuma sala disponível</Text>
+                            <Text style={styles.emptySubtitle}>Cria a primeira sala de estudo!</Text>
+                        </View>
+                    )}
+                </ScrollView>
+
+                {/* FAB */}
+                <Pressable style={styles.fab} onPress={() => setShowCreateModal(true)}>
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.fabGradient}>
+                        <Ionicons name="add" size={28} color="#FFF" />
+                    </LinearGradient>
+                </Pressable>
+            </SafeAreaView>
 
             {/* Create Room Modal */}
-            <Modal
-                visible={showCreateModal}
-                animationType="slide"
-                transparent
-                onRequestClose={() => setShowCreateModal(false)}
-            >
+            <Modal visible={showCreateModal} animationType="slide" transparent onRequestClose={() => setShowCreateModal(false)}>
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Criar Sala</Text>
-                                <Pressable onPress={() => setShowCreateModal(false)}>
-                                    <Ionicons name="close" size={24} color={colors.text.primary} />
-                                </Pressable>
-                            </View>
+                        <BlurView intensity={100} tint="dark" style={styles.createModal}>
+                            <View style={styles.modalHandle} />
+                            <Text style={styles.modalTitle}>✨ Criar Sala</Text>
 
                             <ScrollView showsVerticalScrollIndicator={false}>
-                                {/* Room Name */}
                                 <Text style={styles.inputLabel}>Nome da Sala</Text>
-                                <TextInput
-                                    style={styles.textInput}
-                                    placeholder="Ex: Estudo de Matemática"
-                                    placeholderTextColor={colors.text.tertiary}
-                                    value={newRoomName}
-                                    onChangeText={setNewRoomName}
-                                    maxLength={30}
-                                />
+                                <TextInput style={styles.textInput} placeholder="Ex: Matemática 12º" placeholderTextColor={COLORS.text.tertiary} value={newRoomName} onChangeText={setNewRoomName} maxLength={30} />
 
-                                {/* Emoji Selector */}
                                 <Text style={styles.inputLabel}>Emoji</Text>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorRow}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emojiRow}>
                                     {ROOM_EMOJIS.map((emoji) => (
-                                        <Pressable
-                                            key={emoji}
-                                            style={[
-                                                styles.emojiOption,
-                                                newRoomEmoji === emoji && styles.emojiSelected
-                                            ]}
-                                            onPress={() => setNewRoomEmoji(emoji)}
-                                        >
+                                        <Pressable key={emoji} style={[styles.emojiOption, newRoomEmoji === emoji && styles.emojiSelected]} onPress={() => setNewRoomEmoji(emoji)}>
                                             <Text style={styles.emojiText}>{emoji}</Text>
                                         </Pressable>
                                     ))}
                                 </ScrollView>
 
-                                {/* Color Selector */}
-                                <Text style={styles.inputLabel}>Cor do Tema</Text>
+                                <Text style={styles.inputLabel}>Cor</Text>
                                 <View style={styles.colorRow}>
                                     {ROOM_COLORS.map((color) => (
-                                        <Pressable
-                                            key={color}
-                                            style={[
-                                                styles.colorOption,
-                                                { backgroundColor: color },
-                                                newRoomColor === color && styles.colorSelected
-                                            ]}
-                                            onPress={() => setNewRoomColor(color)}
-                                        />
+                                        <Pressable key={color} style={[styles.colorOption, { backgroundColor: color }, newRoomColor === color && styles.colorSelected]} onPress={() => setNewRoomColor(color)} />
                                     ))}
                                 </View>
 
-                                {/* Music URL */}
-                                <Text style={styles.inputLabel}>Link da Música (Opcional)</Text>
-                                <TextInput
-                                    style={styles.textInput}
-                                    placeholder="https://spotify.com/... ou youtube.com/..."
-                                    placeholderTextColor={colors.text.tertiary}
-                                    value={newRoomMusic}
-                                    onChangeText={setNewRoomMusic}
-                                    autoCapitalize="none"
-                                    keyboardType="url"
-                                />
-
-                                {/* Private Switch */}
                                 <View style={styles.switchRow}>
                                     <View>
                                         <Text style={styles.switchLabel}>🔒 Sala Privada</Text>
-                                        <Text style={styles.switchHint}>Requer password para entrar</Text>
+                                        <Text style={styles.switchHint}>Requer password</Text>
                                     </View>
-                                    <Switch
-                                        value={newRoomPrivate}
-                                        onValueChange={setNewRoomPrivate}
-                                        trackColor={{ true: colors.accent.primary }}
-                                    />
+                                    <Switch value={newRoomPrivate} onValueChange={setNewRoomPrivate} trackColor={{ true: '#6366F1' }} />
                                 </View>
 
-                                {/* Password Input */}
                                 {newRoomPrivate && (
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Define uma password"
-                                        placeholderTextColor={colors.text.tertiary}
-                                        value={newRoomPassword}
-                                        onChangeText={setNewRoomPassword}
-                                        secureTextEntry
-                                    />
+                                    <TextInput style={styles.textInput} placeholder="Password" placeholderTextColor={COLORS.text.tertiary} value={newRoomPassword} onChangeText={setNewRoomPassword} secureTextEntry />
                                 )}
 
-                                {/* Create Button */}
-                                <Pressable
-                                    style={[styles.createButton, creating && styles.createButtonDisabled]}
-                                    onPress={createRoom}
-                                    disabled={creating}
-                                >
-                                    {creating ? (
-                                        <ActivityIndicator color="#FFF" />
-                                    ) : (
-                                        <Text style={styles.createButtonText}>Criar e Entrar</Text>
-                                    )}
+                                <Pressable style={[styles.createBtn, creating && { opacity: 0.6 }]} onPress={createRoom} disabled={creating}>
+                                    {creating ? <ActivityIndicator color="#FFF" /> : <Text style={styles.createBtnText}>Criar e Entrar</Text>}
                                 </Pressable>
                             </ScrollView>
-                        </View>
+                        </BlurView>
                     </View>
                 </TouchableWithoutFeedback>
             </Modal>
 
             {/* Password Modal */}
-            <Modal
-                visible={showPasswordModal}
-                animationType="fade"
-                transparent
-                onRequestClose={() => setShowPasswordModal(false)}
-            >
+            <Modal visible={showPasswordModal} animationType="fade" transparent onRequestClose={() => setShowPasswordModal(false)}>
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.passwordModal}>
+                    <View style={styles.modalOverlayCentered}>
+                        <BlurView intensity={100} tint="dark" style={styles.passwordModal}>
                             <Text style={styles.passwordTitle}>🔒 Sala Privada</Text>
-                            <Text style={styles.passwordSubtitle}>
-                                Introduz a password para entrar em "{pendingRoom?.name}"
-                            </Text>
-                            <TextInput
-                                style={styles.textInput}
-                                placeholder="Password"
-                                placeholderTextColor={colors.text.tertiary}
-                                value={passwordInput}
-                                onChangeText={setPasswordInput}
-                                secureTextEntry
-                                autoFocus
-                            />
-                            <View style={styles.passwordButtons}>
-                                <Pressable
-                                    style={styles.passwordCancel}
-                                    onPress={() => {
-                                        setShowPasswordModal(false);
-                                        setPendingRoom(null);
-                                    }}
-                                >
+                            <Text style={styles.passwordSubtitle}>Introduz a password para "{pendingRoom?.name}"</Text>
+                            <TextInput style={styles.textInput} placeholder="Password" placeholderTextColor={COLORS.text.tertiary} value={passwordInput} onChangeText={setPasswordInput} secureTextEntry autoFocus />
+                            <View style={styles.passwordBtns}>
+                                <Pressable style={styles.passwordCancelBtn} onPress={() => { setShowPasswordModal(false); setPendingRoom(null); }}>
                                     <Text style={styles.passwordCancelText}>Cancelar</Text>
                                 </Pressable>
-                                <Pressable
-                                    style={styles.passwordConfirm}
-                                    onPress={() => pendingRoom && joinRoom(pendingRoom.id, passwordInput)}
-                                >
+                                <Pressable style={styles.passwordConfirmBtn} onPress={() => pendingRoom && joinRoom(pendingRoom.id, passwordInput)}>
                                     <Text style={styles.passwordConfirmText}>Entrar</Text>
                                 </Pressable>
                             </View>
-                        </View>
+                        </BlurView>
                     </View>
                 </TouchableWithoutFeedback>
             </Modal>
-        </SafeAreaView>
+        </View>
     );
 }
 
 // ============================================
-// STYLES
+// STYLES - Premium Modern Design
 // ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    scrollContent: {
-        padding: spacing.lg,
-        paddingBottom: 100,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
+    loadingText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary },
+    bgGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 300 },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.md,
-        marginBottom: spacing.lg,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    headerTitle: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
+    backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    headerCenter: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginLeft: SPACING.md },
+    headerEmoji: { fontSize: 32 },
+    headerTitle: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    headerSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
 
-    // Info Banner
-    infoBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.md,
-        padding: spacing.lg,
-        borderRadius: borderRadius.xl,
-        marginBottom: spacing.lg,
-    },
-    infoBannerText: {
-        flex: 1,
-    },
-    infoBannerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
-    infoBannerSubtitle: {
-        fontSize: typography.size.sm,
-        color: 'rgba(255,255,255,0.9)',
-    },
+    scrollContent: { paddingHorizontal: SPACING.lg, paddingBottom: 120 },
 
-    sectionTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.md,
-    },
+    // Stats Banner
+    statsBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', padding: SPACING.lg, borderRadius: RADIUS.xl, marginBottom: SPACING.xl },
+    statItem: { alignItems: 'center' },
+    statNumber: { fontSize: 28, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    statLabel: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.8)' },
+    statDivider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.3)' },
+
+    // Section Headers
+    sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md, marginTop: SPACING.lg },
+    sectionTitleMain: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(239, 68, 68, 0.2)', paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: RADIUS.full },
+    liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
+    liveCountText: { fontSize: TYPOGRAPHY.size.xs, color: '#EF4444', fontWeight: TYPOGRAPHY.weight.bold },
 
     // Room Card
-    roomCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
-        marginBottom: spacing.md,
-        gap: spacing.md,
-        ...shadows.sm,
-    },
-    customRoomCard: {
-        borderWidth: 1,
-        borderColor: colors.accent.primary + '40',
-    },
-    roomCardEmoji: {
-        fontSize: 32,
-    },
-    roomCardInfo: {
-        flex: 1,
-    },
-    roomCardNameRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-    },
-    roomCardName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    roomCardDescription: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    roomCardMeta: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    roomCardCount: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
+    roomsGrid: { gap: SPACING.md },
+    roomCard: { padding: SPACING.lg, borderRadius: RADIUS.xl, overflow: 'hidden', position: 'relative' },
+    roomGlow: { position: 'absolute', top: -50, right: -50, width: 100, height: 100, borderRadius: 50, opacity: 0.3 },
+    roomCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.sm },
+    roomEmojiWrap: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+    roomCardEmoji: { fontSize: 24 },
+    roomCardIcons: { flexDirection: 'row', gap: 6 },
+    roomIconBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+    roomCardName: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF', marginBottom: 4 },
+    roomCardDesc: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.6)', marginBottom: SPACING.md },
+    roomCardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    roomParticipants: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    roomParticipantsText: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
+    joinBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.full },
+    joinBtnText: { fontSize: TYPOGRAPHY.size.sm, color: '#FFF', fontWeight: TYPOGRAPHY.weight.medium },
+
+    // Empty State
+    emptyState: { alignItems: 'center', paddingVertical: SPACING.xl * 2 },
+    emptyEmoji: { fontSize: 64, marginBottom: SPACING.md },
+    emptyTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    emptySubtitle: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.tertiary, marginTop: SPACING.xs },
 
     // FAB
-    fab: {
-        position: 'absolute',
-        bottom: 30,
-        right: 20,
-        ...shadows.lg,
-    },
-    fabGradient: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    fab: { position: 'absolute', bottom: 100, right: SPACING.lg, ...SHADOWS.lg },
+    fabGradient: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
 
-    // Room View
-    roomHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    roomHeaderRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-    leaveButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-    },
-    leaveText: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
-        fontWeight: typography.weight.medium,
-    },
-    roomInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-    roomEmoji: {
-        fontSize: 24,
-    },
-    roomName: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    musicButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    focusTimer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        backgroundColor: colors.success.light,
-        paddingVertical: spacing.xs,
-        paddingHorizontal: spacing.sm,
-        borderRadius: borderRadius.full,
-    },
-    focusTime: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.bold,
-        color: colors.success.primary,
-    },
+    // In Room View
+    inRoomHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+    leaveBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+    roomTitleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginLeft: SPACING.md },
+    roomTitleEmoji: { fontSize: 28 },
+    roomTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    roomSubtitle: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.6)' },
+    headerActions: { flexDirection: 'row', gap: SPACING.xs },
+    headerBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+    headerBtnActive: { backgroundColor: '#6366F1' },
+    unreadBadge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#EF4444', borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+    unreadText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    countBadge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#6366F1', borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+    countBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 
-    // Owner Bar
-    ownerBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        backgroundColor: colors.accent.primary + '15',
-    },
-    ownerText: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
-        fontWeight: typography.weight.medium,
-    },
-    deleteButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    deleteText: {
-        fontSize: typography.size.sm,
-        color: '#EF4444',
-        fontWeight: typography.weight.medium,
-    },
+    // Music Card
+    musicCard: { marginHorizontal: SPACING.md, marginTop: SPACING.md, borderRadius: RADIUS.xl, overflow: 'hidden' },
+    musicCardGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACING.md },
+    musicCardLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, flex: 1 },
+    musicIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+    musicIconText: { fontSize: 24 },
+    musicInfo: { flex: 1 },
+    musicTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFF' },
+    musicSubtitle: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.6)' },
+    musicControls: { flexDirection: 'row', gap: SPACING.xs },
+    musicControlBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+    musicPickerBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366F1', alignItems: 'center', justifyContent: 'center' },
 
-    // Floating Reactions
-    floatingReactions: {
-        position: 'absolute',
-        top: 120,
-        left: 0,
-        right: 0,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        zIndex: 100,
-    },
-    floatingEmoji: {
-        fontSize: 40,
-    },
+    // Participants Section
+    participantsSection: { marginTop: SPACING.xl, paddingHorizontal: SPACING.md },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+    sectionTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(16, 185, 129, 0.2)', paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: RADIUS.full },
+    liveDotSmall: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
+    liveText: { fontSize: TYPOGRAPHY.size.xs, color: '#10B981', fontWeight: TYPOGRAPHY.weight.bold },
+    participantsScroll: { gap: SPACING.md },
+    participantItem: { alignItems: 'center', marginRight: SPACING.md },
+    participantAvatarWrap: { position: 'relative', marginBottom: SPACING.xs },
+    participantAvatar: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+    avatarInitial: { fontSize: 24, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    statusRing: { position: 'absolute', top: -3, left: -3, right: -3, bottom: -3, borderRadius: 35, borderWidth: 3, borderColor: 'transparent' },
+    meBadge: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#6366F1', paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.sm },
+    meBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    participantName: { fontSize: TYPOGRAPHY.size.sm, color: '#FFF', fontWeight: TYPOGRAPHY.weight.medium, textAlign: 'center', width: 70 },
+    participantTime: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.5)' },
 
-    // Participants
-    participantsScroll: {
-        flex: 1,
-        padding: spacing.lg,
-    },
-    participantsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing.md,
-    },
-    participantCard: {
-        width: '30%',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        alignItems: 'center',
-        ...shadows.sm,
-    },
-    participantAvatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        marginBottom: spacing.xs,
-    },
-    participantAvatarPlaceholder: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.xs,
-    },
-    avatarInitial: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    participantName: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-        textAlign: 'center',
-    },
-    participantStatus: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        marginTop: 4,
-    },
-    statusDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-    },
-    participantTime: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-    },
-    youBadge: {
-        position: 'absolute',
-        top: 4,
-        right: 4,
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: borderRadius.sm,
-    },
-    youText: {
-        fontSize: 10,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
+    // Focus Card
+    focusCard: { marginHorizontal: SPACING.md, marginTop: SPACING.xl, borderRadius: RADIUS.xl, overflow: 'hidden' },
+    focusCardGradient: { flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, gap: SPACING.md },
+    focusInfo: { flex: 1 },
+    focusTime: { fontSize: 40, fontWeight: TYPOGRAPHY.weight.bold, color: '#10B981' },
+    focusLabel: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.6)' },
+    focusBadge: { backgroundColor: 'rgba(16, 185, 129, 0.3)', paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.full },
+    focusBadgeText: { fontSize: TYPOGRAPHY.size.sm, color: '#10B981', fontWeight: TYPOGRAPHY.weight.medium },
 
     // Reaction Bar
-    reactionBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: spacing.lg,
-        borderTopWidth: 1,
-        borderTopColor: colors.divider,
-        backgroundColor: colors.surface,
-    },
-    reactionLabel: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginRight: spacing.md,
-    },
-    reactionButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.background,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: spacing.sm,
-    },
-    reactionEmoji: {
-        fontSize: 24,
-    },
+    reactionBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, marginHorizontal: SPACING.md, marginTop: SPACING.xl, borderRadius: RADIUS.xl, overflow: 'hidden' },
+    reactionLabel: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.5)', marginRight: SPACING.md },
+    reactionBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: SPACING.xs },
+    reactionEmoji: { fontSize: 24 },
 
-    // Modal
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-    },
-    modalContent: {
-        backgroundColor: colors.background,
-        borderTopLeftRadius: borderRadius.xl,
-        borderTopRightRadius: borderRadius.xl,
-        padding: spacing.lg,
-        maxHeight: '85%',
-    },
-    modalHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: spacing.lg,
-    },
-    modalTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
+    // Chat Overlay
+    chatOverlay: { position: 'absolute', bottom: 100, left: 0, right: 0, height: '45%' },
 
-    // Form
-    inputLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.xs,
-        marginTop: spacing.md,
-    },
-    textInput: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        borderWidth: 1,
-        borderColor: colors.divider,
-    },
-    selectorRow: {
-        flexDirection: 'row',
-        marginBottom: spacing.sm,
-    },
-    emojiOption: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: spacing.sm,
-    },
-    emojiSelected: {
-        backgroundColor: colors.accent.light,
-        borderWidth: 2,
-        borderColor: colors.accent.primary,
-    },
-    emojiText: {
-        fontSize: 24,
-    },
-    colorRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing.sm,
-    },
-    colorOption: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-    },
-    colorSelected: {
-        borderWidth: 3,
-        borderColor: '#FFF',
-    },
-    switchRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginTop: spacing.lg,
-        marginBottom: spacing.sm,
-    },
-    switchLabel: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-    },
-    switchHint: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    createButton: {
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        alignItems: 'center',
-        marginTop: spacing.xl,
-        marginBottom: spacing.lg,
-    },
-    createButtonDisabled: {
-        opacity: 0.6,
-    },
-    createButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
+    // Modals
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalOverlayCentered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
+    modalHandle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, alignSelf: 'center', marginBottom: SPACING.lg },
+    modalTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF', textAlign: 'center', marginBottom: SPACING.xs },
+    modalSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginBottom: SPACING.lg },
 
-    // Password Modal
-    passwordModal: {
-        backgroundColor: colors.background,
-        margin: spacing.lg,
-        borderRadius: borderRadius.xl,
-        padding: spacing.lg,
-    },
-    passwordTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        textAlign: 'center',
-        marginBottom: spacing.xs,
-    },
-    passwordSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        textAlign: 'center',
-        marginBottom: spacing.lg,
-    },
-    passwordButtons: {
-        flexDirection: 'row',
-        gap: spacing.md,
-        marginTop: spacing.lg,
-    },
-    passwordCancel: {
-        flex: 1,
-        padding: spacing.md,
-        borderRadius: borderRadius.lg,
-        backgroundColor: colors.surface,
-        alignItems: 'center',
-    },
-    passwordCancelText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    passwordConfirm: {
-        flex: 1,
-        padding: spacing.md,
-        borderRadius: borderRadius.lg,
-        backgroundColor: colors.accent.primary,
-        alignItems: 'center',
-    },
-    passwordConfirmText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
+    stationModal: { borderTopLeftRadius: RADIUS['2xl'], borderTopRightRadius: RADIUS['2xl'], padding: SPACING.lg, paddingBottom: 40, maxHeight: '60%' },
+    stationsList: { maxHeight: 300 },
+    stationItem: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, borderRadius: RADIUS.lg, marginBottom: SPACING.xs, gap: SPACING.md },
+    stationItemActive: { backgroundColor: 'rgba(16, 185, 129, 0.2)' },
+    stationEmoji: { fontSize: 28 },
+    stationName: { flex: 1, fontSize: TYPOGRAPHY.size.base, color: '#FFF', fontWeight: TYPOGRAPHY.weight.medium },
 
-    // V2: Chat & Vibe Sync Styles
-    nowPlayingBadge: {
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.lg,
-        maxWidth: 120,
-    },
-    nowPlayingText: {
-        fontSize: typography.size.xs,
-        color: '#FFF',
-    },
-    nowPlayingBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        marginHorizontal: spacing.md,
-        marginBottom: spacing.sm,
-        borderRadius: borderRadius.lg,
-    },
-    nowPlayingBarText: {
-        fontSize: typography.size.sm,
-        color: '#FFF',
-        fontWeight: typography.weight.medium,
-    },
-    nowPlayingControl: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    chatOverlay: {
-        position: 'absolute',
-        bottom: 80,
-        left: 0,
-        right: 0,
-        height: '50%',
-    },
-    stationPickerModal: {
-        backgroundColor: colors.background,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        padding: spacing.lg,
-        paddingBottom: 40,
-        maxHeight: '60%',
-    },
-    stationPickerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginBottom: spacing.lg,
-    },
-    stationsList: {
-        maxHeight: 300,
-    },
-    stationItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: spacing.md,
-        borderRadius: borderRadius.lg,
-        marginBottom: spacing.xs,
-        gap: spacing.md,
-    },
-    stationItemActive: {
-        backgroundColor: colors.accent.light,
-    },
-    stationEmoji: {
-        fontSize: 28,
-    },
-    stationName: {
-        flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        fontWeight: typography.weight.medium,
-    },
+    createModal: { borderTopLeftRadius: RADIUS['2xl'], borderTopRightRadius: RADIUS['2xl'], padding: SPACING.lg, paddingBottom: 40, maxHeight: '85%' },
+    inputLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: 'rgba(255,255,255,0.7)', marginBottom: SPACING.xs, marginTop: SPACING.md },
+    textInput: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: RADIUS.lg, padding: SPACING.md, fontSize: TYPOGRAPHY.size.base, color: '#FFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    emojiRow: { flexDirection: 'row', marginBottom: SPACING.sm },
+    emojiOption: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: SPACING.sm },
+    emojiSelected: { backgroundColor: 'rgba(99, 102, 241, 0.3)', borderWidth: 2, borderColor: '#6366F1' },
+    emojiText: { fontSize: 28 },
+    colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+    colorOption: { width: 44, height: 44, borderRadius: 22 },
+    colorSelected: { borderWidth: 3, borderColor: '#FFF' },
+    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.lg },
+    switchLabel: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium, color: '#FFF' },
+    switchHint: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.5)' },
+    createBtn: { backgroundColor: '#6366F1', borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center', marginTop: SPACING.xl },
+    createBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 
-    // Music Control Banner
-    musicBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        marginHorizontal: spacing.md,
-        marginBottom: spacing.md,
-        padding: spacing.md,
-        borderRadius: borderRadius.xl,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    musicBannerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        flex: 1,
-    },
-    musicBannerEmoji: {
-        fontSize: 32,
-    },
-    musicBannerTitle: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    musicBannerSubtitle: {
-        fontSize: typography.size.xs,
-        color: 'rgba(255,255,255,0.6)',
-    },
-    musicBannerControls: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-    },
-    musicControlBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    musicPickerBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.lg,
-    },
-    musicPickerBtnText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    djBadge: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    passwordModal: { borderRadius: RADIUS.xl, padding: SPACING.lg, width: SCREEN_WIDTH - SPACING.lg * 2 },
+    passwordTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF', textAlign: 'center', marginBottom: SPACING.xs },
+    passwordSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginBottom: SPACING.lg },
+    passwordBtns: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.lg },
+    passwordCancelBtn: { flex: 1, padding: SPACING.md, borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
+    passwordCancelText: { fontSize: TYPOGRAPHY.size.base, color: 'rgba(255,255,255,0.7)' },
+    passwordConfirmBtn: { flex: 1, padding: SPACING.md, borderRadius: RADIUS.lg, backgroundColor: '#6366F1', alignItems: 'center' },
+    passwordConfirmText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 
-    // V3: UX Enhancement Styles
-    participantCountBadge: {
-        position: 'absolute',
-        top: -4,
-        right: -4,
-        backgroundColor: colors.accent.primary,
-        borderRadius: 10,
-        minWidth: 18,
-        height: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 4,
-    },
-    participantCountText: {
-        fontSize: 10,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
-    unreadBadge: {
-        position: 'absolute',
-        top: -4,
-        right: -4,
-        backgroundColor: '#EF4444',
-        borderRadius: 10,
-        minWidth: 18,
-        height: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 4,
-    },
-    unreadBadgeText: {
-        fontSize: 10,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
-    participantsDrawer: {
-        backgroundColor: colors.background,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        padding: spacing.lg,
-        maxHeight: '70%',
-    },
-    participantsDrawerHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: spacing.md,
-    },
-    participantsDrawerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    participantItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: spacing.md,
-        borderRadius: borderRadius.lg,
-        marginBottom: spacing.xs,
-        backgroundColor: colors.surface,
-    },
-    participantItemAvatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.accent.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: spacing.md,
-    },
-    participantItemAvatarText: {
-        fontSize: 20,
-        color: '#FFF',
-    },
-    participantItemInfo: {
-        flex: 1,
-    },
-    participantItemName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    participantItemStatus: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-    },
-    participantItemDJ: {
-        fontSize: typography.size.xs,
-        color: colors.accent.primary,
-        fontWeight: typography.weight.medium,
-    },
-    participantItemActions: {
-        flexDirection: 'row',
-        gap: spacing.xs,
-    },
-    participantAction: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    // Participants Modal
+    participantsModal: { borderTopLeftRadius: RADIUS['2xl'], borderTopRightRadius: RADIUS['2xl'], padding: SPACING.lg, paddingBottom: 40, maxHeight: '70%' },
+    participantsModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+    participantsList: { maxHeight: 400 },
+    participantRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACING.md, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.lg, marginBottom: SPACING.sm },
+    participantRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: SPACING.sm },
+    participantRowAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+    participantRowInitial: { fontSize: 18, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    participantRowInfo: { flex: 1 },
+    participantRowNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, flexWrap: 'wrap' },
+    participantRowName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFF' },
+    participantRowStatus: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
+    youTag: { backgroundColor: '#6366F1', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    youTagText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    djTag: { backgroundColor: 'rgba(16, 185, 129, 0.3)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    djTagText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#10B981' },
+    participantRowActions: { flexDirection: 'row', gap: SPACING.xs },
+    participantRowBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
 });

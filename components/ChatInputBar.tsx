@@ -1,17 +1,18 @@
 /**
- * ChatInputBar Component
- * Rich input bar with support for attachments (images, files, GIFs)
+ * ChatInputBar Component - PREMIUM DARK DESIGN
+ * Rich input bar with attachments and dark theme
  */
 
 import { GiphyPicker } from '@/components/GiphyPicker';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
     ActivityIndicator,
@@ -45,42 +46,21 @@ export function ChatInputBar({
     const [showGiphy, setShowGiphy] = useState(false);
     const [uploading, setUploading] = useState(false);
 
-    // Send text message
     const handleSend = () => {
         if (!text.trim() || disabled) return;
         onSend(text.trim());
         setText('');
     };
 
-    // Upload file to Supabase Storage using base64
     const uploadToStorage = async (uri: string, fileName: string, mimeType: string): Promise<string | null> => {
         if (!user?.id) return null;
-
         try {
-            // Read file as base64 (works with file:// URIs in React Native)
-            const base64Data = await FileSystem.readAsStringAsync(uri, {
-                encoding: 'base64',
-            });
-
-            // Generate unique path
+            const base64Data = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
             const ext = fileName.split('.').pop() || 'jpg';
             const path = `${user.id}/${Date.now()}.${ext}`;
-
-            // Decode base64 to ArrayBuffer and upload
-            const { data, error } = await supabase.storage
-                .from('chat-files')
-                .upload(path, decode(base64Data), {
-                    contentType: mimeType,
-                    cacheControl: '3600',
-                });
-
+            const { error } = await supabase.storage.from('chat-files').upload(path, decode(base64Data), { contentType: mimeType, cacheControl: '3600' });
             if (error) throw error;
-
-            // Get public URL
-            const { data: urlData } = supabase.storage
-                .from('chat-files')
-                .getPublicUrl(path);
-
+            const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
             return urlData.publicUrl;
         } catch (err) {
             console.error('Upload error:', err);
@@ -88,53 +68,33 @@ export function ChatInputBar({
         }
     };
 
-    // Pick image from camera
     const handleCamera = async () => {
         setShowMenu(false);
-
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
             Alert.alert('Permissão necessária', 'Precisamos de acesso à câmara');
             return;
         }
-
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            quality: 0.8,
-            allowsEditing: true,
-        });
-
+        const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true });
         if (!result.canceled && result.assets[0]) {
             setUploading(true);
             const asset = result.assets[0];
             const fileName = asset.uri.split('/').pop() || 'photo.jpg';
             const url = await uploadToStorage(asset.uri, fileName, 'image/jpeg');
             setUploading(false);
-
-            if (url) {
-                onSend('📷', { url, type: 'image', name: fileName });
-            } else {
-                Alert.alert('Erro', 'Não foi possível enviar a imagem');
-            }
+            if (url) onSend('📷', { url, type: 'image', name: fileName });
+            else Alert.alert('Erro', 'Não foi possível enviar a imagem');
         }
     };
 
-    // Pick image from gallery
     const handleGallery = async () => {
         setShowMenu(false);
-
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
             Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria');
             return;
         }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            quality: 0.8,
-            allowsMultipleSelection: false,
-        });
-
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsMultipleSelection: false });
         if (!result.canceled && result.assets[0]) {
             setUploading(true);
             const asset = result.assets[0];
@@ -142,36 +102,25 @@ export function ChatInputBar({
             const mimeType = asset.mimeType || 'image/jpeg';
             const url = await uploadToStorage(asset.uri, fileName, mimeType);
             setUploading(false);
-
-            if (url) {
-                onSend('📷', { url, type: 'image', name: fileName });
-            } else {
-                Alert.alert('Erro', 'Não foi possível enviar a imagem');
-            }
+            if (url) onSend('📷', { url, type: 'image', name: fileName });
+            else Alert.alert('Erro', 'Não foi possível enviar a imagem');
         }
     };
 
-    // Pick document
     const handleDocument = async () => {
         setShowMenu(false);
-
         try {
             const result = await DocumentPicker.getDocumentAsync({
                 type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
                 copyToCacheDirectory: true,
             });
-
             if (!result.canceled && result.assets[0]) {
                 setUploading(true);
                 const asset = result.assets[0];
                 const url = await uploadToStorage(asset.uri, asset.name, asset.mimeType || 'application/pdf');
                 setUploading(false);
-
-                if (url) {
-                    onSend('📎', { url, type: 'file', name: asset.name });
-                } else {
-                    Alert.alert('Erro', 'Não foi possível enviar o ficheiro');
-                }
+                if (url) onSend('📎', { url, type: 'file', name: asset.name });
+                else Alert.alert('Erro', 'Não foi possível enviar o ficheiro');
             }
         } catch (err) {
             console.error('Document picker error:', err);
@@ -179,173 +128,244 @@ export function ChatInputBar({
         }
     };
 
-    // Handle GIF selection
     const handleGifSelect = (gifUrl: string) => {
         onSend('🎬', { url: gifUrl, type: 'gif' });
     };
 
-    // Handle GIF button
     const handleGif = () => {
         setShowMenu(false);
         setShowGiphy(true);
     };
 
+    const canSend = text.trim() && !disabled;
+
     return (
         <View style={styles.container}>
-            {/* Attachment Menu Button */}
-            <Pressable
-                style={styles.menuButton}
-                onPress={() => setShowMenu(true)}
-                disabled={disabled || uploading}
-            >
-                {uploading ? (
-                    <ActivityIndicator size="small" color={colors.accent.primary} />
-                ) : (
-                    <Ionicons name="add-circle" size={28} color={colors.accent.primary} />
-                )}
-            </Pressable>
+            <View style={styles.inputRow}>
+                {/* Attach Button */}
+                <Pressable
+                    style={styles.actionButton}
+                    onPress={() => setShowMenu(true)}
+                    disabled={disabled || uploading}
+                >
+                    {uploading ? (
+                        <ActivityIndicator size="small" color="#6366F1" />
+                    ) : (
+                        <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.actionGradient}>
+                            <Ionicons name="add" size={20} color="#FFF" />
+                        </LinearGradient>
+                    )}
+                </Pressable>
 
-            {/* Text Input */}
-            <TextInput
-                style={styles.input}
-                placeholder={placeholder}
-                placeholderTextColor={colors.text.tertiary}
-                value={text}
-                onChangeText={setText}
-                multiline
-                maxLength={1000}
-                editable={!disabled && !uploading}
-            />
+                {/* Text Input */}
+                <View style={styles.inputWrapper}>
+                    <TextInput
+                        style={styles.input}
+                        placeholder={placeholder}
+                        placeholderTextColor={COLORS.text.tertiary}
+                        value={text}
+                        onChangeText={setText}
+                        multiline
+                        maxLength={1000}
+                        editable={!disabled && !uploading}
+                    />
+                </View>
 
-            {/* Send Button */}
-            <Pressable
-                style={[styles.sendButton, (!text.trim() || disabled) && styles.sendButtonDisabled]}
-                onPress={handleSend}
-                disabled={!text.trim() || disabled || uploading}
-            >
-                <Ionicons
-                    name="send"
-                    size={18}
-                    color={text.trim() && !disabled ? '#FFF' : colors.text.tertiary}
-                />
-            </Pressable>
+                {/* Emoji Button */}
+                <Pressable style={styles.emojiButton} onPress={handleGif}>
+                    <Text style={styles.emojiText}>😀</Text>
+                </Pressable>
+
+                {/* Send Button */}
+                <Pressable
+                    style={styles.sendButton}
+                    onPress={handleSend}
+                    disabled={!canSend || uploading}
+                >
+                    <LinearGradient
+                        colors={canSend ? ['#6366F1', '#4F46E5'] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
+                        style={styles.sendGradient}
+                    >
+                        <Ionicons name="arrow-up" size={18} color={canSend ? '#FFF' : COLORS.text.tertiary} />
+                    </LinearGradient>
+                </Pressable>
+            </View>
 
             {/* Attachment Menu Modal */}
-            <Modal
-                visible={showMenu}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShowMenu(false)}
-            >
+            <Modal visible={showMenu} transparent animationType="slide" onRequestClose={() => setShowMenu(false)}>
                 <Pressable style={styles.menuOverlay} onPress={() => setShowMenu(false)}>
                     <View style={styles.menuContainer}>
-                        <Pressable style={styles.menuItem} onPress={handleCamera}>
-                            <View style={[styles.menuIcon, { backgroundColor: '#10B981' }]}>
-                                <Ionicons name="camera" size={24} color="#FFF" />
-                            </View>
-                            <Text style={styles.menuText}>Câmara</Text>
-                        </Pressable>
+                        <View style={styles.menuHandle} />
+                        <Text style={styles.menuTitle}>Anexar</Text>
 
-                        <Pressable style={styles.menuItem} onPress={handleGallery}>
-                            <View style={[styles.menuIcon, { backgroundColor: '#3B82F6' }]}>
-                                <Ionicons name="images" size={24} color="#FFF" />
-                            </View>
-                            <Text style={styles.menuText}>Galeria</Text>
-                        </Pressable>
+                        <View style={styles.menuGrid}>
+                            <Pressable style={styles.menuItem} onPress={handleCamera}>
+                                <LinearGradient colors={['#22C55E', '#16A34A']} style={styles.menuIcon}>
+                                    <Ionicons name="camera" size={24} color="#FFF" />
+                                </LinearGradient>
+                                <Text style={styles.menuText}>Câmara</Text>
+                            </Pressable>
 
-                        <Pressable style={styles.menuItem} onPress={handleDocument}>
-                            <View style={[styles.menuIcon, { backgroundColor: '#F59E0B' }]}>
-                                <Ionicons name="document" size={24} color="#FFF" />
-                            </View>
-                            <Text style={styles.menuText}>Ficheiro</Text>
-                        </Pressable>
+                            <Pressable style={styles.menuItem} onPress={handleGallery}>
+                                <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.menuIcon}>
+                                    <Ionicons name="images" size={24} color="#FFF" />
+                                </LinearGradient>
+                                <Text style={styles.menuText}>Galeria</Text>
+                            </Pressable>
 
-                        <Pressable style={styles.menuItem} onPress={handleGif}>
-                            <View style={[styles.menuIcon, { backgroundColor: '#8B5CF6' }]}>
-                                <Ionicons name="logo-youtube" size={24} color="#FFF" />
-                            </View>
-                            <Text style={styles.menuText}>GIF</Text>
+                            <Pressable style={styles.menuItem} onPress={handleDocument}>
+                                <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.menuIcon}>
+                                    <Ionicons name="document" size={24} color="#FFF" />
+                                </LinearGradient>
+                                <Text style={styles.menuText}>Ficheiro</Text>
+                            </Pressable>
+
+                            <Pressable style={styles.menuItem} onPress={handleGif}>
+                                <LinearGradient colors={['#EC4899', '#DB2777']} style={styles.menuIcon}>
+                                    <Text style={styles.gifText}>GIF</Text>
+                                </LinearGradient>
+                                <Text style={styles.menuText}>GIF</Text>
+                            </Pressable>
+                        </View>
+
+                        <Pressable style={styles.cancelButton} onPress={() => setShowMenu(false)}>
+                            <Text style={styles.cancelText}>Cancelar</Text>
                         </Pressable>
                     </View>
                 </Pressable>
             </Modal>
 
             {/* Giphy Picker */}
-            <GiphyPicker
-                visible={showGiphy}
-                onClose={() => setShowGiphy(false)}
-                onSelect={handleGifSelect}
-            />
+            <GiphyPicker visible={showGiphy} onClose={() => setShowGiphy(false)} onSelect={handleGifSelect} />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+    },
+    inputRow: {
         flexDirection: 'row',
         alignItems: 'flex-end',
-        backgroundColor: colors.surface,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        gap: spacing.xs,
+        gap: SPACING.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: SPACING.xs,
+        borderWidth: 1,
+        borderColor: 'rgba(99, 102, 241, 0.15)',
     },
-    menuButton: {
-        width: 36,
-        height: 36,
-        alignItems: 'center',
-        justifyContent: 'center',
+    actionButton: {
+        borderRadius: 18,
+        overflow: 'hidden',
     },
-    input: {
-        flex: 1,
-        backgroundColor: colors.background,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        fontSize: typography.size.sm,
-        color: colors.text.primary,
-        maxHeight: 100,
-        minHeight: 36,
-    },
-    sendButton: {
+    actionGradient: {
         width: 36,
         height: 36,
         borderRadius: 18,
-        backgroundColor: colors.accent.primary,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    sendButtonDisabled: {
-        backgroundColor: colors.surfaceSubtle,
+    inputWrapper: {
+        flex: 1,
+    },
+    input: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        maxHeight: 100,
+        minHeight: 36,
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: SPACING.xs,
+    },
+    emojiButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    emojiText: {
+        fontSize: 22,
+    },
+    sendButton: {
+        borderRadius: 18,
+        overflow: 'hidden',
+    },
+    sendGradient: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
-    // Menu Modal
+    // Menu
     menuOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.6)',
         justifyContent: 'flex-end',
     },
     menuContainer: {
-        backgroundColor: colors.background,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        padding: spacing.lg,
+        backgroundColor: COLORS.surfaceElevated,
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        paddingHorizontal: SPACING.xl,
+        paddingTop: SPACING.md,
+        paddingBottom: SPACING['2xl'],
+    },
+    menuHandle: {
+        width: 40,
+        height: 4,
+        backgroundColor: COLORS.text.tertiary,
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: SPACING.lg,
+        opacity: 0.5,
+    },
+    menuTitle: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        textAlign: 'center',
+        marginBottom: SPACING.xl,
+    },
+    menuGrid: {
         flexDirection: 'row',
         justifyContent: 'space-around',
+        marginBottom: SPACING.xl,
     },
     menuItem: {
         alignItems: 'center',
-        gap: spacing.xs,
+        gap: SPACING.sm,
     },
     menuIcon: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         alignItems: 'center',
         justifyContent: 'center',
     },
     menuText: {
-        fontSize: typography.size.xs,
-        color: colors.text.secondary,
-        fontWeight: typography.weight.medium,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    gifText: {
+        fontSize: 14,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+    cancelButton: {
+        backgroundColor: COLORS.surfaceMuted,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.xl,
+        alignItems: 'center',
+    },
+    cancelText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.secondary,
     },
 });

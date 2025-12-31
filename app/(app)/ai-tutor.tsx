@@ -372,7 +372,7 @@ export default function AITutorScreen() {
                         data={[...messages].reverse()}
                         keyExtractor={(item) => item.id}
                         renderItem={({ item, index }) => (
-                            <MessageBubble message={item} index={index} userName={userName} />
+                            <MessageBubble message={item} index={index} userName={userName ?? undefined} />
                         )}
                         inverted
                         contentContainerStyle={styles.messagesList}

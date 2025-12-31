@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
         borderRadius: borderRadius.lg,
     },
     deleteButton: {
-        backgroundColor: colors.error?.primary || '#EF4444',
+        backgroundColor: '#EF4444',
     },
     actionButtonSmallText: {
         fontSize: typography.size.sm,

@@ -1,13 +1,20 @@
+/**
+ * 👥 Friends Screen - PREMIUM REDESIGN
+ * Modern friends list with animations and premium design
+ */
+
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { FriendWithProfile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
     FlatList,
     Image,
     Pressable,
@@ -18,10 +25,121 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// ============================================
+// ANIMATED FRIEND CARD
+// ============================================
+
+function FriendCard({ friend, onMessage, onRemove, index }: {
+    friend: FriendWithProfile;
+    onMessage: () => void;
+    onRemove: () => void;
+    index: number;
+}) {
+    const { profile } = friend;
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+
+    // Staggered animation on mount
+    useState(() => {
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            delay: index * 50,
+            useNativeDriver: true,
+        }).start();
+    });
+
+    const handlePressIn = () => {
+        Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }).start();
+    };
+    const handlePressOut = () => {
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+    };
+
+    return (
+        <Animated.View style={[{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+            <Pressable
+                style={styles.friendCard}
+                onPress={() => router.push(`/public-profile/${profile.id}` as any)}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
+            >
+                {/* Avatar with Status Ring */}
+                <View style={styles.avatarContainer}>
+                    {profile.avatar_url ? (
+                        <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                    ) : (
+                        <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatar}>
+                            <Text style={styles.avatarInitial}>
+                                {(profile.full_name || profile.username || 'U').charAt(0).toUpperCase()}
+                            </Text>
+                        </LinearGradient>
+                    )}
+                    {/* Online indicator */}
+                    <View style={styles.onlineIndicator} />
+                </View>
+
+                {/* Content */}
+                <View style={styles.friendContent}>
+                    <Text style={styles.friendName} numberOfLines={1}>
+                        {profile.full_name || profile.username}
+                    </Text>
+                    <Text style={styles.friendUsername}>@{profile.username || 'utilizador'}</Text>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.friendActions}>
+                    <Pressable style={styles.messageBtn} onPress={onMessage}>
+                        <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.messageBtnGradient}>
+                            <Ionicons name="chatbubble" size={16} color="#FFF" />
+                        </LinearGradient>
+                    </Pressable>
+                    <Pressable style={styles.moreBtn} onPress={onRemove}>
+                        <Ionicons name="ellipsis-vertical" size={16} color={COLORS.text.tertiary} />
+                    </Pressable>
+                </View>
+            </Pressable>
+        </Animated.View>
+    );
+}
+
+// ============================================
+// EMPTY STATE
+// ============================================
+
+function EmptyFriends() {
+    return (
+        <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconWrap}>
+                <LinearGradient colors={['#6366F120', '#8B5CF620']} style={styles.emptyIconBg}>
+                    <Ionicons name="people" size={48} color="#6366F1" />
+                </LinearGradient>
+            </View>
+            <Text style={styles.emptyTitle}>Ainda sem amigos</Text>
+            <Text style={styles.emptySubtitle}>Procura colegas e adiciona-os para colaborar!</Text>
+            <Pressable style={styles.emptyBtn} onPress={() => router.push('/friends/search' as any)}>
+                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyBtnGradient}>
+                    <Ionicons name="person-add" size={18} color="#FFF" />
+                    <Text style={styles.emptyBtnText}>Procurar Amigos</Text>
+                </LinearGradient>
+            </Pressable>
+        </View>
+    );
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
 export default function FriendsScreen() {
     const { friends, loading, refetch, removeFriend } = useFriends();
     const { startOrGetConversation } = useStartConversation();
     const [refreshing, setRefreshing] = useState(false);
+    const headerAnim = useRef(new Animated.Value(0)).current;
+
+    useState(() => {
+        Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    });
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -49,9 +167,9 @@ export default function FriendsScreen() {
 
     if (loading && friends.length === 0) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top']}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
                 </View>
             </SafeAreaView>
         );
@@ -59,29 +177,55 @@ export default function FriendsScreen() {
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
+            {/* Premium Header */}
+            <Animated.View style={[styles.header, {
+                opacity: headerAnim,
+                transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }]
+            }]}>
+                <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                    <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
                 </Pressable>
-                <Text style={styles.title}>Amigos</Text>
-                <Pressable style={styles.addButton} onPress={() => router.push('/friends/search' as any)}>
-                    <Ionicons name="person-add" size={20} color={colors.accent.primary} />
+
+                <View style={styles.headerCenter}>
+                    <Text style={styles.headerEmoji}>👥</Text>
+                    <View>
+                        <Text style={styles.headerTitle}>Amigos</Text>
+                        <Text style={styles.headerSubtitle}>{friends.length} conexões</Text>
+                    </View>
+                </View>
+
+                <Pressable style={styles.addBtn} onPress={() => router.push('/friends/search' as any)}>
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.addBtnGradient}>
+                        <Ionicons name="person-add" size={18} color="#FFF" />
+                    </LinearGradient>
                 </Pressable>
-            </View>
+            </Animated.View>
 
-            {/* Stats */}
-            <View style={styles.statsRow}>
-                <Text style={styles.statsText}>{friends.length} amigos</Text>
-            </View>
+            {/* Stats Banner */}
+            {friends.length > 0 && (
+                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.statsBanner}>
+                    <View style={styles.statItem}>
+                        <Text style={styles.statNumber}>{friends.length}</Text>
+                        <Text style={styles.statLabel}>Amigos</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statNumber}>
+                            {friends.filter(f => f.profile?.current_tier).length}
+                        </Text>
+                        <Text style={styles.statLabel}>Ativos</Text>
+                    </View>
+                </LinearGradient>
+            )}
 
-            {/* List */}
+            {/* Friends List */}
             <FlatList
                 data={friends}
                 keyExtractor={(item) => item.friendship_id}
-                renderItem={({ item }) => (
+                renderItem={({ item, index }) => (
                     <FriendCard
                         friend={item}
+                        index={index}
                         onMessage={() => handleMessage(item.friend_id)}
                         onRemove={() => handleRemove(item)}
                     />
@@ -89,7 +233,7 @@ export default function FriendsScreen() {
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={<EmptyFriends />}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent.primary} />
+                    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366F1" />
                 }
                 showsVerticalScrollIndicator={false}
             />
@@ -97,221 +241,55 @@ export default function FriendsScreen() {
     );
 }
 
-function FriendCard({ friend, onMessage, onRemove }: {
-    friend: FriendWithProfile;
-    onMessage: () => void;
-    onRemove: () => void;
-}) {
-    const { profile } = friend;
-
-    return (
-        <Pressable style={styles.friendCard} onPress={() => router.push(`/user/${profile.id}` as any)}>
-            {profile.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-            ) : (
-                <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarInitial}>
-                        {(profile.full_name || profile.username || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                </View>
-            )}
-
-            <View style={styles.friendContent}>
-                <Text style={styles.friendName}>{profile.full_name || profile.username}</Text>
-                <Text style={styles.friendUsername}>@{profile.username || 'utilizador'}</Text>
-            </View>
-
-            <View style={styles.friendActions}>
-                <Pressable style={styles.messageButton} onPress={onMessage}>
-                    <Ionicons name="chatbubble-outline" size={18} color={colors.accent.primary} />
-                </Pressable>
-                <Pressable style={styles.removeButton} onPress={onRemove}>
-                    <Ionicons name="ellipsis-horizontal" size={18} color={colors.text.tertiary} />
-                </Pressable>
-            </View>
-        </Pressable>
-    );
-}
-
-function EmptyFriends() {
-    return (
-        <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-                <Ionicons name="people-outline" size={40} color={colors.accent.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Sem amigos</Text>
-            <Text style={styles.emptySubtitle}>Adiciona amigos para começar a colaborar!</Text>
-            <Pressable style={styles.emptyButton} onPress={() => router.push('/friends/search' as any)}>
-                <Text style={styles.emptyButtonText}>Procurar Amigos</Text>
-            </Pressable>
-        </View>
-    );
-}
+// ============================================
+// STYLES - Premium Design
+// ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    title: {
-        flex: 1,
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginLeft: spacing.sm,
-    },
-    addButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+    backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginLeft: SPACING.md },
+    headerEmoji: { fontSize: 28 },
+    headerTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    headerSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
+    addBtn: { borderRadius: 22, overflow: 'hidden', ...SHADOWS.md },
+    addBtnGradient: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 
-    // Stats
-    statsRow: {
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    statsText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
+    // Stats Banner
+    statsBanner: { flexDirection: 'row', marginHorizontal: SPACING.md, marginVertical: SPACING.md, borderRadius: RADIUS.xl, padding: SPACING.md, alignItems: 'center', justifyContent: 'center' },
+    statItem: { flex: 1, alignItems: 'center' },
+    statNumber: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    statLabel: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.8)' },
+    statDivider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.3)' },
 
     // List
-    listContent: {
-        paddingHorizontal: spacing.xl,
-        paddingTop: spacing.md,
-        paddingBottom: 120,
-        flexGrow: 1,
-    },
+    listContent: { paddingHorizontal: SPACING.md, paddingBottom: 120, flexGrow: 1 },
 
     // Friend Card
-    friendCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
-    },
-    avatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-    },
-    avatarFallback: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    avatarInitial: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    friendContent: {
-        flex: 1,
-        marginLeft: spacing.md,
-    },
-    friendName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-    },
-    friendUsername: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    friendActions: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-    },
-    messageButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    removeButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.surfaceSubtle,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    friendCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.sm, ...SHADOWS.sm },
+    avatarContainer: { position: 'relative' },
+    avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+    avatarInitial: { fontSize: 20, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    onlineIndicator: { position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#10B981', borderWidth: 2, borderColor: COLORS.surfaceElevated },
+    friendContent: { flex: 1, marginLeft: SPACING.md },
+    friendName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    friendUsername: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
+    friendActions: { flexDirection: 'row', gap: SPACING.xs },
+    messageBtn: { borderRadius: 18, overflow: 'hidden' },
+    messageBtnGradient: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+    moreBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' },
 
-    // Empty
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: spacing['3xl'],
-    },
-    emptyIcon: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.lg,
-    },
-    emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
-    },
-    emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        textAlign: 'center',
-        marginBottom: spacing.xl,
-    },
-    emptyButton: {
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing['2xl'],
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
-    },
-    emptyButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
+    // Empty State
+    emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl, paddingTop: SPACING['3xl'] },
+    emptyIconWrap: { marginBottom: SPACING.lg },
+    emptyIconBg: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center' },
+    emptyTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary, marginBottom: SPACING.xs },
+    emptySubtitle: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary, textAlign: 'center', marginBottom: SPACING.xl },
+    emptyBtn: { borderRadius: RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
+    emptyBtnGradient: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md },
+    emptyBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 });

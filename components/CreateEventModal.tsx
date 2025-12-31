@@ -1,25 +1,31 @@
 /**
- * Create Event Modal
- * Modal inteligente para criar eventos ou todos
+ * 📅 Create Event Modal - PREMIUM REDESIGN
+ * Modern, beautiful modal for creating events and todos
+ * With premium design tokens and animations
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useState } from 'react';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
+    Keyboard,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ============================================
 // TYPES
@@ -36,17 +42,65 @@ type MainCategory = 'escola' | 'pessoal';
 type SchoolSubCategory = 'exame' | 'teste' | 'apresentação' | 'estudo';
 type PersonalSubCategory = 'lembrete' | 'tarefa';
 
-const SCHOOL_CATEGORIES: { id: SchoolSubCategory; label: string; icon: string; color: string }[] = [
-    { id: 'exame', label: 'Exame', icon: 'school', color: '#EF4444' },
-    { id: 'teste', label: 'Teste', icon: 'document-text', color: '#F59E0B' },
-    { id: 'apresentação', label: 'Apresentação', icon: 'easel', color: '#8B5CF6' },
-    { id: 'estudo', label: 'Estudo', icon: 'book', color: '#6366F1' },
+const SCHOOL_CATEGORIES: { id: SchoolSubCategory; label: string; icon: string; color: string; gradient: [string, string] }[] = [
+    { id: 'exame', label: 'Exame', icon: 'school', color: '#EF4444', gradient: ['#EF4444', '#DC2626'] },
+    { id: 'teste', label: 'Teste', icon: 'document-text', color: '#F59E0B', gradient: ['#F59E0B', '#D97706'] },
+    { id: 'apresentação', label: 'Apresentação', icon: 'easel', color: '#8B5CF6', gradient: ['#8B5CF6', '#7C3AED'] },
+    { id: 'estudo', label: 'Estudo', icon: 'book', color: '#6366F1', gradient: ['#6366F1', '#4F46E5'] },
 ];
 
-const PERSONAL_CATEGORIES: { id: PersonalSubCategory; label: string; icon: string; color: string }[] = [
-    { id: 'lembrete', label: 'Lembrete', icon: 'alarm', color: '#EC4899' },
-    { id: 'tarefa', label: 'Tarefa', icon: 'checkbox', color: '#10B981' },
+const PERSONAL_CATEGORIES: { id: PersonalSubCategory; label: string; icon: string; color: string; gradient: [string, string] }[] = [
+    { id: 'lembrete', label: 'Lembrete', icon: 'alarm', color: '#EC4899', gradient: ['#EC4899', '#DB2777'] },
+    { id: 'tarefa', label: 'Tarefa', icon: 'checkbox', color: '#10B981', gradient: ['#10B981', '#059669'] },
 ];
+
+// ============================================
+// ANIMATED CATEGORY CARD
+// ============================================
+
+function CategoryCard({
+    cat,
+    isSelected,
+    onPress
+}: {
+    cat: { id: string; label: string; icon: string; color: string; gradient: [string, string] };
+    isSelected: boolean;
+    onPress: () => void;
+}) {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = () => {
+        Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true }).start();
+    };
+    const handlePressOut = () => {
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+    };
+
+    return (
+        <Animated.View style={[styles.categoryCardWrap, { transform: [{ scale: scaleAnim }] }]}>
+            <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+                {isSelected ? (
+                    <LinearGradient colors={cat.gradient} style={styles.categoryCard}>
+                        <View style={styles.categoryIconWrap}>
+                            <Ionicons name={cat.icon as any} size={24} color="#FFF" />
+                        </View>
+                        <Text style={styles.categoryLabel}>{cat.label}</Text>
+                        <View style={styles.selectedCheck}>
+                            <Ionicons name="checkmark" size={14} color="#FFF" />
+                        </View>
+                    </LinearGradient>
+                ) : (
+                    <View style={styles.categoryCardInactive}>
+                        <View style={[styles.categoryIconWrap, { backgroundColor: `${cat.color}20` }]}>
+                            <Ionicons name={cat.icon as any} size={24} color={cat.color} />
+                        </View>
+                        <Text style={styles.categoryLabelInactive}>{cat.label}</Text>
+                    </View>
+                )}
+            </Pressable>
+        </Animated.View>
+    );
+}
 
 // ============================================
 // COMPONENT
@@ -59,6 +113,8 @@ export function CreateEventModal({
     initialDate = new Date(),
 }: CreateEventModalProps) {
     const { user } = useAuthContext();
+    const insets = useSafeAreaInsets();
+    const slideAnim = useRef(new Animated.Value(0)).current;
 
     // Form state
     const [title, setTitle] = useState('');
@@ -75,6 +131,15 @@ export function CreateEventModal({
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
 
+    // Animation on open
+    useEffect(() => {
+        if (visible) {
+            Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 10, useNativeDriver: true }).start();
+        } else {
+            slideAnim.setValue(0);
+        }
+    }, [visible]);
+
     // Reset form
     const resetForm = () => {
         setTitle('');
@@ -90,31 +155,24 @@ export function CreateEventModal({
     // Handle save
     const handleSave = async () => {
         if (!title.trim() || !user?.id) return;
-
         setSaving(true);
 
         try {
-            // Combine date and time
             const combinedDate = new Date(startDate);
             combinedDate.setHours(startTime.getHours(), startTime.getMinutes(), 0, 0);
 
             if (mainCategory === 'escola') {
-                // Save to events table
-                const selectedCat = SCHOOL_CATEGORIES.find(c => c.id === schoolCategory);
                 const { error } = await supabase.from('events').insert({
                     user_id: user.id,
                     title: title.trim(),
                     description: description.trim() || null,
                     start_time: combinedDate.toISOString(),
-                    end_time: new Date(combinedDate.getTime() + 60 * 60 * 1000).toISOString(), // +1h
+                    end_time: new Date(combinedDate.getTime() + 60 * 60 * 1000).toISOString(),
                     location: location.trim() || null,
                     type: schoolCategory === 'exame' || schoolCategory === 'teste' ? 'exam' : 'study',
                 });
-
                 if (error) throw error;
             } else {
-                // Save to personal_todos table
-                const selectedCat = PERSONAL_CATEGORIES.find(c => c.id === personalCategory);
                 const { error } = await supabase.from('personal_todos').insert({
                     user_id: user.id,
                     title: title.trim(),
@@ -123,7 +181,6 @@ export function CreateEventModal({
                     priority: 'medium',
                     tags: [personalCategory],
                 });
-
                 if (error) throw error;
             }
 
@@ -137,360 +194,301 @@ export function CreateEventModal({
         }
     };
 
-    const currentColor = mainCategory === 'escola'
-        ? SCHOOL_CATEGORIES.find(c => c.id === schoolCategory)?.color || colors.accent.primary
-        : PERSONAL_CATEGORIES.find(c => c.id === personalCategory)?.color || colors.accent.primary;
+    const currentCat = mainCategory === 'escola'
+        ? SCHOOL_CATEGORIES.find(c => c.id === schoolCategory)
+        : PERSONAL_CATEGORIES.find(c => c.id === personalCategory);
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            presentationStyle="pageSheet"
-            onRequestClose={onClose}
-        >
-            <View style={styles.container}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <Pressable onPress={onClose} style={styles.closeButton}>
-                        <Ionicons name="close" size={24} color={colors.text.primary} />
-                    </Pressable>
-                    <Text style={styles.headerTitle}>Novo Evento</Text>
-                    <Pressable
-                        onPress={handleSave}
-                        disabled={!title.trim() || saving}
-                        style={[styles.saveButton, { backgroundColor: currentColor }]}
-                    >
-                        {saving ? (
-                            <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                            <Text style={styles.saveButtonText}>Guardar</Text>
-                        )}
-                    </Pressable>
-                </View>
+        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={[styles.container, { paddingTop: insets.top }]}>
+                    {/* Premium Header */}
+                    <Animated.View style={[styles.header, {
+                        opacity: slideAnim,
+                        transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }]
+                    }]}>
+                        <Pressable onPress={onClose} style={styles.closeBtn}>
+                            <Ionicons name="close" size={24} color={COLORS.text.primary} />
+                        </Pressable>
 
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    {/* Title Input */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Título</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Ex: Exame de Matemática"
-                            placeholderTextColor={colors.text.tertiary}
-                            value={title}
-                            onChangeText={setTitle}
-                        />
-                    </View>
-
-                    {/* Main Category Toggle */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Tipo</Text>
-                        <View style={styles.toggleRow}>
-                            <Pressable
-                                style={[styles.toggleButton, mainCategory === 'escola' && styles.toggleActive]}
-                                onPress={() => setMainCategory('escola')}
-                            >
-                                <Ionicons
-                                    name="school-outline"
-                                    size={18}
-                                    color={mainCategory === 'escola' ? '#FFF' : colors.text.secondary}
-                                />
-                                <Text style={[styles.toggleText, mainCategory === 'escola' && styles.toggleTextActive]}>
-                                    Escola
-                                </Text>
-                            </Pressable>
-                            <Pressable
-                                style={[styles.toggleButton, mainCategory === 'pessoal' && styles.toggleActive]}
-                                onPress={() => setMainCategory('pessoal')}
-                            >
-                                <Ionicons
-                                    name="person-outline"
-                                    size={18}
-                                    color={mainCategory === 'pessoal' ? '#FFF' : colors.text.secondary}
-                                />
-                                <Text style={[styles.toggleText, mainCategory === 'pessoal' && styles.toggleTextActive]}>
-                                    Pessoal
-                                </Text>
-                            </Pressable>
+                        <View style={styles.headerCenter}>
+                            <Text style={styles.headerEmoji}>📅</Text>
+                            <Text style={styles.headerTitle}>Novo Evento</Text>
                         </View>
-                    </View>
 
-                    {/* Sub Category */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Categoria</Text>
-                        <View style={styles.categoryGrid}>
-                            {mainCategory === 'escola'
-                                ? SCHOOL_CATEGORIES.map(cat => (
-                                    <Pressable
-                                        key={cat.id}
-                                        style={[
-                                            styles.categoryChip,
-                                            schoolCategory === cat.id && { backgroundColor: cat.color },
-                                        ]}
-                                        onPress={() => setSchoolCategory(cat.id)}
-                                    >
-                                        <Ionicons
-                                            name={cat.icon as any}
-                                            size={16}
-                                            color={schoolCategory === cat.id ? '#FFF' : colors.text.secondary}
-                                        />
-                                        <Text style={[
-                                            styles.categoryText,
-                                            schoolCategory === cat.id && styles.categoryTextActive,
-                                        ]}>
-                                            {cat.label}
-                                        </Text>
-                                    </Pressable>
-                                ))
-                                : PERSONAL_CATEGORIES.map(cat => (
-                                    <Pressable
-                                        key={cat.id}
-                                        style={[
-                                            styles.categoryChip,
-                                            personalCategory === cat.id && { backgroundColor: cat.color },
-                                        ]}
-                                        onPress={() => setPersonalCategory(cat.id)}
-                                    >
-                                        <Ionicons
-                                            name={cat.icon as any}
-                                            size={16}
-                                            color={personalCategory === cat.id ? '#FFF' : colors.text.secondary}
-                                        />
-                                        <Text style={[
-                                            styles.categoryText,
-                                            personalCategory === cat.id && styles.categoryTextActive,
-                                        ]}>
-                                            {cat.label}
-                                        </Text>
-                                    </Pressable>
-                                ))
-                            }
-                        </View>
-                    </View>
+                        <Pressable
+                            onPress={handleSave}
+                            disabled={!title.trim() || saving}
+                            style={[styles.saveBtn, !title.trim() && styles.saveBtnDisabled]}
+                        >
+                            {saving ? (
+                                <ActivityIndicator size="small" color="#FFF" />
+                            ) : (
+                                <LinearGradient colors={currentCat?.gradient || ['#6366F1', '#8B5CF6']} style={styles.saveBtnGradient}>
+                                    <Text style={styles.saveBtnText}>Guardar</Text>
+                                </LinearGradient>
+                            )}
+                        </Pressable>
+                    </Animated.View>
 
-                    {/* Date & Time */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Data e Hora</Text>
-                        <View style={styles.dateTimeRow}>
-                            <Pressable
-                                style={styles.dateTimeButton}
-                                onPress={() => setShowDatePicker(true)}
-                            >
-                                <Ionicons name="calendar-outline" size={20} color={colors.accent.primary} />
-                                <Text style={styles.dateTimeText}>
-                                    {startDate.toLocaleDateString('pt-PT', {
-                                        day: 'numeric',
-                                        month: 'short',
-                                        year: 'numeric',
-                                    })}
-                                </Text>
-                            </Pressable>
-                            <Pressable
-                                style={styles.dateTimeButton}
-                                onPress={() => setShowTimePicker(true)}
-                            >
-                                <Ionicons name="time-outline" size={20} color={colors.accent.primary} />
-                                <Text style={styles.dateTimeText}>
-                                    {startTime.toLocaleTimeString('pt-PT', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                    })}
-                                </Text>
-                            </Pressable>
-                        </View>
-                    </View>
-
-                    {/* Location (only for school) */}
-                    {mainCategory === 'escola' && (
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Localização (opcional)</Text>
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                        {/* Title Input - Hero Style */}
+                        <View style={styles.titleSection}>
                             <TextInput
-                                style={styles.input}
-                                placeholder="Ex: Sala 101, Anfiteatro B"
-                                placeholderTextColor={colors.text.tertiary}
-                                value={location}
-                                onChangeText={setLocation}
+                                style={styles.titleInput}
+                                placeholder="Título do evento..."
+                                placeholderTextColor={COLORS.text.tertiary}
+                                value={title}
+                                onChangeText={setTitle}
+                                autoFocus
+                            />
+                            {title.length > 0 && (
+                                <View style={[styles.charCount, title.length > 40 && { backgroundColor: '#F59E0B20' }]}>
+                                    <Text style={[styles.charCountText, title.length > 40 && { color: '#F59E0B' }]}>{title.length}/50</Text>
+                                </View>
+                            )}
+                        </View>
+
+                        {/* Main Category Toggle - Pills */}
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Tipo</Text>
+                            <View style={styles.togglePills}>
+                                <Pressable
+                                    style={[styles.togglePill, mainCategory === 'escola' && styles.togglePillActive]}
+                                    onPress={() => setMainCategory('escola')}
+                                >
+                                    <Ionicons name="school" size={18} color={mainCategory === 'escola' ? '#FFF' : COLORS.text.secondary} />
+                                    <Text style={[styles.togglePillText, mainCategory === 'escola' && styles.togglePillTextActive]}>
+                                        Escola
+                                    </Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[styles.togglePill, mainCategory === 'pessoal' && styles.togglePillActivePersonal]}
+                                    onPress={() => setMainCategory('pessoal')}
+                                >
+                                    <Ionicons name="person" size={18} color={mainCategory === 'pessoal' ? '#FFF' : COLORS.text.secondary} />
+                                    <Text style={[styles.togglePillText, mainCategory === 'pessoal' && styles.togglePillTextActive]}>
+                                        Pessoal
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        </View>
+
+                        {/* Sub Categories - Grid Cards */}
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Categoria</Text>
+                            <View style={styles.categoryGrid}>
+                                {mainCategory === 'escola'
+                                    ? SCHOOL_CATEGORIES.map(cat => (
+                                        <CategoryCard
+                                            key={cat.id}
+                                            cat={cat}
+                                            isSelected={schoolCategory === cat.id}
+                                            onPress={() => setSchoolCategory(cat.id)}
+                                        />
+                                    ))
+                                    : PERSONAL_CATEGORIES.map(cat => (
+                                        <CategoryCard
+                                            key={cat.id}
+                                            cat={cat}
+                                            isSelected={personalCategory === cat.id}
+                                            onPress={() => setPersonalCategory(cat.id)}
+                                        />
+                                    ))}
+                            </View>
+                        </View>
+
+                        {/* Date & Time - Modern Cards */}
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Quando</Text>
+                            <View style={styles.dateTimeRow}>
+                                <Pressable style={styles.dateTimeCard} onPress={() => setShowDatePicker(true)}>
+                                    <View style={styles.dateTimeIconWrap}>
+                                        <Ionicons name="calendar" size={20} color="#6366F1" />
+                                    </View>
+                                    <View style={styles.dateTimeInfo}>
+                                        <Text style={styles.dateTimeLabel}>Data</Text>
+                                        <Text style={styles.dateTimeValue}>
+                                            {startDate.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
+                                </Pressable>
+
+                                <Pressable style={styles.dateTimeCard} onPress={() => setShowTimePicker(true)}>
+                                    <View style={[styles.dateTimeIconWrap, { backgroundColor: '#10B98120' }]}>
+                                        <Ionicons name="time" size={20} color="#10B981" />
+                                    </View>
+                                    <View style={styles.dateTimeInfo}>
+                                        <Text style={styles.dateTimeLabel}>Hora</Text>
+                                        <Text style={styles.dateTimeValue}>
+                                            {startTime.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
+                                </Pressable>
+                            </View>
+                        </View>
+
+                        {/* Location (only for school) */}
+                        {mainCategory === 'escola' && (
+                            <View style={styles.section}>
+                                <Text style={styles.sectionTitle}>Localização</Text>
+                                <View style={styles.inputCard}>
+                                    <Ionicons name="location" size={20} color={COLORS.text.tertiary} />
+                                    <TextInput
+                                        style={styles.inputCardText}
+                                        placeholder="Sala 101, Anfiteatro B..."
+                                        placeholderTextColor={COLORS.text.tertiary}
+                                        value={location}
+                                        onChangeText={setLocation}
+                                    />
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Description */}
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Notas</Text>
+                            <TextInput
+                                style={styles.textArea}
+                                placeholder="Adiciona detalhes, links, matéria..."
+                                placeholderTextColor={COLORS.text.tertiary}
+                                value={description}
+                                onChangeText={setDescription}
+                                multiline
+                                numberOfLines={4}
+                                textAlignVertical="top"
                             />
                         </View>
+
+                        <View style={{ height: 100 }} />
+                    </ScrollView>
+
+                    {/* Date Picker */}
+                    {showDatePicker && (
+                        <Modal transparent animationType="fade">
+                            <View style={styles.pickerOverlay}>
+                                <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
+                                    <View style={styles.pickerHeader}>
+                                        <Text style={styles.pickerTitle}>Escolher Data</Text>
+                                        <Pressable onPress={() => setShowDatePicker(false)}>
+                                            <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+                                        </Pressable>
+                                    </View>
+                                    <DateTimePicker
+                                        value={startDate}
+                                        mode="date"
+                                        display="spinner"
+                                        onChange={(event, date) => {
+                                            if (date) setStartDate(date);
+                                        }}
+                                        textColor="#FFF"
+                                    />
+                                </BlurView>
+                            </View>
+                        </Modal>
                     )}
 
-                    {/* Description */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Descrição (opcional)</Text>
-                        <TextInput
-                            style={[styles.input, styles.textArea]}
-                            placeholder="Adiciona notas ou detalhes..."
-                            placeholderTextColor={colors.text.tertiary}
-                            value={description}
-                            onChangeText={setDescription}
-                            multiline
-                            numberOfLines={4}
-                            textAlignVertical="top"
-                        />
-                    </View>
-
-                    <View style={{ height: 100 }} />
-                </ScrollView>
-
-                {/* Date Picker */}
-                {showDatePicker && (
-                    <DateTimePicker
-                        value={startDate}
-                        mode="date"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(event, date) => {
-                            setShowDatePicker(Platform.OS === 'ios');
-                            if (date) setStartDate(date);
-                        }}
-                    />
-                )}
-
-                {/* Time Picker */}
-                {showTimePicker && (
-                    <DateTimePicker
-                        value={startTime}
-                        mode="time"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(event, date) => {
-                            setShowTimePicker(Platform.OS === 'ios');
-                            if (date) setStartTime(date);
-                        }}
-                    />
-                )}
-            </View>
+                    {/* Time Picker */}
+                    {showTimePicker && (
+                        <Modal transparent animationType="fade">
+                            <View style={styles.pickerOverlay}>
+                                <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
+                                    <View style={styles.pickerHeader}>
+                                        <Text style={styles.pickerTitle}>Escolher Hora</Text>
+                                        <Pressable onPress={() => setShowTimePicker(false)}>
+                                            <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+                                        </Pressable>
+                                    </View>
+                                    <DateTimePicker
+                                        value={startTime}
+                                        mode="time"
+                                        display="spinner"
+                                        onChange={(event, date) => {
+                                            if (date) setStartTime(date);
+                                        }}
+                                        textColor="#FFF"
+                                    />
+                                </BlurView>
+                            </View>
+                        </Modal>
+                    )}
+                </View>
+            </TouchableWithoutFeedback>
         </Modal>
     );
 }
 
 // ============================================
-// STYLES
+// STYLES - Premium Design
 // ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.surfaceSubtle,
-    },
-    closeButton: {
-        width: 40,
-        height: 40,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    headerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    saveButton: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
-    },
-    saveButtonText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    content: {
-        flex: 1,
-        padding: spacing.xl,
-    },
-    inputGroup: {
-        marginBottom: spacing.xl,
-    },
-    label: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
-    },
-    input: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.lg,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        ...shadows.sm,
-    },
-    textArea: {
-        minHeight: 100,
-    },
-    toggleRow: {
-        flexDirection: 'row',
-        gap: spacing.md,
-    },
-    toggleButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        ...shadows.sm,
-    },
-    toggleActive: {
-        backgroundColor: colors.text.primary,
-    },
-    toggleText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    toggleTextActive: {
-        color: '#FFF',
-    },
-    categoryGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing.sm,
-    },
-    categoryChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        backgroundColor: colors.surface,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
-        ...shadows.sm,
-    },
-    categoryText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    categoryTextActive: {
-        color: '#FFF',
-    },
-    dateTimeRow: {
-        flexDirection: 'row',
-        gap: spacing.md,
-    },
-    dateTimeButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.lg,
-        ...shadows.sm,
-    },
-    dateTimeText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+
+    // Header
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.surfaceElevated },
+    closeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    headerCenter: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    headerEmoji: { fontSize: 24 },
+    headerTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    saveBtn: { overflow: 'hidden', borderRadius: RADIUS.full },
+    saveBtnDisabled: { opacity: 0.5 },
+    saveBtnGradient: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
+    saveBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+
+    // Content
+    content: { flex: 1 },
+
+    // Title Section
+    titleSection: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.xl },
+    titleInput: { fontSize: 28, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary, paddingVertical: SPACING.md },
+    charCount: { alignSelf: 'flex-start', backgroundColor: COLORS.surfaceElevated, paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: RADIUS.sm, marginTop: SPACING.sm },
+    charCountText: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
+
+    // Section
+    section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
+    sectionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.tertiary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md },
+
+    // Toggle Pills
+    togglePills: { flexDirection: 'row', gap: SPACING.sm },
+    togglePill: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceElevated, paddingVertical: SPACING.md, borderRadius: RADIUS.lg },
+    togglePillActive: { backgroundColor: '#6366F1' },
+    togglePillActivePersonal: { backgroundColor: '#10B981' },
+    togglePillText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.secondary },
+    togglePillTextActive: { color: '#FFF' },
+
+    // Category Grid
+    categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+    categoryCardWrap: { width: '48%' },
+    categoryCard: { padding: SPACING.md, borderRadius: RADIUS.xl, alignItems: 'center', gap: SPACING.sm, position: 'relative' },
+    categoryCardInactive: { padding: SPACING.md, borderRadius: RADIUS.xl, alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceElevated },
+    categoryIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+    categoryLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFF' },
+    categoryLabelInactive: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: COLORS.text.secondary },
+    selectedCheck: { position: 'absolute', top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+
+    // Date Time
+    dateTimeRow: { flexDirection: 'row', gap: SPACING.sm },
+    dateTimeCard: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceElevated, padding: SPACING.md, borderRadius: RADIUS.lg },
+    dateTimeIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#6366F120', alignItems: 'center', justifyContent: 'center' },
+    dateTimeInfo: { flex: 1 },
+    dateTimeLabel: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
+    dateTimeValue: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+
+    // Input Card
+    inputCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceElevated, padding: SPACING.md, borderRadius: RADIUS.lg },
+    inputCardText: { flex: 1, fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary },
+
+    // Text Area
+    textArea: { backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.lg, padding: SPACING.md, fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary, minHeight: 100 },
+
+    // Picker Modal
+    pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
+    pickerModal: { width: '85%', borderRadius: RADIUS.xl, padding: SPACING.lg, overflow: 'hidden' },
+    pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+    pickerTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 });
 
 export default CreateEventModal;

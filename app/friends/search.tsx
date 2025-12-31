@@ -1,22 +1,130 @@
+/**
+ * 🔍 Search Friends Screen - PREMIUM REDESIGN
+ * Modern search experience with animations
+ */
+
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends, useSearchUsers } from '@/hooks/useFriends';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Profile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
     FlatList,
     Image,
+    Keyboard,
     Pressable,
     StyleSheet,
     Text,
     TextInput,
+    TouchableWithoutFeedback,
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// ============================================
+// USER RESULT CARD
+// ============================================
+
+function UserCard({ user, isFriend, sending, onAdd, onMessage, index }: {
+    user: Profile;
+    isFriend: boolean;
+    sending: boolean;
+    onAdd: () => void;
+    onMessage: () => void;
+    index: number;
+}) {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+
+    useState(() => {
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            delay: index * 80,
+            useNativeDriver: true,
+        }).start();
+    });
+
+    const handlePressIn = () => {
+        Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }).start();
+    };
+    const handlePressOut = () => {
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+    };
+
+    return (
+        <Animated.View style={[{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+            <Pressable
+                style={styles.userCard}
+                onPress={() => router.push(`/public-profile/${user.id}` as any)}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
+            >
+                {/* Avatar */}
+                {user.avatar_url ? (
+                    <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+                ) : (
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatar}>
+                        <Text style={styles.avatarInitial}>
+                            {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}
+                        </Text>
+                    </LinearGradient>
+                )}
+
+                {/* Content */}
+                <View style={styles.userContent}>
+                    <View style={styles.userNameRow}>
+                        <Text style={styles.userName} numberOfLines={1}>
+                            {user.full_name || user.username}
+                        </Text>
+                        {isFriend && (
+                            <View style={styles.friendBadge}>
+                                <Ionicons name="checkmark" size={10} color="#10B981" />
+                                <Text style={styles.friendBadgeText}>Amigo</Text>
+                            </View>
+                        )}
+                    </View>
+                    <Text style={styles.userUsername}>@{user.username || 'utilizador'}</Text>
+                </View>
+
+                {/* Action Button */}
+                {isFriend ? (
+                    <Pressable style={styles.messageBtn} onPress={onMessage}>
+                        <LinearGradient colors={['#10B981', '#059669']} style={styles.actionBtnGradient}>
+                            <Ionicons name="chatbubble" size={16} color="#FFF" />
+                        </LinearGradient>
+                    </Pressable>
+                ) : (
+                    <Pressable
+                        style={[styles.addBtn, sending && styles.addBtnDisabled]}
+                        onPress={onAdd}
+                        disabled={sending}
+                    >
+                        {sending ? (
+                            <View style={styles.actionBtnLoading}>
+                                <ActivityIndicator size="small" color="#6366F1" />
+                            </View>
+                        ) : (
+                            <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.actionBtnGradient}>
+                                <Ionicons name="person-add" size={16} color="#FFF" />
+                            </LinearGradient>
+                        )}
+                    </Pressable>
+                )}
+            </Pressable>
+        </Animated.View>
+    );
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function SearchFriendsScreen() {
     const { results, searching, search, clear } = useSearchUsers();
@@ -24,6 +132,15 @@ export default function SearchFriendsScreen() {
     const { startOrGetConversation } = useStartConversation();
     const [query, setQuery] = useState('');
     const [sending, setSending] = useState<string | null>(null);
+    const headerAnim = useRef(new Animated.Value(0)).current;
+    const searchAnim = useRef(new Animated.Value(0)).current;
+
+    useState(() => {
+        Animated.stagger(100, [
+            Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(searchAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        ]).start();
+    });
 
     const handleSearch = (text: string) => {
         setQuery(text);
@@ -48,290 +165,158 @@ export default function SearchFriendsScreen() {
         }
     };
 
-    // Verificar se já é amigo
     const isFriend = (userId: string) => friends.some(f => f.friend_id === userId);
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                <Text style={styles.title}>Procurar</Text>
-                <Pressable style={styles.qrButton} onPress={() => router.push('/qr-scanner' as any)}>
-                    <Ionicons name="qr-code" size={20} color={colors.accent.primary} />
-                </Pressable>
-            </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <SafeAreaView style={styles.container} edges={['top']}>
+                {/* Premium Header */}
+                <Animated.View style={[styles.header, {
+                    opacity: headerAnim,
+                    transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }]
+                }]}>
+                    <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                    </Pressable>
 
-            {/* Search Input */}
-            <View style={styles.searchContainer}>
-                <View style={styles.searchInputWrapper}>
-                    <Ionicons name="search" size={20} color={colors.text.tertiary} />
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder="Procurar por nome ou @username..."
-                        placeholderTextColor={colors.text.tertiary}
-                        value={query}
-                        onChangeText={handleSearch}
-                        autoFocus
-                    />
-                    {query.length > 0 && (
-                        <Pressable onPress={() => { setQuery(''); clear(); }}>
-                            <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
-                        </Pressable>
-                    )}
-                </View>
-            </View>
+                    <View style={styles.headerCenter}>
+                        <Text style={styles.headerEmoji}>🔍</Text>
+                        <Text style={styles.headerTitle}>Procurar</Text>
+                    </View>
 
-            {/* Results */}
-            {searching ? (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
-                </View>
-            ) : (
-                <FlatList
-                    data={results}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                        <UserCard
-                            user={item}
-                            isFriend={isFriend(item.id)}
-                            sending={sending === item.id}
-                            onAdd={() => handleAddFriend(item.id)}
-                            onMessage={() => handleMessage(item.id)}
+                    <Pressable style={styles.qrBtn} onPress={() => router.push('/qr-scanner' as any)}>
+                        <Ionicons name="qr-code" size={20} color="#6366F1" />
+                    </Pressable>
+                </Animated.View>
+
+                {/* Search Input */}
+                <Animated.View style={[styles.searchSection, {
+                    opacity: searchAnim,
+                    transform: [{ translateY: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }]
+                }]}>
+                    <View style={styles.searchInputWrap}>
+                        <Ionicons name="search" size={20} color={COLORS.text.tertiary} />
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Nome ou @username..."
+                            placeholderTextColor={COLORS.text.tertiary}
+                            value={query}
+                            onChangeText={handleSearch}
+                            autoFocus
+                            returnKeyType="search"
                         />
-                    )}
-                    contentContainerStyle={styles.listContent}
-                    ListEmptyComponent={
-                        query.length > 0 ? (
-                            <View style={styles.emptyContainer}>
-                                <Ionicons name="search-outline" size={48} color={colors.text.tertiary} />
-                                <Text style={styles.emptyTitle}>Sem resultados</Text>
-                                <Text style={styles.emptySubtitle}>Tenta outro nome ou username</Text>
-                            </View>
-                        ) : (
-                            <View style={styles.emptyContainer}>
-                                <View style={styles.emptyIcon}>
-                                    <Ionicons name="person-add-outline" size={40} color={colors.accent.primary} />
+                        {query.length > 0 && (
+                            <Pressable
+                                style={styles.clearBtn}
+                                onPress={() => { setQuery(''); clear(); }}
+                            >
+                                <Ionicons name="close-circle" size={20} color={COLORS.text.tertiary} />
+                            </Pressable>
+                        )}
+                    </View>
+                </Animated.View>
+
+                {/* Results */}
+                {searching ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color="#6366F1" />
+                        <Text style={styles.loadingText}>A procurar...</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={results}
+                        keyExtractor={(item) => item.id}
+                        renderItem={({ item, index }) => (
+                            <UserCard
+                                user={item}
+                                index={index}
+                                isFriend={isFriend(item.id)}
+                                sending={sending === item.id}
+                                onAdd={() => handleAddFriend(item.id)}
+                                onMessage={() => handleMessage(item.id)}
+                            />
+                        )}
+                        contentContainerStyle={styles.listContent}
+                        ListEmptyComponent={
+                            query.length > 0 ? (
+                                <View style={styles.emptyContainer}>
+                                    <View style={styles.emptyIconWrap}>
+                                        <Ionicons name="search" size={48} color={COLORS.text.tertiary} />
+                                    </View>
+                                    <Text style={styles.emptyTitle}>Sem resultados</Text>
+                                    <Text style={styles.emptySubtitle}>Tenta outro nome ou username</Text>
                                 </View>
-                                <Text style={styles.emptyTitle}>Procura amigos</Text>
-                                <Text style={styles.emptySubtitle}>Escreve o nome ou @username de alguém</Text>
-                            </View>
-                        )
-                    }
-                    showsVerticalScrollIndicator={false}
-                />
-            )}
-        </SafeAreaView>
+                            ) : (
+                                <View style={styles.emptyContainer}>
+                                    <View style={styles.emptyIconWrap}>
+                                        <LinearGradient colors={['#6366F120', '#8B5CF620']} style={styles.emptyIconBg}>
+                                            <Ionicons name="person-add" size={48} color="#6366F1" />
+                                        </LinearGradient>
+                                    </View>
+                                    <Text style={styles.emptyTitle}>Encontra amigos</Text>
+                                    <Text style={styles.emptySubtitle}>
+                                        Escreve o nome ou @username de{'\n'}alguém para adicionar
+                                    </Text>
+                                </View>
+                            )
+                        }
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                    />
+                )}
+            </SafeAreaView>
+        </TouchableWithoutFeedback>
     );
 }
 
-function UserCard({ user, isFriend, sending, onAdd, onMessage }: {
-    user: Profile;
-    isFriend: boolean;
-    sending: boolean;
-    onAdd: () => void;
-    onMessage: () => void;
-}) {
-    return (
-        <Pressable style={styles.userCard} onPress={() => router.push(`/user/${user.id}` as any)}>
-            {user.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
-            ) : (
-                <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarInitial}>
-                        {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                </View>
-            )}
-
-            <View style={styles.userContent}>
-                <Text style={styles.userName}>{user.full_name || user.username}</Text>
-                <Text style={styles.userUsername}>@{user.username || 'utilizador'}</Text>
-            </View>
-
-            {isFriend ? (
-                <Pressable style={styles.messageButton} onPress={onMessage}>
-                    <Ionicons name="chatbubble-outline" size={18} color={colors.accent.primary} />
-                </Pressable>
-            ) : (
-                <Pressable
-                    style={[styles.addButton, sending && styles.addButtonDisabled]}
-                    onPress={onAdd}
-                    disabled={sending}
-                >
-                    {sending ? (
-                        <ActivityIndicator size="small" color={colors.text.inverse} />
-                    ) : (
-                        <Ionicons name="person-add" size={18} color={colors.text.inverse} />
-                    )}
-                </Pressable>
-            )}
-        </Pressable>
-    );
-}
+// ============================================
+// STYLES - Premium Design
+// ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
+    loadingText: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    title: {
-        flex: 1,
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginLeft: spacing.sm,
-    },
-    qrButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+    backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginLeft: SPACING.md },
+    headerEmoji: { fontSize: 24 },
+    headerTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    qrBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
 
     // Search
-    searchContainer: {
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-    },
-    searchInputWrapper: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
-        gap: spacing.sm,
-        ...shadows.sm,
-    },
-    searchInput: {
-        flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-    },
+    searchSection: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md },
+    searchInputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.xl, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, gap: SPACING.sm, ...SHADOWS.sm },
+    searchInput: { flex: 1, fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary, paddingVertical: SPACING.xs },
+    clearBtn: { padding: 4 },
 
     // List
-    listContent: {
-        paddingHorizontal: spacing.xl,
-        paddingBottom: 120,
-        flexGrow: 1,
-    },
+    listContent: { paddingHorizontal: SPACING.md, paddingBottom: 120, flexGrow: 1 },
 
     // User Card
-    userCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        ...shadows.sm,
-    },
-    avatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-    },
-    avatarFallback: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    avatarInitial: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    userContent: {
-        flex: 1,
-        marginLeft: spacing.md,
-    },
-    userName: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
-    },
-    userUsername: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    addButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.accent.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...shadows.sm,
-    },
-    addButtonDisabled: {
-        opacity: 0.7,
-    },
-    messageButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.sm, ...SHADOWS.sm },
+    avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+    avatarInitial: { fontSize: 20, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    userContent: { flex: 1, marginLeft: SPACING.md },
+    userNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    userName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary, flex: 1 },
+    userUsername: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
+    friendBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#10B98120', paddingHorizontal: 8, paddingVertical: 2, borderRadius: RADIUS.sm },
+    friendBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#10B981' },
 
-    // Empty
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: spacing['5xl'],
-    },
-    emptyIcon: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.lg,
-    },
-    emptyTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginTop: spacing.md,
-        marginBottom: spacing.xs,
-    },
-    emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        textAlign: 'center',
-    },
+    // Action Buttons
+    messageBtn: { borderRadius: 20, overflow: 'hidden' },
+    addBtn: { borderRadius: 20, overflow: 'hidden' },
+    addBtnDisabled: { opacity: 0.7 },
+    actionBtnGradient: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    actionBtnLoading: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceElevated, borderRadius: 20 },
+
+    // Empty State
+    emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: SPACING['4xl'] },
+    emptyIconWrap: { marginBottom: SPACING.lg },
+    emptyIconBg: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center' },
+    emptyTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary, marginBottom: SPACING.xs },
+    emptySubtitle: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary, textAlign: 'center', lineHeight: 22 },
 });

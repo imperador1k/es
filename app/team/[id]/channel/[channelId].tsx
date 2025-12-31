@@ -1,28 +1,41 @@
 /**
- * Channel Chat Screen
- * Chat em tempo real com Supabase Realtime + Rich Media
+ * 💬 Channel Chat Screen - PREMIUM DESIGN
+ * Team channel with premium dark design + keyboard fix
+ * Escola+ App
  */
 
 import { ChatInputBar } from '@/components/ChatInputBar';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { useTeam } from '@/providers/TeamsProvider';
 import { notifyNewMessage } from '@/services/teamNotifications';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
+    Dimensions,
     FlatList,
     Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
     Pressable,
+    StatusBar,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
 // TYPES
@@ -48,6 +61,242 @@ interface Message {
 }
 
 // ============================================
+// IMAGE VIEWER MODAL
+// ============================================
+
+function ImageViewerModal({ visible, imageUrl, onClose }: { visible: boolean; imageUrl: string; onClose: () => void }) {
+    const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+    return (
+        <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+            <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.95)" />
+            <View style={viewerStyles.container}>
+                <Pressable style={viewerStyles.backdrop} onPress={onClose} />
+
+                <SafeAreaView edges={['top']} style={viewerStyles.header}>
+                    <Pressable style={viewerStyles.closeBtn} onPress={onClose}>
+                        <BlurView intensity={60} tint="dark" style={viewerStyles.blurBtn}>
+                            <Ionicons name="close" size={24} color="#FFF" />
+                        </BlurView>
+                    </Pressable>
+                    <View style={{ flex: 1 }} />
+                    <Pressable style={viewerStyles.closeBtn} onPress={() => Linking.openURL(imageUrl)}>
+                        <BlurView intensity={60} tint="dark" style={viewerStyles.blurBtn}>
+                            <Ionicons name="download-outline" size={22} color="#FFF" />
+                        </BlurView>
+                    </Pressable>
+                </SafeAreaView>
+
+                <View style={viewerStyles.imageWrap}>
+                    <Image source={{ uri: imageUrl }} style={{ width: SCREEN_WIDTH - 32, height: SCREEN_HEIGHT * 0.65 }} resizeMode="contain" />
+                </View>
+
+                <SafeAreaView edges={['bottom']} style={viewerStyles.footer}>
+                    <Text style={viewerStyles.hint}>Toca fora para fechar</Text>
+                </SafeAreaView>
+            </View>
+        </Modal>
+    );
+}
+
+const viewerStyles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' },
+    backdrop: { ...StyleSheet.absoluteFillObject },
+    header: { flexDirection: 'row', paddingHorizontal: SPACING.md, paddingTop: SPACING.md, zIndex: 10 },
+    closeBtn: { borderRadius: 22, overflow: 'hidden' },
+    blurBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+    imageWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    footer: { alignItems: 'center', paddingBottom: SPACING.lg },
+    hint: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.5)' },
+});
+
+// ============================================
+// MESSAGE ITEM
+// ============================================
+
+interface MessageItemProps {
+    message: Message;
+    isMe: boolean;
+    index: number;
+    showAvatar: boolean;
+}
+
+function MessageItem({ message, isMe, index, showAvatar }: MessageItemProps) {
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(isMe ? 30 : -30)).current;
+    const [viewerVisible, setViewerVisible] = useState(false);
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 250, delay: index * 30, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        ]).start();
+    }, []);
+
+    const formatTime = (dateString: string) => {
+        return new Date(dateString).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const getFileIcon = (name?: string | null) => {
+        if (!name) return 'document';
+        const ext = name.split('.').pop()?.toLowerCase();
+        switch (ext) {
+            case 'pdf': return 'document-text';
+            case 'doc': case 'docx': return 'document';
+            default: return 'document';
+        }
+    };
+
+    const handleImagePress = () => {
+        if (message.attachment_url && (message.attachment_type === 'image' || message.attachment_type === 'gif')) {
+            setViewerVisible(true);
+        }
+    };
+
+    const handleFilePress = () => {
+        if (message.attachment_url) Linking.openURL(message.attachment_url);
+    };
+
+    const hasMedia = message.attachment_type === 'image' || message.attachment_type === 'gif';
+    const hasFile = message.attachment_type === 'file';
+
+    return (
+        <>
+            <Animated.View style={[
+                styles.messageRow,
+                isMe && styles.messageRowMe,
+                { opacity: fadeAnim, transform: [{ translateX: slideAnim }] },
+            ]}>
+                {/* Avatar */}
+                {!isMe && (
+                    <View style={styles.avatarContainer}>
+                        {showAvatar ? (
+                            message.author?.avatar_url ? (
+                                <Image source={{ uri: message.author.avatar_url }} style={styles.avatar} />
+                            ) : (
+                                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatarPlaceholder}>
+                                    <Text style={styles.avatarText}>
+                                        {(message.author?.full_name || message.author?.username || '?').charAt(0).toUpperCase()}
+                                    </Text>
+                                </LinearGradient>
+                            )
+                        ) : (
+                            <View style={styles.avatarSpacer} />
+                        )}
+                    </View>
+                )}
+
+                {/* Bubble */}
+                <View style={[styles.bubbleWrapper, isMe && styles.bubbleWrapperMe]}>
+                    {isMe ? (
+                        <LinearGradient colors={['#6366F1', '#4F46E5']} style={[styles.bubble, styles.bubbleMe]}>
+                            {/* Media */}
+                            {hasMedia && message.attachment_url && (
+                                <Pressable onPress={handleImagePress} style={styles.mediaContainer}>
+                                    <Image source={{ uri: message.attachment_url }} style={styles.attachmentImage} />
+                                    <View style={styles.expandIcon}>
+                                        <Ionicons name="expand-outline" size={14} color="#FFF" />
+                                    </View>
+                                    {message.attachment_type === 'gif' && (
+                                        <View style={styles.gifBadge}><Text style={styles.gifBadgeText}>GIF</Text></View>
+                                    )}
+                                </Pressable>
+                            )}
+                            {/* File */}
+                            {hasFile && message.attachment_url && (
+                                <Pressable style={styles.fileCard} onPress={handleFilePress}>
+                                    <View style={styles.fileIconWrapMe}>
+                                        <Ionicons name={getFileIcon(message.attachment_name) as any} size={22} color="#FFF" />
+                                    </View>
+                                    <View style={styles.fileInfo}>
+                                        <Text style={styles.fileNameMe} numberOfLines={1}>{message.attachment_name || 'Ficheiro'}</Text>
+                                        <Text style={styles.fileHintMe}>Toca para abrir</Text>
+                                    </View>
+                                    <Ionicons name="download-outline" size={18} color="rgba(255,255,255,0.7)" />
+                                </Pressable>
+                            )}
+                            {/* Text */}
+                            {message.content && message.content !== '📷' && message.content !== '📎' && message.content !== '🎬' && (
+                                <Text style={styles.bubbleTextMe}>{message.content}</Text>
+                            )}
+                            <Text style={styles.timestampMe}>{formatTime(message.created_at)}</Text>
+                        </LinearGradient>
+                    ) : (
+                        <View style={[styles.bubble, styles.bubbleOther]}>
+                            {showAvatar && (
+                                <Text style={styles.authorName}>
+                                    {message.author?.full_name || message.author?.username || 'Utilizador'}
+                                </Text>
+                            )}
+                            {/* Media */}
+                            {hasMedia && message.attachment_url && (
+                                <Pressable onPress={handleImagePress} style={styles.mediaContainer}>
+                                    <Image source={{ uri: message.attachment_url }} style={styles.attachmentImage} />
+                                    <View style={styles.expandIcon}>
+                                        <Ionicons name="expand-outline" size={14} color="#FFF" />
+                                    </View>
+                                    {message.attachment_type === 'gif' && (
+                                        <View style={styles.gifBadge}><Text style={styles.gifBadgeText}>GIF</Text></View>
+                                    )}
+                                </Pressable>
+                            )}
+                            {/* File */}
+                            {hasFile && message.attachment_url && (
+                                <Pressable style={styles.fileCard} onPress={handleFilePress}>
+                                    <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.fileIconWrap}>
+                                        <Ionicons name={getFileIcon(message.attachment_name) as any} size={22} color="#FFF" />
+                                    </LinearGradient>
+                                    <View style={styles.fileInfo}>
+                                        <Text style={styles.fileName} numberOfLines={1}>{message.attachment_name || 'Ficheiro'}</Text>
+                                        <Text style={styles.fileHint}>Toca para abrir</Text>
+                                    </View>
+                                    <Ionicons name="download-outline" size={18} color={COLORS.text.tertiary} />
+                                </Pressable>
+                            )}
+                            {/* Text */}
+                            {message.content && message.content !== '📷' && message.content !== '📎' && message.content !== '🎬' && (
+                                <Text style={styles.bubbleTextOther}>{message.content}</Text>
+                            )}
+                            <Text style={styles.timestampOther}>{formatTime(message.created_at)}</Text>
+                        </View>
+                    )}
+                </View>
+            </Animated.View>
+
+            {/* Image Viewer */}
+            {message.attachment_url && hasMedia && (
+                <ImageViewerModal visible={viewerVisible} imageUrl={message.attachment_url} onClose={() => setViewerVisible(false)} />
+            )}
+        </>
+    );
+}
+
+// ============================================
+// EMPTY STATE
+// ============================================
+
+function EmptyMessages({ channelName }: { channelName: string }) {
+    const scaleAnim = useRef(new Animated.Value(0.8)).current;
+
+    useEffect(() => {
+        Animated.spring(scaleAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }).start();
+    }, []);
+
+    return (
+        <Animated.View style={[styles.emptyContainer, { transform: [{ scale: scaleAnim }] }]}>
+            <View style={styles.emptyIconWrap}>
+                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyIconGradient}>
+                    <Text style={styles.emptyEmoji}>💬</Text>
+                </LinearGradient>
+                <View style={styles.emptyGlow} />
+            </View>
+            <Text style={styles.emptyTitle}>#{channelName}</Text>
+            <Text style={styles.emptySubtitle}>Sê o primeiro a enviar uma mensagem!</Text>
+        </Animated.View>
+    );
+}
+
+// ============================================
 // MAIN COMPONENT
 // ============================================
 
@@ -58,53 +307,67 @@ export default function ChannelChatScreen() {
     const { team } = useTeam(teamId);
     const flatListRef = useRef<FlatList>(null);
     const insets = useSafeAreaInsets();
+    const headerAnim = useRef(new Animated.Value(0)).current;
 
-    // Estados
     const [messages, setMessages] = useState<Message[]>([]);
     const [loading, setLoading] = useState(true);
     const [channelName, setChannelName] = useState('');
-    const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+    useEffect(() => {
+        Animated.spring(headerAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }).start();
+    }, []);
+
+    // Keyboard height for Android
+    const keyboardHeight = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const showSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (e) => {
+                setKeyboardVisible(true);
+                const extraOffset = Platform.OS === 'android' ? insets.bottom : 0;
+                Animated.timing(keyboardHeight, {
+                    toValue: e.endCoordinates.height + extraOffset,
+                    duration: Platform.OS === 'ios' ? 250 : 100,
+                    useNativeDriver: false,
+                }).start();
+            }
+        );
+        const hideSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                setKeyboardVisible(false);
+                Animated.timing(keyboardHeight, {
+                    toValue: 0,
+                    duration: Platform.OS === 'ios' ? 250 : 100,
+                    useNativeDriver: false,
+                }).start();
+            }
+        );
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, []);
 
     // ============================================
-    // LOAD INITIAL MESSAGES
+    // LOAD DATA
     // ============================================
 
     const loadMessages = useCallback(async () => {
         if (!channelId) return;
-
         try {
-            // Buscar últimas 50 mensagens com autor
             const { data, error } = await supabase
                 .from('messages')
-                .select(`
-                    id,
-                    channel_id,
-                    user_id,
-                    content,
-                    created_at,
-                    attachment_url,
-                    attachment_type,
-                    attachment_name,
-                    author:profiles!user_id (
-                        id,
-                        username,
-                        full_name,
-                        avatar_url
-                    )
-                `)
+                .select(`id, channel_id, user_id, content, created_at, attachment_url, attachment_type, attachment_name, author:profiles!user_id (id, username, full_name, avatar_url)`)
                 .eq('channel_id', channelId)
                 .order('created_at', { ascending: false })
                 .limit(50);
 
             if (error) throw error;
-
-            // Processar dados (Supabase retorna author como array)
             const processedMessages: Message[] = (data || []).map((m: any) => ({
                 ...m,
                 author: Array.isArray(m.author) ? m.author[0] : m.author,
             }));
-
             setMessages(processedMessages);
         } catch (err) {
             console.error('Erro ao carregar mensagens:', err);
@@ -113,16 +376,9 @@ export default function ChannelChatScreen() {
         }
     }, [channelId]);
 
-    // Load channel name
     const loadChannelInfo = useCallback(async () => {
         if (!channelId) return;
-
-        const { data } = await supabase
-            .from('channels')
-            .select('name')
-            .eq('id', channelId)
-            .single();
-
+        const { data } = await supabase.from('channels').select('name').eq('id', channelId).single();
         if (data) setChannelName(data.name);
     }, [channelId]);
 
@@ -132,81 +388,32 @@ export default function ChannelChatScreen() {
     }, [loadMessages, loadChannelInfo]);
 
     // ============================================
-    // REALTIME SUBSCRIPTION
+    // REALTIME
     // ============================================
 
     useEffect(() => {
         if (!channelId) return;
-
         const channel = supabase
             .channel(`room:${channelId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'messages',
-                    filter: `channel_id=eq.${channelId}`,
-                },
-                async (payload) => {
-                    console.log('🔔 Nova mensagem:', payload);
-
-                    // Buscar mensagem completa com perfil do autor
-                    const { data, error } = await supabase
-                        .from('messages')
-                        .select(`
-                            id,
-                            channel_id,
-                            user_id,
-                            content,
-                            created_at,
-                            author:profiles!user_id (
-                                id,
-                                username,
-                                full_name,
-                                avatar_url
-                            )
-                        `)
-                        .eq('id', payload.new.id)
-                        .single();
-
-                    if (!error && data) {
-                        const newMessage: Message = {
-                            ...data,
-                            author: Array.isArray(data.author) ? data.author[0] : data.author,
-                        };
-
-                        // Adicionar ao início (lista invertida)
-                        setMessages(prev => {
-                            // Evitar duplicados
-                            if (prev.some(m => m.id === newMessage.id)) return prev;
-                            return [newMessage, ...prev];
-                        });
-                    }
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` }, async (payload) => {
+                const { data } = await supabase.from('messages').select(`id, channel_id, user_id, content, created_at, author:profiles!user_id (id, username, full_name, avatar_url)`).eq('id', payload.new.id).single();
+                if (data) {
+                    const newMessage: Message = { ...data, author: Array.isArray(data.author) ? data.author[0] : data.author };
+                    setMessages(prev => prev.some(m => m.id === newMessage.id) ? prev : [newMessage, ...prev]);
                 }
-            )
+            })
             .subscribe();
-
-        // Cleanup
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => { supabase.removeChannel(channel); };
     }, [channelId]);
 
     // ============================================
     // SEND MESSAGE
     // ============================================
 
-    const handleSend = async (
-        content: string,
-        attachment?: { url: string; type: 'image' | 'video' | 'file' | 'gif'; name?: string }
-    ) => {
+    const handleSend = async (content: string, attachment?: { url: string; type: 'image' | 'video' | 'file' | 'gif'; name?: string }) => {
         if ((!content.trim() && !attachment) || !channelId || !user?.id || !teamId) return;
-
         setSending(true);
-
         try {
-            // Use RPC for proper attachment support
             const { error } = await supabase.rpc('send_team_message', {
                 p_channel_id: channelId,
                 p_content: content.trim() || (attachment ? '📎' : ''),
@@ -214,19 +421,17 @@ export default function ChannelChatScreen() {
                 p_attachment_type: attachment?.type || null,
                 p_attachment_name: attachment?.name || null,
             });
-
-            if (error) throw error;
-
-            // Enviar notificação push para outros membros
-            notifyNewMessage({
-                channelId,
-                channelName: channelName || 'Canal',
-                teamId,
-                teamName: team?.name || 'Equipa',
-                senderName: profile?.full_name || profile?.username || 'Alguém',
-                messagePreview: content.trim() || '📎 Anexo',
-                senderId: user.id,
-            });
+            if (!error) {
+                notifyNewMessage({
+                    channelId,
+                    channelName: channelName || 'Canal',
+                    teamId,
+                    teamName: team?.name || 'Equipa',
+                    senderName: profile?.full_name || profile?.username || 'Alguém',
+                    messagePreview: content.trim() || '📎 Anexo',
+                    senderId: user.id,
+                });
+            }
         } catch (err) {
             console.error('Erro ao enviar:', err);
         } finally {
@@ -235,120 +440,80 @@ export default function ChannelChatScreen() {
     };
 
     // ============================================
-    // RENDER MESSAGE
-    // ============================================
-
-    const formatTime = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-    };
-
-    const renderMessage = ({ item, index }: { item: Message; index: number }) => {
-        const isMe = item.user_id === user?.id;
-        const nextMessage = messages[index + 1];
-        const showAvatar = !isMe && (!nextMessage || nextMessage.user_id !== item.user_id);
-
-        return (
-            <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
-                {/* Avatar (apenas para outros e quando for última mensagem do grupo) */}
-                {!isMe && (
-                    <View style={styles.avatarContainer}>
-                        {showAvatar ? (
-                            item.author?.avatar_url ? (
-                                <Image source={{ uri: item.author.avatar_url }} style={styles.avatar} />
-                            ) : (
-                                <View style={styles.avatarPlaceholder}>
-                                    <Text style={styles.avatarText}>
-                                        {(item.author?.full_name || item.author?.username || '?').charAt(0).toUpperCase()}
-                                    </Text>
-                                </View>
-                            )
-                        ) : (
-                            <View style={styles.avatarSpacer} />
-                        )}
-                    </View>
-                )}
-
-                {/* Bubble */}
-                <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
-                    {/* Nome do autor (apenas para outros, primeira mensagem do grupo) */}
-                    {!isMe && showAvatar && (
-                        <Text style={styles.authorName}>
-                            {item.author?.full_name || item.author?.username || 'Utilizador'}
-                        </Text>
-                    )}
-                    <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
-                        {item.content}
-                    </Text>
-                    <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
-                        {formatTime(item.created_at)}
-                    </Text>
-                </View>
-            </View>
-        );
-    };
-
-    // ============================================
-    // LOADING STATE
+    // RENDER
     // ============================================
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
+                    <Text style={styles.loadingText}>A carregar mensagens...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    // ============================================
-    // MAIN RENDER
-    // ============================================
-
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>#{channelName}</Text>
-                    <Text style={styles.headerSubtitle}>{messages.length} mensagens</Text>
-                </View>
-                <Pressable style={styles.headerButton}>
-                    <Ionicons name="ellipsis-vertical" size={20} color={colors.text.tertiary} />
-                </Pressable>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+            {/* Background */}
+            <View style={styles.chatBackground}>
+                <LinearGradient colors={['rgba(99, 102, 241, 0.05)', 'transparent', 'rgba(139, 92, 246, 0.05)']} style={StyleSheet.absoluteFill} />
             </View>
 
-            {/* Messages List */}
-            <FlatList
-                ref={flatListRef}
-                data={messages}
-                keyExtractor={(item) => item.id}
-                renderItem={renderMessage}
-                inverted
-                contentContainerStyle={styles.messagesList}
-                showsVerticalScrollIndicator={false}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Ionicons name="chatbubble-outline" size={48} color={colors.text.tertiary} />
-                        <Text style={styles.emptyText}>Ainda não há mensagens</Text>
-                        <Text style={styles.emptySubtext}>Sê o primeiro a enviar!</Text>
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Premium Header */}
+                <Animated.View style={[styles.header, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+                    </Pressable>
+
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.channelIcon}>
+                        <Text style={styles.channelIconText}>#</Text>
+                    </LinearGradient>
+
+                    <View style={styles.headerInfo}>
+                        <Text style={styles.headerName} numberOfLines={1}>#{channelName}</Text>
+                        <Text style={styles.headerStatus}>{messages.length} mensagens • {team?.name}</Text>
                     </View>
-                }
-            />
 
-            {/* Rich Input Bar */}
-            <View style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
-                <ChatInputBar
-                    onSend={handleSend}
-                    placeholder="Escreve uma mensagem..."
-                    disabled={sending}
+                    <Pressable style={styles.headerAction}>
+                        <Ionicons name="search-outline" size={22} color={COLORS.text.secondary} />
+                    </Pressable>
+                    <Pressable style={styles.headerAction}>
+                        <Ionicons name="ellipsis-vertical" size={20} color={COLORS.text.secondary} />
+                    </Pressable>
+                </Animated.View>
+
+                {/* Messages */}
+                <FlatList
+                    ref={flatListRef}
+                    data={messages}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item, index }) => {
+                        const isMe = item.user_id === user?.id;
+                        const nextMsg = messages[index + 1];
+                        const showAvatar = !isMe && (!nextMsg || nextMsg.user_id !== item.user_id);
+                        return <MessageItem message={item} isMe={isMe} index={index} showAvatar={showAvatar} />;
+                    }}
+                    contentContainerStyle={styles.messagesList}
+                    ListEmptyComponent={<EmptyMessages channelName={channelName} />}
+                    inverted
+                    showsVerticalScrollIndicator={false}
                 />
-            </View>
-        </SafeAreaView>
+
+                {/* Input */}
+                <Animated.View style={Platform.OS === 'android' ? { marginBottom: keyboardHeight } : undefined}>
+                    <BlurView intensity={80} tint="dark" style={[styles.inputBlur, { paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 8) }]}>
+                        <ChatInputBar onSend={handleSend} placeholder="Mensagem..." disabled={sending} />
+                    </BlurView>
+                </Animated.View>
+            </SafeAreaView>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -357,197 +522,65 @@ export default function ChannelChatScreen() {
 // ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    content: {
-        flex: 1,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    chatBackground: { ...StyleSheet.absoluteFillObject },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
+    loadingText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    headerContent: {
-        flex: 1,
-        marginLeft: spacing.sm,
-    },
-    headerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    headerSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    headerButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm, backgroundColor: 'rgba(0,0,0,0.3)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+    backButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    channelIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    channelIconText: { fontSize: 20, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    headerInfo: { flex: 1, marginLeft: SPACING.md },
+    headerName: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    headerStatus: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
+    headerAction: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
-    // Messages List
-    messagesList: {
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        flexGrow: 1,
-    },
+    // Messages
+    messagesList: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.lg },
+    messageRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: SPACING.sm },
+    messageRowMe: { flexDirection: 'row-reverse' },
+    avatarContainer: { width: 36, marginRight: SPACING.xs },
+    avatar: { width: 32, height: 32, borderRadius: 16 },
+    avatarPlaceholder: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    avatarText: { fontSize: 14, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    avatarSpacer: { width: 32 },
+    bubbleWrapper: { maxWidth: SCREEN_WIDTH * 0.75 },
+    bubbleWrapperMe: { marginLeft: SPACING.xl },
+    bubble: { padding: SPACING.md, borderRadius: RADIUS.xl, ...SHADOWS.sm },
+    bubbleMe: { borderBottomRightRadius: 4 },
+    bubbleOther: { backgroundColor: COLORS.surfaceElevated, borderBottomLeftRadius: 4 },
+    authorName: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold, color: '#6366F1', marginBottom: 4 },
+    bubbleTextMe: { fontSize: TYPOGRAPHY.size.base, color: '#FFF', lineHeight: 22 },
+    bubbleTextOther: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary, lineHeight: 22 },
+    timestampMe: { fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 4, textAlign: 'right' },
+    timestampOther: { fontSize: 10, color: COLORS.text.tertiary, marginTop: 4, textAlign: 'right' },
 
-    // Message Row
-    messageRow: {
-        flexDirection: 'row',
-        marginBottom: spacing.xs,
-        alignItems: 'flex-end',
-    },
-    messageRowMe: {
-        justifyContent: 'flex-end',
-    },
+    // Media & Files
+    mediaContainer: { borderRadius: RADIUS.lg, overflow: 'hidden', marginBottom: SPACING.xs },
+    attachmentImage: { width: 220, height: 160, borderRadius: RADIUS.lg },
+    expandIcon: { position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+    gifBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+    gifBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    fileCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, padding: SPACING.sm, backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: RADIUS.lg, marginBottom: SPACING.xs },
+    fileIconWrap: { width: 44, height: 44, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
+    fileIconWrapMe: { width: 44, height: 44, borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+    fileInfo: { flex: 1 },
+    fileName: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: COLORS.text.primary },
+    fileNameMe: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: '#FFF' },
+    fileHint: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, marginTop: 2 },
+    fileHintMe: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
-    // Avatar
-    avatarContainer: {
-        width: 32,
-        marginRight: spacing.xs,
-    },
-    avatar: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-    },
-    avatarPlaceholder: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: colors.accent.subtle,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    avatarText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    avatarSpacer: {
-        width: 28,
-        height: 28,
-    },
+    // Empty
+    emptyContainer: { alignItems: 'center', paddingVertical: 80, transform: [{ scaleY: -1 }] },
+    emptyIconWrap: { position: 'relative', marginBottom: SPACING.xl },
+    emptyIconGradient: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
+    emptyEmoji: { fontSize: 36 },
+    emptyGlow: { position: 'absolute', top: -15, left: -15, right: -15, bottom: -15, borderRadius: 55, backgroundColor: 'rgba(99, 102, 241, 0.2)' },
+    emptyTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    emptySubtitle: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.tertiary, marginTop: SPACING.xs, textAlign: 'center' },
 
-    // Bubble
-    bubble: {
-        maxWidth: '75%',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.lg,
-    },
-    bubbleMe: {
-        backgroundColor: colors.accent.primary,
-        borderBottomRightRadius: 4,
-    },
-    bubbleOther: {
-        backgroundColor: colors.surface,
-        borderBottomLeftRadius: 4,
-        ...shadows.sm,
-    },
-    authorName: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
-        marginBottom: 2,
-    },
-    messageText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        lineHeight: 20,
-    },
-    messageTextMe: {
-        color: colors.text.inverse,
-    },
-    messageTime: {
-        fontSize: 10,
-        color: colors.text.tertiary,
-        marginTop: 4,
-        alignSelf: 'flex-end',
-    },
-    messageTimeMe: {
-        color: 'rgba(255,255,255,0.7)',
-    },
-
-    // Empty State
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing['5xl'],
-        transform: [{ scaleY: -1 }], // Inverter porque lista é invertida
-    },
-    emptyText: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginTop: spacing.md,
-    },
-    emptySubtext: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginTop: spacing.xs,
-    },
-
-    // Input Area
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        backgroundColor: colors.surface,
-        borderTopWidth: 1,
-        borderTopColor: colors.divider,
-        gap: spacing.sm,
-    },
-    inputWrapper: {
-        flex: 1,
-        backgroundColor: colors.background,
-        borderRadius: borderRadius.xl,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        maxHeight: 120,
-    },
-    input: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        minHeight: 40,
-        maxHeight: 100,
-    },
-    sendButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.accent.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...shadows.sm,
-    },
-    sendButtonDisabled: {
-        opacity: 0.5,
-    },
+    // Input
+    inputBlur: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
 });

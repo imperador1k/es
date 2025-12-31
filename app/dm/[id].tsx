@@ -1,29 +1,38 @@
 /**
- * DM Chat Screen
- * Direct Messages with Rich Media Support
+ * 💬 DM Chat Screen - PREMIUM DESIGN
+ * Direct Messages with iMessage/WhatsApp inspired design
+ * Escola+ App
  */
 
 import { ChatInputBar } from '@/components/ChatInputBar';
-import { MessageBubble } from '@/components/MessageBubble';
 import { useUserStatus } from '@/hooks/usePresence';
 import { useTyping } from '@/hooks/useTyping';
 import { supabase } from '@/lib/supabase';
-import { colors, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Profile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
+    Dimensions,
     FlatList,
     Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
     Pressable,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
 // TYPES
@@ -39,14 +48,313 @@ interface DMMessage {
     attachment_url?: string | null;
     attachment_type?: 'image' | 'video' | 'file' | 'gif' | null;
     attachment_name?: string | null;
-    sender?: {
-        username: string;
-        avatar_url: string | null;
-    };
+    sender?: { username: string; avatar_url: string | null };
 }
 
 // ============================================
-// COMPONENT
+// ATTACHMENT RENDERER WITH IMAGE VIEWER
+// ============================================
+
+import * as Linking from 'expo-linking';
+import { Modal, StatusBar } from 'react-native';
+
+interface AttachmentProps {
+    url?: string | null;
+    type?: 'image' | 'video' | 'file' | 'gif' | null;
+    name?: string | null;
+    isMe: boolean;
+}
+
+function AttachmentRenderer({ url, type, name, isMe }: AttachmentProps) {
+    const [viewerVisible, setViewerVisible] = useState(false);
+
+    if (!url) return null;
+
+    const getFileIcon = (fileName?: string | null) => {
+        if (!fileName) return 'document-outline';
+        const ext = fileName.split('.').pop()?.toLowerCase();
+        switch (ext) {
+            case 'pdf': return 'document-text';
+            case 'doc':
+            case 'docx': return 'document';
+            case 'xls':
+            case 'xlsx': return 'grid';
+            case 'ppt':
+            case 'pptx': return 'easel';
+            default: return 'document';
+        }
+    };
+
+    const handleFilePress = () => Linking.openURL(url);
+    const handleImagePress = () => setViewerVisible(true);
+
+    // IMAGE
+    if (type === 'image') {
+        return (
+            <>
+                <Pressable onPress={handleImagePress} style={styles.mediaContainer}>
+                    <Image source={{ uri: url }} style={styles.attachmentImage} />
+                    <View style={styles.expandIcon}>
+                        <Ionicons name="expand-outline" size={14} color="#FFF" />
+                    </View>
+                </Pressable>
+                <ImageViewerModal visible={viewerVisible} imageUrl={url} onClose={() => setViewerVisible(false)} />
+            </>
+        );
+    }
+
+    // GIF
+    if (type === 'gif') {
+        return (
+            <>
+                <Pressable onPress={handleImagePress} style={styles.mediaContainer}>
+                    <Image source={{ uri: url }} style={styles.attachmentImage} resizeMode="contain" />
+                    <View style={styles.gifBadge}>
+                        <Text style={styles.gifBadgeText}>GIF</Text>
+                    </View>
+                    <View style={styles.expandIcon}>
+                        <Ionicons name="expand-outline" size={14} color="#FFF" />
+                    </View>
+                </Pressable>
+                <ImageViewerModal visible={viewerVisible} imageUrl={url} onClose={() => setViewerVisible(false)} />
+            </>
+        );
+    }
+
+    // FILE (PDF, DOC, etc)
+    if (type === 'file') {
+        return (
+            <Pressable style={styles.fileCard} onPress={handleFilePress}>
+                <LinearGradient
+                    colors={isMe ? ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.15)'] : ['#6366F1', '#4F46E5']}
+                    style={styles.fileIconWrap}
+                >
+                    <Ionicons name={getFileIcon(name) as any} size={24} color="#FFF" />
+                </LinearGradient>
+                <View style={styles.fileInfo}>
+                    <Text style={[styles.fileName, isMe && styles.fileNameMe]} numberOfLines={1}>
+                        {name || 'Ficheiro'}
+                    </Text>
+                    <Text style={[styles.fileHint, isMe && styles.fileHintMe]}>Toca para abrir</Text>
+                </View>
+                <Ionicons name="download-outline" size={20} color={isMe ? 'rgba(255,255,255,0.7)' : COLORS.text.tertiary} />
+            </Pressable>
+        );
+    }
+
+    return null;
+}
+
+// ============================================
+// IMAGE VIEWER MODAL
+// ============================================
+
+function ImageViewerModal({ visible, imageUrl, onClose }: { visible: boolean; imageUrl: string; onClose: () => void }) {
+    const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+    return (
+        <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+            <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.95)" />
+            <View style={viewerStyles.container}>
+                <Pressable style={viewerStyles.backdrop} onPress={onClose} />
+
+                <SafeAreaView edges={['top']} style={viewerStyles.header}>
+                    <Pressable style={viewerStyles.closeBtn} onPress={onClose}>
+                        <BlurView intensity={60} tint="dark" style={viewerStyles.blurBtn}>
+                            <Ionicons name="close" size={24} color="#FFF" />
+                        </BlurView>
+                    </Pressable>
+                    <View style={{ flex: 1 }} />
+                    <Pressable style={viewerStyles.closeBtn} onPress={() => Linking.openURL(imageUrl)}>
+                        <BlurView intensity={60} tint="dark" style={viewerStyles.blurBtn}>
+                            <Ionicons name="download-outline" size={22} color="#FFF" />
+                        </BlurView>
+                    </Pressable>
+                </SafeAreaView>
+
+                <View style={viewerStyles.imageWrap}>
+                    <Image source={{ uri: imageUrl }} style={{ width: SCREEN_WIDTH - 32, height: SCREEN_HEIGHT * 0.65 }} resizeMode="contain" />
+                </View>
+
+                <SafeAreaView edges={['bottom']} style={viewerStyles.footer}>
+                    <Text style={viewerStyles.hint}>Toca fora para fechar</Text>
+                </SafeAreaView>
+            </View>
+        </Modal>
+    );
+}
+
+const viewerStyles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' },
+    backdrop: { ...StyleSheet.absoluteFillObject },
+    header: { flexDirection: 'row', paddingHorizontal: SPACING.md, paddingTop: SPACING.md, zIndex: 10 },
+    closeBtn: { borderRadius: 22, overflow: 'hidden' },
+    blurBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+    imageWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    footer: { alignItems: 'center', paddingBottom: SPACING.lg },
+    hint: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.5)' },
+});
+
+// ============================================
+// TYPING INDICATOR
+// ============================================
+
+function TypingIndicator({ name }: { name: string }) {
+    const dot1 = useRef(new Animated.Value(0)).current;
+    const dot2 = useRef(new Animated.Value(0)).current;
+    const dot3 = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const animate = (dot: Animated.Value, delay: number) => {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.delay(delay),
+                    Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true }),
+                    Animated.timing(dot, { toValue: 0, duration: 300, useNativeDriver: true }),
+                ])
+            ).start();
+        };
+        animate(dot1, 0);
+        animate(dot2, 150);
+        animate(dot3, 300);
+    }, []);
+
+    return (
+        <View style={styles.typingContainer}>
+            <View style={styles.typingBubble}>
+                <View style={styles.typingDots}>
+                    {[dot1, dot2, dot3].map((dot, i) => (
+                        <Animated.View
+                            key={i}
+                            style={[styles.typingDot, { transform: [{ scale: dot.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] }) }] }]}
+                        />
+                    ))}
+                </View>
+            </View>
+            <Text style={styles.typingLabel}>{name} está a escrever...</Text>
+        </View>
+    );
+}
+
+// ============================================
+// MESSAGE ITEM
+// ============================================
+
+interface MessageItemProps {
+    message: DMMessage;
+    isMe: boolean;
+    index: number;
+    showAvatar: boolean;
+}
+
+function MessageItem({ message, isMe, index, showAvatar }: MessageItemProps) {
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(isMe ? 30 : -30)).current;
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 250, delay: index * 30, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        ]).start();
+    }, []);
+
+    const StatusIcon = () => {
+        if (!isMe) return null;
+        const iconName = message.status === 'sent' ? 'checkmark' : 'checkmark-done';
+        const iconColor = message.status === 'read' ? '#3B82F6' : 'rgba(255,255,255,0.5)';
+        return <Ionicons name={iconName} size={14} color={iconColor} style={{ marginLeft: 4 }} />;
+    };
+
+    return (
+        <Animated.View style={[
+            styles.messageRow,
+            isMe && styles.messageRowMe,
+            { opacity: fadeAnim, transform: [{ translateX: slideAnim }] },
+        ]}>
+            {/* Avatar (only for received messages) */}
+            {!isMe && showAvatar && (
+                <View style={styles.messageAvatar}>
+                    {message.sender?.avatar_url ? (
+                        <Image source={{ uri: message.sender.avatar_url }} style={styles.avatarImage} />
+                    ) : (
+                        <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatarFallback}>
+                            <Text style={styles.avatarInitial}>
+                                {(message.sender?.username || 'U').charAt(0).toUpperCase()}
+                            </Text>
+                        </LinearGradient>
+                    )}
+                </View>
+            )}
+            {!isMe && !showAvatar && <View style={styles.avatarSpacer} />}
+
+            {/* Bubble */}
+            <View style={[styles.bubbleWrapper, isMe && styles.bubbleWrapperMe]}>
+                {isMe ? (
+                    <LinearGradient colors={['#6366F1', '#4F46E5']} style={[styles.bubble, styles.bubbleMe]}>
+                        <AttachmentRenderer
+                            url={message.attachment_url}
+                            type={message.attachment_type}
+                            name={message.attachment_name}
+                            isMe={true}
+                        />
+                        {message.content && message.content !== '📷' && message.content !== '📎' && message.content !== '🎬' && (
+                            <Text style={styles.bubbleTextMe}>{message.content}</Text>
+                        )}
+                        <View style={styles.bubbleFooter}>
+                            <Text style={styles.timestampMe}>
+                                {new Date(message.created_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                            <StatusIcon />
+                        </View>
+                    </LinearGradient>
+                ) : (
+                    <View style={[styles.bubble, styles.bubbleOther]}>
+                        <AttachmentRenderer
+                            url={message.attachment_url}
+                            type={message.attachment_type}
+                            name={message.attachment_name}
+                            isMe={false}
+                        />
+                        {message.content && message.content !== '📷' && message.content !== '📎' && message.content !== '🎬' && (
+                            <Text style={styles.bubbleTextOther}>{message.content}</Text>
+                        )}
+                        <Text style={styles.timestampOther}>
+                            {new Date(message.created_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                    </View>
+                )}
+            </View>
+        </Animated.View>
+    );
+}
+
+// ============================================
+// EMPTY STATE
+// ============================================
+
+function EmptyMessages({ name }: { name: string }) {
+    const scaleAnim = useRef(new Animated.Value(0.8)).current;
+
+    useEffect(() => {
+        Animated.spring(scaleAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }).start();
+    }, []);
+
+    return (
+        <Animated.View style={[styles.emptyContainer, { transform: [{ scale: scaleAnim }] }]}>
+            <View style={styles.emptyIconWrap}>
+                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyIconGradient}>
+                    <Text style={styles.emptyEmoji}>💬</Text>
+                </LinearGradient>
+                <View style={styles.emptyGlow} />
+            </View>
+            <Text style={styles.emptyTitle}>Nova conversa com {name}</Text>
+            <Text style={styles.emptySubtitle}>Envia a primeira mensagem e começa a conversar!</Text>
+        </Animated.View>
+    );
+}
+
+// ============================================
+// MAIN COMPONENT
 // ============================================
 
 export default function DMChatScreen() {
@@ -54,6 +362,7 @@ export default function DMChatScreen() {
     const { user } = useAuthContext();
     const insets = useSafeAreaInsets();
     const flatListRef = useRef<FlatList>(null);
+    const headerAnim = useRef(new Animated.Value(0)).current;
 
     const [messages, setMessages] = useState<DMMessage[]>([]);
     const [loading, setLoading] = useState(true);
@@ -62,18 +371,52 @@ export default function DMChatScreen() {
 
     const { typingText, sendTyping, sendStopTyping } = useTyping(id || null);
     const { status: otherUserStatus, formatLastSeen } = useUserStatus(otherUser?.id || null);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+    useEffect(() => {
+        Animated.spring(headerAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }).start();
+    }, []);
+
+    // Keyboard height for Android
+    const keyboardHeight = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const showSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (e) => {
+                setKeyboardVisible(true);
+                // Add extra offset for Android navigation bar
+                const extraOffset = Platform.OS === 'android' ? insets.bottom : 0;
+                Animated.timing(keyboardHeight, {
+                    toValue: e.endCoordinates.height + extraOffset,
+                    duration: Platform.OS === 'ios' ? 250 : 100,
+                    useNativeDriver: false,
+                }).start();
+            }
+        );
+        const hideSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                setKeyboardVisible(false);
+                Animated.timing(keyboardHeight, {
+                    toValue: 0,
+                    duration: Platform.OS === 'ios' ? 250 : 100,
+                    useNativeDriver: false,
+                }).start();
+            }
+        );
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, []);
 
     // ============================================
-    // LOAD OTHER USER & MESSAGES
+    // LOAD DATA
     // ============================================
 
     useEffect(() => {
         async function load() {
             if (!id || !user?.id) return;
-
             setLoading(true);
 
-            // Get conversation & other user
             const { data: conv } = await supabase
                 .from('dm_conversations')
                 .select('user1_id, user2_id')
@@ -82,56 +425,30 @@ export default function DMChatScreen() {
 
             if (conv) {
                 const otherId = conv.user1_id === user.id ? conv.user2_id : conv.user1_id;
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', otherId)
-                    .single();
-
+                const { data: profile } = await supabase.from('profiles').select('*').eq('id', otherId).single();
                 if (profile) setOtherUser(profile as Profile);
             }
 
-            // Load messages
             const { data: msgs } = await supabase
                 .from('dm_messages')
-                .select(`
-                    id, content, created_at, sender_id, status,
-                    attachment_url, attachment_type, attachment_name,
-                    sender:profiles!dm_messages_sender_id_fkey(username, avatar_url)
-                `)
+                .select(`id, content, created_at, sender_id, status, attachment_url, attachment_type, attachment_name, sender:profiles!dm_messages_sender_id_fkey(username, avatar_url)`)
                 .eq('conversation_id', id)
                 .order('created_at', { ascending: false })
                 .limit(50);
 
             if (msgs) {
-                const mapped = msgs.map(m => ({
-                    ...m,
-                    sender: Array.isArray(m.sender) ? m.sender[0] : m.sender,
-                })) as DMMessage[];
+                const mapped = msgs.map(m => ({ ...m, sender: Array.isArray(m.sender) ? m.sender[0] : m.sender })) as DMMessage[];
                 setMessages(mapped);
 
-                // Mark messages as read (messages from other user that are not read yet)
-                const { error: updateError, count } = await supabase
-                    .from('dm_messages')
-                    .update({ status: 'read', is_read: true })
-                    .eq('conversation_id', id)
-                    .neq('sender_id', user.id)
-                    .eq('is_read', false);
-
-                if (updateError) {
-                    console.error('❌ Error marking messages as read:', updateError);
-                } else {
-                    console.log('✅ Marked messages as read');
-                }
+                await supabase.from('dm_messages').update({ status: 'read', is_read: true }).eq('conversation_id', id).neq('sender_id', user.id).eq('is_read', false);
             }
-
             setLoading(false);
         }
         load();
     }, [id, user?.id]);
 
     // ============================================
-    // REALTIME SUBSCRIPTION
+    // REALTIME
     // ============================================
 
     useEffect(() => {
@@ -139,79 +456,29 @@ export default function DMChatScreen() {
 
         const channel = supabase
             .channel(`dm-${id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'dm_messages',
-                    filter: `conversation_id=eq.${id}`,
-                },
-                async (payload) => {
-                    const newMsg = payload.new as DMMessage;
-
-                    // Fetch sender profile
-                    const { data: sender } = await supabase
-                        .from('profiles')
-                        .select('username, avatar_url')
-                        .eq('id', newMsg.sender_id)
-                        .single();
-
-                    const msgWithSender: DMMessage = {
-                        ...newMsg,
-                        sender: sender || undefined,
-                    };
-
-                    setMessages(prev => [msgWithSender, ...prev]);
-
-                    // ✅ DELIVERED: If message is from OTHER user and status is 'sent', mark as 'delivered'
-                    if (newMsg.sender_id !== user.id && newMsg.status === 'sent') {
-                        await supabase
-                            .from('dm_messages')
-                            .update({ status: 'delivered' })
-                            .eq('id', newMsg.id);
-
-                        console.log('📨 Marked message as delivered:', newMsg.id);
-                    }
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${id}` }, async (payload) => {
+                const newMsg = payload.new as DMMessage;
+                const { data: sender } = await supabase.from('profiles').select('username, avatar_url').eq('id', newMsg.sender_id).single();
+                setMessages(prev => [{ ...newMsg, sender: sender || undefined }, ...prev]);
+                if (newMsg.sender_id !== user.id && newMsg.status === 'sent') {
+                    await supabase.from('dm_messages').update({ status: 'delivered' }).eq('id', newMsg.id);
                 }
-            )
-            // Listen for UPDATE events to sync read receipts in real-time
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'dm_messages',
-                    filter: `conversation_id=eq.${id}`,
-                },
-                (payload) => {
-                    const updatedMsg = payload.new as DMMessage;
-
-                    // Update the message status in the list (sent → delivered → read)
-                    setMessages(prev => prev.map(msg =>
-                        msg.id === updatedMsg.id
-                            ? { ...msg, status: updatedMsg.status, is_read: updatedMsg.is_read }
-                            : msg
-                    ));
-                }
-            )
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${id}` }, (payload) => {
+                const updated = payload.new as DMMessage;
+                setMessages(prev => prev.map(m => m.id === updated.id ? { ...m, status: updated.status, is_read: updated.is_read } : m));
+            })
             .subscribe();
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => { supabase.removeChannel(channel); };
     }, [id, user?.id]);
 
     // ============================================
     // SEND MESSAGE
     // ============================================
 
-    const handleSend = useCallback(async (
-        content: string,
-        attachment?: { url: string; type: 'image' | 'video' | 'file' | 'gif'; name?: string }
-    ) => {
+    const handleSend = useCallback(async (content: string, attachment?: { url: string; type: 'image' | 'video' | 'file' | 'gif'; name?: string }) => {
         if (!id || sending || !otherUser) return;
-
         setSending(true);
         sendStopTyping();
 
@@ -224,19 +491,10 @@ export default function DMChatScreen() {
                 p_attachment_name: attachment?.name || null,
             });
 
-            if (error) {
-                console.error('Error sending DM:', error);
-            } else {
-                // Get sender's profile for username
-                const { data: senderProfile } = await supabase
-                    .from('profiles')
-                    .select('username, full_name')
-                    .eq('id', user?.id)
-                    .single();
-
+            if (!error) {
+                const { data: senderProfile } = await supabase.from('profiles').select('username, full_name').eq('id', user?.id).single();
                 const senderName = senderProfile?.full_name || senderProfile?.username || 'Alguém';
 
-                // Create notification for the other user
                 await supabase.from('notifications').insert({
                     user_id: otherUser.id,
                     actor_id: user?.id,
@@ -255,124 +513,97 @@ export default function DMChatScreen() {
     }, [id, sending, sendStopTyping, otherUser, user]);
 
     // ============================================
-    // RENDER MESSAGE
-    // ============================================
-
-    const renderMessage = useCallback(({ item }: { item: DMMessage }) => {
-        const isMe = item.sender_id === user?.id;
-
-        return (
-            <View style={styles.messageWrapper}>
-                <MessageBubble
-                    content={item.content}
-                    isMe={isMe}
-                    attachmentUrl={item.attachment_url}
-                    attachmentType={item.attachment_type}
-                    attachmentName={item.attachment_name}
-                />
-                <View style={[styles.timestampRow, isMe && styles.timestampRowMe]}>
-                    <Text style={styles.timestamp}>
-                        {new Date(item.created_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                    {isMe && (
-                        <Ionicons
-                            name={item.status === 'sent' ? 'checkmark' : 'checkmark-done'}
-                            size={12}
-                            color={item.status === 'read' ? '#3B82F6' : colors.text.tertiary}
-                            style={{ marginLeft: 4 }}
-                        />
-                    )}
-                </View>
-            </View>
-        );
-    }, [user?.id]);
-
-    // ============================================
     // RENDER
     // ============================================
 
+    const displayName = otherUser?.full_name || otherUser?.username || 'Utilizador';
+
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color="#6366F1" />
+                    <Text style={styles.loadingText}>A carregar conversa...</Text>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
-                </Pressable>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+            {/* Background */}
+            <View style={styles.chatBackground}>
+                <LinearGradient colors={['rgba(99, 102, 241, 0.05)', 'transparent', 'rgba(139, 92, 246, 0.05)']} style={StyleSheet.absoluteFill} />
+            </View>
 
-                {otherUser?.avatar_url ? (
-                    <Image source={{ uri: otherUser.avatar_url }} style={styles.headerAvatar} />
-                ) : (
-                    <View style={styles.headerAvatarFallback}>
-                        <Text style={styles.headerAvatarInitial}>
-                            {(otherUser?.full_name || otherUser?.username || 'U').charAt(0).toUpperCase()}
+            <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+                {/* Premium Header */}
+                <Animated.View style={[styles.header, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+                    </Pressable>
+
+                    {/* Avatar with online indicator */}
+                    <Pressable style={styles.headerAvatarWrap} onPress={() => otherUser && router.push(`/user/${otherUser.id}` as any)}>
+                        {otherUser?.avatar_url ? (
+                            <Image source={{ uri: otherUser.avatar_url }} style={styles.headerAvatar} />
+                        ) : (
+                            <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.headerAvatar}>
+                                <Text style={styles.headerAvatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                            </LinearGradient>
+                        )}
+                        {otherUserStatus === 'online' && <View style={styles.onlineBadge} />}
+                    </Pressable>
+
+                    {/* Info */}
+                    <View style={styles.headerInfo}>
+                        <Text style={styles.headerName} numberOfLines={1}>{displayName}</Text>
+                        <Text style={[styles.headerStatus, otherUserStatus === 'online' && styles.headerStatusOnline]}>
+                            {typingText || (otherUserStatus === 'online' ? 'Online' : formatLastSeen())}
                         </Text>
                     </View>
-                )}
 
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerName}>
-                        {otherUser?.full_name || otherUser?.username || 'Utilizador'}
-                    </Text>
-                    <Text style={[
-                        styles.headerStatus,
-                        otherUserStatus === 'online' && styles.headerStatusOnline
-                    ]}>
-                        {typingText || formatLastSeen()}
-                    </Text>
-                </View>
+                    {/* Actions */}
+                    <View style={styles.headerActions}>
+                        <Pressable style={styles.headerAction}>
+                            <Ionicons name="call-outline" size={22} color={COLORS.text.secondary} />
+                        </Pressable>
+                        <Pressable style={styles.headerAction}>
+                            <Ionicons name="videocam-outline" size={22} color={COLORS.text.secondary} />
+                        </Pressable>
+                    </View>
+                </Animated.View>
 
-                <Pressable style={styles.menuButton}>
-                    <Ionicons name="ellipsis-vertical" size={20} color={colors.text.tertiary} />
-                </Pressable>
-            </View>
-
-            {/* Messages */}
-            <FlatList
-                ref={flatListRef}
-                data={messages}
-                keyExtractor={(item) => item.id}
-                renderItem={renderMessage}
-                contentContainerStyle={styles.messagesList}
-                ListEmptyComponent={<EmptyMessages />}
-                inverted
-                showsVerticalScrollIndicator={false}
-            />
-
-            {/* Rich Input Bar */}
-            <View style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
-                <ChatInputBar
-                    onSend={handleSend}
-                    placeholder="Mensagem..."
-                    disabled={sending}
+                {/* Messages */}
+                <FlatList
+                    ref={flatListRef}
+                    data={messages}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item, index }) => {
+                        const isMe = item.sender_id === user?.id;
+                        const prevMsg = messages[index + 1];
+                        const showAvatar = !prevMsg || prevMsg.sender_id !== item.sender_id;
+                        return <MessageItem message={item} isMe={isMe} index={index} showAvatar={showAvatar} />;
+                    }}
+                    contentContainerStyle={styles.messagesList}
+                    ListEmptyComponent={<EmptyMessages name={displayName} />}
+                    ListHeaderComponent={typingText ? <TypingIndicator name={displayName} /> : null}
+                    inverted
+                    showsVerticalScrollIndicator={false}
                 />
-            </View>
-        </SafeAreaView>
-    );
-}
 
-// ============================================
-// EMPTY STATE
-// ============================================
-
-function EmptyMessages() {
-    return (
-        <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-                <Ionicons name="chatbubble-outline" size={40} color={colors.accent.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Nova conversa</Text>
-            <Text style={styles.emptySubtitle}>Envia a primeira mensagem!</Text>
-        </View>
+                {/* Input */}
+                <Animated.View style={Platform.OS === 'android' ? { marginBottom: keyboardHeight } : undefined}>
+                    <BlurView intensity={80} tint="dark" style={[styles.inputBlur, { paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 8) }]}>
+                        <ChatInputBar onSend={handleSend} placeholder="Mensagem..." disabled={sending} />
+                    </BlurView>
+                </Animated.View>
+            </SafeAreaView>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -381,124 +612,75 @@ function EmptyMessages() {
 // ============================================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: colors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    chatBackground: { ...StyleSheet.absoluteFillObject },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
+    loadingText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    headerAvatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        marginRight: spacing.md,
-    },
-    headerAvatarFallback: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: spacing.md,
-    },
-    headerAvatarInitial: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.bold,
-        color: colors.accent.primary,
-    },
-    headerContent: {
-        flex: 1,
-    },
-    headerName: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-    },
-    headerStatus: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-    },
-    headerStatusOnline: {
-        color: '#10B981',
-    },
-    menuButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm, backgroundColor: 'rgba(0,0,0,0.3)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+    backButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    headerAvatarWrap: { position: 'relative' },
+    headerAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+    headerAvatarText: { fontSize: 18, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    onlineBadge: { position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, borderRadius: 7, backgroundColor: '#22C55E', borderWidth: 2, borderColor: COLORS.background },
+    headerInfo: { flex: 1, marginLeft: SPACING.md },
+    headerName: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    headerStatus: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
+    headerStatusOnline: { color: '#22C55E' },
+    headerActions: { flexDirection: 'row', gap: SPACING.xs },
+    headerAction: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
     // Messages
-    messagesList: {
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        flexGrow: 1,
-    },
-    messageWrapper: {
-        marginBottom: spacing.sm,
-    },
-    timestampRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 2,
-        marginLeft: spacing.xs,
-    },
-    timestampRowMe: {
-        justifyContent: 'flex-end',
-        marginRight: spacing.xs,
-    },
-    timestamp: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-    },
+    messagesList: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.lg },
+    messageRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: SPACING.sm },
+    messageRowMe: { flexDirection: 'row-reverse' },
+    messageAvatar: { marginRight: SPACING.xs },
+    avatarImage: { width: 32, height: 32, borderRadius: 16 },
+    avatarFallback: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    avatarInitial: { fontSize: 14, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    avatarSpacer: { width: 36 },
+    bubbleWrapper: { maxWidth: SCREEN_WIDTH * 0.75 },
+    bubbleWrapperMe: { marginLeft: SPACING.xl },
+    bubble: { padding: SPACING.md, borderRadius: RADIUS.xl, ...SHADOWS.sm },
+    bubbleMe: { borderBottomRightRadius: 4 },
+    bubbleOther: { backgroundColor: COLORS.surfaceElevated, borderBottomLeftRadius: 4 },
+    bubbleTextMe: { fontSize: TYPOGRAPHY.size.base, color: '#FFF', lineHeight: 22 },
+    bubbleTextOther: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary, lineHeight: 22 },
+    bubbleFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 },
+    timestampMe: { fontSize: 10, color: 'rgba(255,255,255,0.6)' },
+    timestampOther: { fontSize: 10, color: COLORS.text.tertiary, marginTop: 4, textAlign: 'right' },
+    attachmentImage: { width: 220, height: 160, borderRadius: RADIUS.lg, marginBottom: SPACING.sm },
+
+    // Typing
+    typingContainer: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md, marginBottom: SPACING.md },
+    typingBubble: { backgroundColor: COLORS.surfaceElevated, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.xl, borderBottomLeftRadius: 4 },
+    typingDots: { flexDirection: 'row', gap: 4 },
+    typingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#6366F1' },
+    typingLabel: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, fontStyle: 'italic' },
 
     // Empty
-    emptyContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: spacing['5xl'],
-    },
-    emptyIcon: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
-        backgroundColor: colors.accent.light,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.lg,
-    },
-    emptyTitle: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
-    },
-    emptySubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
+    emptyContainer: { alignItems: 'center', paddingVertical: 80 },
+    emptyIconWrap: { position: 'relative', marginBottom: SPACING.xl },
+    emptyIconGradient: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
+    emptyEmoji: { fontSize: 36 },
+    emptyGlow: { position: 'absolute', top: -15, left: -15, right: -15, bottom: -15, borderRadius: 55, backgroundColor: 'rgba(99, 102, 241, 0.2)' },
+    emptyTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    emptySubtitle: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.tertiary, marginTop: SPACING.xs, textAlign: 'center' },
+
+    // Input
+    inputBlur: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+
+    // Media & Files (AttachmentRenderer)
+    mediaContainer: { borderRadius: RADIUS.lg, overflow: 'hidden', marginBottom: SPACING.xs },
+    expandIcon: { position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+    gifBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+    gifBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    fileCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, padding: SPACING.sm, backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: RADIUS.lg, marginBottom: SPACING.xs },
+    fileIconWrap: { width: 44, height: 44, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
+    fileInfo: { flex: 1 },
+    fileName: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: COLORS.text.primary },
+    fileNameMe: { color: '#FFF' },
+    fileHint: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, marginTop: 2 },
+    fileHintMe: { color: 'rgba(255,255,255,0.7)' },
 });
