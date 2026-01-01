@@ -5,6 +5,8 @@
  */
 
 import { ChatInputBar } from '@/components/ChatInputBar';
+import { LiveKitRoom } from '@/components/StudyRoom/LiveKitRoom';
+import { useCall } from '@/context/CallContext';
 import { useUserStatus } from '@/hooks/usePresence';
 import { useTyping } from '@/hooks/useTyping';
 import { supabase } from '@/lib/supabase';
@@ -340,7 +342,7 @@ function EmptyMessages({ name }: { name: string }) {
     }, []);
 
     return (
-        <Animated.View style={[styles.emptyContainer, { transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.emptyContainer, { transform: [{ scale: scaleAnim }, { scaleY: -1 }] }]}>
             <View style={styles.emptyIconWrap}>
                 <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyIconGradient}>
                     <Text style={styles.emptyEmoji}>💬</Text>
@@ -372,6 +374,27 @@ export default function DMChatScreen() {
     const { typingText, sendTyping, sendStopTyping } = useTyping(id || null);
     const { status: otherUserStatus, formatLastSeen } = useUserStatus(otherUser?.id || null);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+    // Video Call - use global CallContext
+    const { initiateCall, activeCall, isInCall, endCall } = useCall();
+    const [joiningCall, setJoiningCall] = useState(false);
+
+    // Start video call - sends signal to other user
+    const startCall = async () => {
+        if (!id || !otherUser) return;
+        setJoiningCall(true);
+        try {
+            await initiateCall(id, otherUser.id, otherUser.full_name || otherUser.username || 'User');
+        } catch (error) {
+            console.error('Failed to initiate call:', error);
+            alert('Não foi possível iniciar a chamada');
+        } finally {
+            setJoiningCall(false);
+        }
+    };
+
+    // Check if this conversation has an active call
+    const isCallActiveForThis = activeCall?.conversationId === id;
 
     useEffect(() => {
         Animated.spring(headerAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }).start();
@@ -569,11 +592,21 @@ export default function DMChatScreen() {
 
                     {/* Actions */}
                     <View style={styles.headerActions}>
-                        <Pressable style={styles.headerAction}>
-                            <Ionicons name="call-outline" size={22} color={COLORS.text.secondary} />
-                        </Pressable>
-                        <Pressable style={styles.headerAction}>
-                            <Ionicons name="videocam-outline" size={22} color={COLORS.text.secondary} />
+                        {/* Video Call Button */}
+                        <Pressable
+                            style={[styles.headerAction, isCallActiveForThis && { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}
+                            onPress={isCallActiveForThis ? endCall : startCall}
+                            disabled={joiningCall}
+                        >
+                            {joiningCall ? (
+                                <ActivityIndicator size="small" color="#6366F1" />
+                            ) : (
+                                <Ionicons
+                                    name={isCallActiveForThis ? "videocam" : "videocam-outline"}
+                                    size={22}
+                                    color={isCallActiveForThis ? "#10B981" : COLORS.text.secondary}
+                                />
+                            )}
                         </Pressable>
                     </View>
                 </Animated.View>
@@ -602,6 +635,23 @@ export default function DMChatScreen() {
                         <ChatInputBar onSend={handleSend} placeholder="Mensagem..." disabled={sending} />
                     </BlurView>
                 </Animated.View>
+
+                {/* Video Call Overlay - Fullscreen LiveKit */}
+                {isCallActiveForThis && activeCall && (
+                    <View style={StyleSheet.absoluteFill}>
+                        <LiveKitRoom
+                            token={activeCall.token}
+                            serverUrl={activeCall.url}
+                            roomName={`Chamada com ${displayName}`}
+                            onLeave={endCall}
+                            onError={(error: Error) => {
+                                console.error('LiveKit error:', error);
+                                alert('Erro na chamada: ' + error.message);
+                                endCall();
+                            }}
+                        />
+                    </View>
+                )}
             </SafeAreaView>
         </KeyboardAvoidingView>
     );
@@ -660,7 +710,7 @@ const styles = StyleSheet.create({
     typingLabel: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, fontStyle: 'italic' },
 
     // Empty
-    emptyContainer: { alignItems: 'center', paddingVertical: 80 },
+    emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 250 },
     emptyIconWrap: { position: 'relative', marginBottom: SPACING.xl },
     emptyIconGradient: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
     emptyEmoji: { fontSize: 36 },

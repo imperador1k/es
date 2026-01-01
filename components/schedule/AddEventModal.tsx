@@ -4,7 +4,7 @@
  * Diferente das aulas - não requer disciplina
  */
 
-import { borderRadius, colors, spacing, typography } from '@/lib/theme';
+import { RADIUS as borderRadius, COLORS as colors, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
 import { DAY_NAMES, DayOfWeek } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -46,7 +46,7 @@ const EVENT_TYPES: EventTypeConfig[] = [
         type: 'study',
         label: 'Sessão de Estudo',
         icon: 'library-outline',
-        color: colors.success.primary,
+        color: '#10B981',
         gradient: ['#10B981', '#059669'],
         placeholder: 'Ex: Estudar para exame de Física',
     },
@@ -54,7 +54,7 @@ const EVENT_TYPES: EventTypeConfig[] = [
         type: 'meeting',
         label: 'Reunião',
         icon: 'people-outline',
-        color: colors.warning.primary,
+        color: '#F59E0B',
         gradient: ['#F59E0B', '#D97706'],
         placeholder: 'Ex: Reunião de grupo - Projeto Final',
     },
@@ -223,7 +223,7 @@ export function AddEventModal({
                                         onPress={() => setValue('event_type', type.type)}
                                     >
                                         <LinearGradient
-                                            colors={selectedType === type.type ? type.gradient : [colors.surfaceSubtle, colors.surfaceSubtle]}
+                                            colors={selectedType === type.type ? type.gradient : [colors.surfaceMuted, colors.surfaceMuted]}
                                             style={styles.typeIcon}
                                         >
                                             <Ionicons
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.md,
         borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        borderBottomColor: colors.surfaceElevated,
     },
     closeButton: {
         paddingVertical: spacing.sm,
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
         backgroundColor: colors.surface,
         borderRadius: borderRadius.lg,
         borderWidth: 2,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
     },
     typeOptionSelected: {
         backgroundColor: colors.surface,
@@ -489,7 +489,7 @@ const styles = StyleSheet.create({
     input: {
         backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
         borderRadius: borderRadius.md,
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.md,
@@ -497,14 +497,14 @@ const styles = StyleSheet.create({
         color: colors.text.primary,
     },
     inputError: {
-        borderColor: colors.danger.primary,
+        borderColor: colors.error,
     },
     textArea: {
         minHeight: 100,
     },
     errorText: {
         fontSize: typography.size.xs,
-        color: colors.danger.primary,
+        color: colors.error,
         marginTop: spacing.xs,
     },
     inputWithIcon: {
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
         borderRadius: borderRadius.md,
         paddingHorizontal: spacing.md,
         gap: spacing.sm,
@@ -535,7 +535,7 @@ const styles = StyleSheet.create({
         backgroundColor: colors.surface,
         borderRadius: borderRadius.md,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
     },
     dayOptionSelected: {
         backgroundColor: colors.accent.primary,
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     timeInput: {
         backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
         borderRadius: borderRadius.md,
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.md,

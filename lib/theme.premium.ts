@@ -81,16 +81,17 @@ export const RADIUS = {
 };
 
 // ============================================
-// TYPOGRAPHY
+// TYPOGRAPHY - Inter Font Family (Premium)
 // ============================================
 
 export const TYPOGRAPHY = {
-    // Font Family (System fonts for now)
+    // Font Family - Inter (Modern, Elegant, Premium)
     family: {
-        regular: 'System',
-        medium: 'System',
-        semibold: 'System',
-        bold: 'System',
+        regular: 'Inter_400Regular',
+        medium: 'Inter_500Medium',
+        semibold: 'Inter_600SemiBold',
+        bold: 'Inter_700Bold',
+        extrabold: 'Inter_800ExtraBold',
     },
 
     // Font Sizes
@@ -121,6 +122,14 @@ export const TYPOGRAPHY = {
         tight: 1.1,
         normal: 1.4,
         relaxed: 1.6,
+    },
+
+    // Letter Spacing (NEW - for premium feel)
+    letterSpacing: {
+        tight: -0.5,
+        normal: 0,
+        wide: 0.5,
+        wider: 1,
     },
 };
 

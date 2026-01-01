@@ -18,7 +18,13 @@
       "infoPlist": {
         "NSCameraUsageDescription": "A app precisa da câmara para ler QR Codes de amigos e enviar fotos.",
         "NSCalendarsUsageDescription": "A Escolaa precisa de aceder ao teu calendário para sincronizar as tuas aulas e eventos pessoais.",
-        "NSRemindersUsageDescription": "A Escolaa precisa de acesso para criar lembretes de estudo."
+        "NSRemindersUsageDescription": "A Escolaa precisa de acesso para criar lembretes de estudo.",
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -34,7 +40,12 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.VIBRATE",
         "READ_CALENDAR",
-        "WRITE_CALENDAR"
+        "WRITE_CALENDAR",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.CALL_PHONE",
+        "android.permission.MANAGE_OWN_CALLS",
+        "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_PHONE_CALL"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -50,7 +61,7 @@
         "expo-camera",
         {
           "cameraPermission": "A app precisa da câmara para ler QR Codes de amigos e enviar fotos.",
-          "microphonePermission": "A app precisa do microfone para gravar vídeos."
+          "microphonePermission": "A app precisa do microfone para gravar vídeos e chamadas."
         }
       ],
       [
@@ -59,7 +70,26 @@
           "calendarPermission": "A Escolaa precisa de aceder ao teu calendário para sincronizar as tuas aulas e eventos pessoais."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "minSdkVersion": 24
+          }
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "A app precisa do microfone para chamadas de voz nas Study Rooms."
+        }
+      ],
+      "@config-plugins/react-native-callkeep"
     ],
     "experiments": {
       "typedRoutes": true

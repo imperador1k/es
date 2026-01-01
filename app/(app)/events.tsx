@@ -6,7 +6,7 @@
 
 import DailySpinWheel from '@/components/DailySpinWheel';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS as borderRadius, SHADOWS as shadows, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +22,13 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// Compatibility layer
+const colors = {
+    ...COLORS,
+    divider: COLORS.surfaceElevated,
+    success: { primary: '#10B981' },
+};
 
 // ============================================
 // TYPES

@@ -1,24 +1,27 @@
 /**
- * CreateTodoModal Component
- * Modal for creating personal to-do items with subtasks
+ * ✅ CreateTodoModal - PREMIUM REDESIGN
+ * Beautiful modal for creating personal to-do items with subtasks
  */
 
 import { CreateTodoInput } from '@/hooks/usePersonalTodos';
-import { borderRadius, colors, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
-    KeyboardAvoidingView,
+    Keyboard,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface CreateTodoModalProps {
     visible: boolean;
@@ -27,12 +30,13 @@ interface CreateTodoModalProps {
 }
 
 const PRIORITY_OPTIONS = [
-    { value: 'low', label: 'Baixa', color: '#10B981' },
-    { value: 'medium', label: 'Média', color: '#F59E0B' },
-    { value: 'high', label: 'Alta', color: '#EF4444' },
+    { value: 'low', label: 'Baixa', color: '#10B981', icon: 'leaf', gradient: ['#10B981', '#059669'] },
+    { value: 'medium', label: 'Média', color: '#F59E0B', icon: 'flash', gradient: ['#F59E0B', '#D97706'] },
+    { value: 'high', label: 'Alta', color: '#EF4444', icon: 'flame', gradient: ['#EF4444', '#DC2626'] },
 ] as const;
 
 export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalProps) {
+    const insets = useSafeAreaInsets();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [dueDate, setDueDate] = useState<Date | null>(null);
@@ -43,7 +47,6 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
     const [newStep, setNewStep] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
-    // Reset form
     const resetForm = () => {
         setTitle('');
         setDescription('');
@@ -53,10 +56,8 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
         setNewStep('');
     };
 
-    // Handle submit
     const handleSubmit = async () => {
         if (!title.trim()) return;
-
         setSubmitting(true);
         try {
             await onSubmit({
@@ -75,7 +76,6 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
         }
     };
 
-    // Add step
     const handleAddStep = () => {
         if (newStep.trim()) {
             setSteps([...steps, newStep.trim()]);
@@ -83,86 +83,48 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
         }
     };
 
-    // Remove step
     const removeStep = (index: number) => {
         setSteps(steps.filter((_, i) => i !== index));
     };
 
-    // Handle date change
-    const handleDateChange = (event: any, selectedDate?: Date) => {
-        setShowDatePicker(false);
-        if (selectedDate) {
-            const newDate = dueDate ? new Date(dueDate) : new Date();
-            newDate.setFullYear(selectedDate.getFullYear());
-            newDate.setMonth(selectedDate.getMonth());
-            newDate.setDate(selectedDate.getDate());
-            setDueDate(newDate);
-        }
-    };
+    const formatDate = (date: Date) => date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+    const formatTime = (date: Date) => date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
 
-    // Handle time change
-    const handleTimeChange = (event: any, selectedTime?: Date) => {
-        setShowTimePicker(false);
-        if (selectedTime && dueDate) {
-            const newDate = new Date(dueDate);
-            newDate.setHours(selectedTime.getHours());
-            newDate.setMinutes(selectedTime.getMinutes());
-            setDueDate(newDate);
-        }
-    };
-
-    // Format date for display
-    const formatDate = (date: Date) => {
-        return date.toLocaleDateString('pt-PT', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short'
-        });
-    };
-
-    const formatTime = (date: Date) => {
-        return date.toLocaleTimeString('pt-PT', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
+    const currentPriority = PRIORITY_OPTIONS.find(p => p.value === priority)!;
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            transparent
-            onRequestClose={onClose}
-        >
-            <KeyboardAvoidingView
-                style={styles.overlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            >
-                <View style={styles.container}>
+        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={[styles.container, { paddingTop: insets.top }]}>
                     {/* Header */}
                     <View style={styles.header}>
-                        <Pressable onPress={onClose} style={styles.closeButton}>
-                            <Ionicons name="close" size={24} color={colors.text.primary} />
+                        <Pressable style={styles.closeBtn} onPress={onClose}>
+                            <Ionicons name="close" size={24} color={COLORS.text.primary} />
                         </Pressable>
-                        <Text style={styles.headerTitle}>Nova Tarefa</Text>
+
+                        <View style={styles.headerCenter}>
+                            <Text style={styles.headerEmoji}>✅</Text>
+                            <Text style={styles.headerTitle}>Nova Tarefa</Text>
+                        </View>
+
                         <Pressable
                             onPress={handleSubmit}
-                            style={[styles.saveButton, !title.trim() && styles.saveButtonDisabled]}
                             disabled={!title.trim() || submitting}
+                            style={[styles.saveBtn, !title.trim() && styles.saveBtnDisabled]}
                         >
-                            <Text style={[styles.saveButtonText, !title.trim() && styles.saveButtonTextDisabled]}>
-                                {submitting ? 'A guardar...' : 'Guardar'}
-                            </Text>
+                            <LinearGradient colors={currentPriority.gradient as [string, string]} style={styles.saveBtnGradient}>
+                                <Text style={styles.saveBtnText}>{submitting ? '...' : 'Criar'}</Text>
+                            </LinearGradient>
                         </Pressable>
                     </View>
 
-                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                        {/* Title */}
-                        <View style={styles.inputGroup}>
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                        {/* Title Input - Hero Style */}
+                        <View style={styles.titleSection}>
                             <TextInput
                                 style={styles.titleInput}
                                 placeholder="O que precisas de fazer?"
-                                placeholderTextColor={colors.text.tertiary}
+                                placeholderTextColor={COLORS.text.tertiary}
                                 value={title}
                                 onChangeText={setTitle}
                                 autoFocus
@@ -170,11 +132,11 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                         </View>
 
                         {/* Description */}
-                        <View style={styles.inputGroup}>
+                        <View style={styles.descriptionSection}>
                             <TextInput
                                 style={styles.descriptionInput}
                                 placeholder="Adicionar notas..."
-                                placeholderTextColor={colors.text.tertiary}
+                                placeholderTextColor={COLORS.text.tertiary}
                                 value={description}
                                 onChangeText={setDescription}
                                 multiline
@@ -182,298 +144,230 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                             />
                         </View>
 
-                        {/* Date & Time */}
+                        {/* Priority Cards */}
                         <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Data e Hora</Text>
-                            <View style={styles.dateTimeRow}>
-                                <Pressable
-                                    style={[styles.dateButton, dueDate && styles.dateButtonActive]}
-                                    onPress={() => setShowDatePicker(true)}
-                                >
-                                    <Ionicons
-                                        name="calendar-outline"
-                                        size={18}
-                                        color={dueDate ? colors.accent.primary : colors.text.tertiary}
-                                    />
-                                    <Text style={[styles.dateButtonText, dueDate && styles.dateButtonTextActive]}>
-                                        {dueDate ? formatDate(dueDate) : 'Escolher data'}
-                                    </Text>
-                                </Pressable>
-
-                                {dueDate && (
-                                    <Pressable
-                                        style={[styles.dateButton, styles.dateButtonActive]}
-                                        onPress={() => setShowTimePicker(true)}
-                                    >
-                                        <Ionicons name="time-outline" size={18} color={colors.accent.primary} />
-                                        <Text style={styles.dateButtonTextActive}>
-                                            {formatTime(dueDate)}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {dueDate && (
-                                    <Pressable onPress={() => setDueDate(null)} style={styles.clearDateButton}>
-                                        <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
-                                    </Pressable>
-                                )}
-                            </View>
-                        </View>
-
-                        {/* Priority */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Prioridade</Text>
+                            <Text style={styles.sectionTitle}>Prioridade</Text>
                             <View style={styles.priorityRow}>
                                 {PRIORITY_OPTIONS.map(option => (
                                     <Pressable
                                         key={option.value}
-                                        style={[
-                                            styles.priorityButton,
-                                            priority === option.value && {
-                                                backgroundColor: option.color + '20',
-                                                borderColor: option.color
-                                            }
-                                        ]}
+                                        style={[styles.priorityCard, priority === option.value && styles.priorityCardActive]}
                                         onPress={() => setPriority(option.value)}
                                     >
-                                        <View style={[styles.priorityDot, { backgroundColor: option.color }]} />
-                                        <Text style={[
-                                            styles.priorityText,
-                                            priority === option.value && { color: option.color }
-                                        ]}>
-                                            {option.label}
-                                        </Text>
+                                        {priority === option.value ? (
+                                            <LinearGradient colors={option.gradient as [string, string]} style={styles.priorityCardGradient}>
+                                                <Ionicons name={option.icon as any} size={20} color="#FFF" />
+                                                <Text style={styles.priorityTextActive}>{option.label}</Text>
+                                            </LinearGradient>
+                                        ) : (
+                                            <View style={styles.priorityCardInner}>
+                                                <View style={[styles.priorityDot, { backgroundColor: option.color }]} />
+                                                <Text style={styles.priorityText}>{option.label}</Text>
+                                            </View>
+                                        )}
                                     </Pressable>
                                 ))}
                             </View>
                         </View>
 
+                        {/* Date & Time */}
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Quando</Text>
+                            <View style={styles.dateTimeRow}>
+                                <Pressable style={styles.dateCard} onPress={() => setShowDatePicker(true)}>
+                                    <View style={[styles.dateIconWrap, dueDate && { backgroundColor: '#6366F120' }]}>
+                                        <Ionicons name="calendar" size={20} color={dueDate ? '#6366F1' : COLORS.text.tertiary} />
+                                    </View>
+                                    <View style={styles.dateInfo}>
+                                        <Text style={styles.dateLabel}>Data</Text>
+                                        <Text style={[styles.dateValue, dueDate && styles.dateValueActive]}>
+                                            {dueDate ? formatDate(dueDate) : 'Escolher'}
+                                        </Text>
+                                    </View>
+                                </Pressable>
+
+                                <Pressable
+                                    style={[styles.dateCard, !dueDate && styles.dateCardDisabled]}
+                                    onPress={() => dueDate && setShowTimePicker(true)}
+                                    disabled={!dueDate}
+                                >
+                                    <View style={[styles.dateIconWrap, dueDate && { backgroundColor: '#10B98120' }]}>
+                                        <Ionicons name="time" size={20} color={dueDate ? '#10B981' : COLORS.text.muted} />
+                                    </View>
+                                    <View style={styles.dateInfo}>
+                                        <Text style={styles.dateLabel}>Hora</Text>
+                                        <Text style={[styles.dateValue, dueDate && styles.dateValueActive]}>
+                                            {dueDate ? formatTime(dueDate) : '--:--'}
+                                        </Text>
+                                    </View>
+                                </Pressable>
+
+                                {dueDate && (
+                                    <Pressable style={styles.clearDateBtn} onPress={() => setDueDate(null)}>
+                                        <Ionicons name="close-circle" size={24} color={COLORS.text.tertiary} />
+                                    </Pressable>
+                                )}
+                            </View>
+                        </View>
+
                         {/* Subtasks */}
                         <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Subtarefas</Text>
+                            <Text style={styles.sectionTitle}>Subtarefas ({steps.length})</Text>
 
-                            {/* Existing steps */}
                             {steps.map((step, index) => (
                                 <View key={index} style={styles.stepItem}>
-                                    <Ionicons name="ellipse-outline" size={16} color={colors.text.tertiary} />
+                                    <View style={styles.stepCheck}>
+                                        <Ionicons name="ellipse-outline" size={18} color={COLORS.text.tertiary} />
+                                    </View>
                                     <Text style={styles.stepText}>{step}</Text>
-                                    <Pressable onPress={() => removeStep(index)}>
-                                        <Ionicons name="close" size={18} color={colors.text.tertiary} />
+                                    <Pressable style={styles.stepRemove} onPress={() => removeStep(index)}>
+                                        <Ionicons name="close" size={18} color={COLORS.text.tertiary} />
                                     </Pressable>
                                 </View>
                             ))}
 
-                            {/* Add step input */}
                             <View style={styles.addStepRow}>
+                                <Ionicons name="add-circle-outline" size={20} color={COLORS.text.tertiary} />
                                 <TextInput
                                     style={styles.stepInput}
                                     placeholder="Adicionar subtarefa..."
-                                    placeholderTextColor={colors.text.tertiary}
+                                    placeholderTextColor={COLORS.text.tertiary}
                                     value={newStep}
                                     onChangeText={setNewStep}
                                     onSubmitEditing={handleAddStep}
                                     returnKeyType="done"
                                 />
                                 {newStep.trim() && (
-                                    <Pressable onPress={handleAddStep} style={styles.addStepButton}>
-                                        <Ionicons name="add" size={20} color={colors.accent.primary} />
+                                    <Pressable onPress={handleAddStep}>
+                                        <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.addStepBtn}>
+                                            <Ionicons name="checkmark" size={16} color="#FFF" />
+                                        </LinearGradient>
                                     </Pressable>
                                 )}
                             </View>
                         </View>
 
-                        {/* Spacer */}
-                        <View style={{ height: 40 }} />
+                        <View style={{ height: 100 }} />
                     </ScrollView>
 
-                    {/* Date Picker */}
+                    {/* Date Picker Modal */}
                     {showDatePicker && (
-                        <DateTimePicker
-                            value={dueDate || new Date()}
-                            mode="date"
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                            onChange={handleDateChange}
-                            minimumDate={new Date()}
-                        />
+                        <Modal transparent animationType="fade">
+                            <View style={styles.pickerOverlay}>
+                                <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
+                                    <View style={styles.pickerHeader}>
+                                        <Text style={styles.pickerTitle}>Escolher Data</Text>
+                                        <Pressable onPress={() => setShowDatePicker(false)}>
+                                            <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+                                        </Pressable>
+                                    </View>
+                                    <DateTimePicker
+                                        value={dueDate || new Date()}
+                                        mode="date"
+                                        display="spinner"
+                                        onChange={(e, date) => { if (date) setDueDate(date); }}
+                                        minimumDate={new Date()}
+                                        textColor="#FFF"
+                                    />
+                                </BlurView>
+                            </View>
+                        </Modal>
                     )}
 
-                    {/* Time Picker */}
+                    {/* Time Picker Modal */}
                     {showTimePicker && dueDate && (
-                        <DateTimePicker
-                            value={dueDate}
-                            mode="time"
-                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                            onChange={handleTimeChange}
-                        />
+                        <Modal transparent animationType="fade">
+                            <View style={styles.pickerOverlay}>
+                                <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
+                                    <View style={styles.pickerHeader}>
+                                        <Text style={styles.pickerTitle}>Escolher Hora</Text>
+                                        <Pressable onPress={() => setShowTimePicker(false)}>
+                                            <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+                                        </Pressable>
+                                    </View>
+                                    <DateTimePicker
+                                        value={dueDate}
+                                        mode="time"
+                                        display="spinner"
+                                        onChange={(e, date) => { if (date) setDueDate(date); }}
+                                        textColor="#FFF"
+                                    />
+                                </BlurView>
+                            </View>
+                        </Modal>
                     )}
                 </View>
-            </KeyboardAvoidingView>
+            </TouchableWithoutFeedback>
         </Modal>
     );
 }
 
 // ============================================
-// STYLES
+// STYLES - Premium Design
 // ============================================
 
 const styles = StyleSheet.create({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-    },
-    container: {
-        backgroundColor: colors.background,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        maxHeight: '90%',
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-    },
-    closeButton: {
-        padding: spacing.xs,
-    },
-    headerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-    },
-    saveButton: {
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-    },
-    saveButtonDisabled: {
-        backgroundColor: colors.surfaceSubtle,
-    },
-    saveButtonText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    saveButtonTextDisabled: {
-        color: colors.text.tertiary,
-    },
-    content: {
-        padding: spacing.lg,
-    },
-    inputGroup: {
-        marginBottom: spacing.md,
-    },
-    titleInput: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        padding: 0,
-    },
-    descriptionInput: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-        padding: 0,
-        minHeight: 60,
-        textAlignVertical: 'top',
-    },
-    section: {
-        marginBottom: spacing.lg,
-    },
-    sectionLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.tertiary,
-        marginBottom: spacing.sm,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    dateTimeRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-    dateButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        borderWidth: 1,
-        borderColor: colors.border,
-    },
-    dateButtonActive: {
-        borderColor: colors.accent.primary,
-        backgroundColor: colors.accent.light,
-    },
-    dateButtonText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-    },
-    dateButtonTextActive: {
-        color: colors.accent.primary,
-        fontWeight: typography.weight.medium,
-    },
-    clearDateButton: {
-        padding: spacing.xs,
-    },
-    priorityRow: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-    },
-    priorityButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        borderWidth: 1,
-        borderColor: colors.border,
-    },
-    priorityDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-    },
-    priorityText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-    },
-    stepItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        paddingVertical: spacing.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-    },
-    stepText: {
-        flex: 1,
-        fontSize: typography.size.sm,
-        color: colors.text.primary,
-    },
-    addStepRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        marginTop: spacing.sm,
-    },
-    stepInput: {
-        flex: 1,
-        fontSize: typography.size.sm,
-        color: colors.text.primary,
-        padding: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.md,
-    },
-    addStepButton: {
-        padding: spacing.sm,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+
+    // Header
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.surfaceElevated },
+    closeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+    headerCenter: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+    headerEmoji: { fontSize: 24 },
+    headerTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    saveBtn: { borderRadius: RADIUS.full, overflow: 'hidden' },
+    saveBtnDisabled: { opacity: 0.5 },
+    saveBtnGradient: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
+    saveBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+
+    // Content
+    content: { flex: 1 },
+
+    // Title
+    titleSection: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.xl },
+    titleInput: { fontSize: 26, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+
+    // Description
+    descriptionSection: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.lg },
+    descriptionInput: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.lg, padding: SPACING.md, minHeight: 80, textAlignVertical: 'top' },
+
+    // Section
+    section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
+    sectionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.tertiary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md },
+
+    // Priority
+    priorityRow: { flexDirection: 'row', gap: SPACING.sm },
+    priorityCard: { flex: 1, borderRadius: RADIUS.lg, overflow: 'hidden' },
+    priorityCardActive: {},
+    priorityCardGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, paddingVertical: SPACING.md },
+    priorityCardInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, paddingVertical: SPACING.md, backgroundColor: COLORS.surfaceElevated },
+    priorityDot: { width: 10, height: 10, borderRadius: 5 },
+    priorityText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: COLORS.text.secondary },
+    priorityTextActive: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+
+    // Date Time
+    dateTimeRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' },
+    dateCard: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceElevated, padding: SPACING.md, borderRadius: RADIUS.lg },
+    dateCardDisabled: { opacity: 0.5 },
+    dateIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' },
+    dateInfo: { flex: 1 },
+    dateLabel: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
+    dateValue: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.secondary },
+    dateValueActive: { color: COLORS.text.primary },
+    clearDateBtn: { padding: SPACING.xs },
+
+    // Steps
+    stepItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.sm },
+    stepCheck: { marginRight: SPACING.sm },
+    stepText: { flex: 1, fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary },
+    stepRemove: { padding: SPACING.xs },
+    addStepRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.md },
+    stepInput: { flex: 1, fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary },
+    addStepBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+
+    // Picker
+    pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
+    pickerModal: { width: '85%', borderRadius: RADIUS.xl, padding: SPACING.lg, overflow: 'hidden' },
+    pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+    pickerTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 });

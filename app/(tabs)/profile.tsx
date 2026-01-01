@@ -3,6 +3,7 @@
  * Ultra-premium design inspirado em apps de gaming/social
  */
 
+import { getUserEducation } from '@/hooks/useEducation';
 import { supabase } from '@/lib/supabase';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -157,6 +158,39 @@ export default function ProfileScreen() {
         glow?: boolean;
         animated?: boolean;
     } | null>(null);
+
+    // Education data for badges
+    const [educationData, setEducationData] = useState<{
+        level: string;
+        year?: number;
+        school?: { name: string; district?: string } | null;
+        university?: { name: string; type?: string } | null;
+        degree?: { name: string; level?: string } | null;
+    } | null>(null);
+
+    // Carregar dados de educação
+    const loadEducationData = useCallback(async () => {
+        if (!user?.id) return;
+
+        try {
+            const data = await getUserEducation(user.id);
+            if (data) {
+                setEducationData({
+                    level: data.level,
+                    year: data.year || data.uni_year,
+                    school: data.school,
+                    university: data.university,
+                    degree: data.degree,
+                });
+            }
+        } catch (err) {
+            console.error('Erro ao carregar educação:', err);
+        }
+    }, [user?.id]);
+
+    useEffect(() => {
+        loadEducationData();
+    }, [loadEducationData]);
 
     // Carregar moldura equipada
     const loadEquippedFrame = useCallback(async () => {
@@ -317,6 +351,49 @@ export default function ProfileScreen() {
                         <Ionicons name="star" size={14} color="#FFD700" />
                         <Text style={styles.levelText}>Nível {level}</Text>
                     </View>
+
+                    {/* Education Badges */}
+                    {educationData && (
+                        <View style={styles.educationBadges}>
+                            {/* School/University Badge */}
+                            {(educationData.school || educationData.university) && (
+                                <View style={styles.educationBadge}>
+                                    <LinearGradient
+                                        colors={educationData.university ? ['#6366F1', '#8B5CF6'] : ['#10B981', '#059669']}
+                                        style={styles.educationBadgeGradient}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    >
+                                        <Ionicons
+                                            name={educationData.university ? "school" : "business"}
+                                            size={14}
+                                            color="#FFF"
+                                        />
+                                        <Text style={styles.educationBadgeText} numberOfLines={1}>
+                                            {educationData.university?.name || educationData.school?.name}
+                                        </Text>
+                                    </LinearGradient>
+                                </View>
+                            )}
+
+                            {/* Degree/Year Badge */}
+                            {(educationData.degree || educationData.year) && (
+                                <View style={styles.educationBadge}>
+                                    <LinearGradient
+                                        colors={['#F59E0B', '#D97706']}
+                                        style={styles.educationBadgeGradient}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    >
+                                        <Ionicons name="ribbon" size={14} color="#FFF" />
+                                        <Text style={styles.educationBadgeText} numberOfLines={1}>
+                                            {educationData.degree?.name || `${educationData.year}º Ano`}
+                                        </Text>
+                                    </LinearGradient>
+                                </View>
+                            )}
+                        </View>
+                    )}
                 </View>
 
                 {/* ========== XP PROGRESS ========== */}
@@ -368,6 +445,28 @@ export default function ProfileScreen() {
                         onPress={() => router.push('/leaderboard')}
                     />
                 </View>
+
+                {/* ========== QR CODE - ADD FRIENDS ========== */}
+                <Animated.View entering={FadeInDown.delay(250).springify()} style={styles.qrSection}>
+                    <Pressable
+                        style={styles.qrCard}
+                        onPress={() => router.push('/qr-scanner' as any)}
+                    >
+                        <LinearGradient
+                            colors={['rgba(99, 102, 241, 0.15)', 'rgba(139, 92, 246, 0.1)']}
+                            style={styles.qrCardGradient}
+                        >
+                            <View style={styles.qrIconWrap}>
+                                <Ionicons name="qr-code" size={48} color="#6366F1" />
+                            </View>
+                            <View style={styles.qrTextContent}>
+                                <Text style={styles.qrTitle}>O Meu QR Code</Text>
+                                <Text style={styles.qrSubtitle}>Toca para mostrar ou scanear</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
+                        </LinearGradient>
+                    </Pressable>
+                </Animated.View>
 
                 {/* ========== POWER-UPS ATIVOS ========== */}
                 <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
@@ -561,7 +660,7 @@ const styles = StyleSheet.create({
 
     // Hero
     heroContainer: {
-        height: 320,
+        height: 380,
         alignItems: 'center',
         justifyContent: 'flex-end',
         paddingBottom: SPACING['2xl'],
@@ -861,5 +960,72 @@ const styles = StyleSheet.create({
     powerupLabel: {
         fontSize: TYPOGRAPHY.size.xs,
         color: COLORS.text.tertiary,
+    },
+
+    // Education Badges
+    educationBadges: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        marginTop: SPACING.sm,
+        paddingHorizontal: SPACING.md,
+    },
+    educationBadge: {
+        borderRadius: RADIUS.full,
+        overflow: 'hidden',
+        maxWidth: 200,
+        ...SHADOWS.sm,
+    },
+    educationBadgeGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.xs,
+    },
+    educationBadgeText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
+        maxWidth: 150,
+    },
+
+    // QR Code Section
+    qrSection: {
+        paddingHorizontal: SPACING.md,
+        marginBottom: SPACING.lg,
+    },
+    qrCard: {
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+        ...SHADOWS.sm,
+    },
+    qrCardGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: SPACING.lg,
+        gap: SPACING.md,
+    },
+    qrIconWrap: {
+        width: 64,
+        height: 64,
+        borderRadius: RADIUS.xl,
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    qrTextContent: {
+        flex: 1,
+    },
+    qrTitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: 2,
+    },
+    qrSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
     },
 });

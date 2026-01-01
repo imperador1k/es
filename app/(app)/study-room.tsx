@@ -5,12 +5,14 @@
  */
 
 import { FloatingReactions } from '@/components/FloatingReactions';
+import { LiveKitRoom } from '@/components/StudyRoom/LiveKitRoom';
 import { StudyRoomChat } from '@/components/StudyRoomChat';
 import { useStartConversation } from '@/hooks/useDMs';
 import { useStudyRoomAudio } from '@/hooks/useStudyRoomAudio';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { getLiveKitToken, getRoomName } from '@/services/livekitService';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -281,6 +283,63 @@ export default function StudyRoomScreen() {
     const [newRoomPrivate, setNewRoomPrivate] = useState(false);
     const [newRoomPassword, setNewRoomPassword] = useState('');
     const [creating, setCreating] = useState(false);
+
+    // V4: LiveKit Video Call
+    const [isCallActive, setIsCallActive] = useState(false);
+    const [livekitToken, setLivekitToken] = useState<string | null>(null);
+    const [livekitUrl, setLivekitUrl] = useState<string | null>(null);
+    const [joiningCall, setJoiningCall] = useState(false);
+
+    // Join video call
+    const joinCall = async () => {
+        if (!currentRoom || !user) return;
+        console.log('[Study Room] joinCall triggered');
+        console.log('[Study Room] Current room ID:', currentRoom.id);
+        console.log('[Study Room] User ID:', user.id);
+
+        setJoiningCall(true);
+        try {
+            const myParticipant = participants.find(p => p.user_id === user.id);
+            const roomName = getRoomName(currentRoom.id);
+            const username = myParticipant?.profile?.username || user.email?.split('@')[0] || 'User';
+
+            console.log('[Study Room] Calling getLiveKitToken with:');
+            console.log('[Study Room] - roomName:', roomName);
+            console.log('[Study Room] - username:', username);
+
+            // NOTE: Do NOT pass avatar_url if it's a base64 image - it will make the JWT token huge!
+            // Only pass if it's a real URL (starts with http)
+            const avatarUrl = myParticipant?.profile?.avatar_url;
+            const safeAvatarUrl = avatarUrl && avatarUrl.startsWith('http') ? avatarUrl : undefined;
+
+            const response = await getLiveKitToken(
+                roomName,
+                username,
+                user.id,
+                safeAvatarUrl
+            );
+
+            console.log('[Study Room] Token response received');
+            console.log('[Study Room] Token length:', response.token?.length);
+            console.log('[Study Room] URL:', response.url);
+
+            setLivekitToken(response.token);
+            setLivekitUrl(response.url);
+            setIsCallActive(true);
+        } catch (error) {
+            console.error('[Study Room] Failed to join call:', error);
+            Alert.alert('Erro', 'Não foi possível entrar na chamada');
+        } finally {
+            setJoiningCall(false);
+        }
+    };
+
+    // Leave video call
+    const leaveCall = () => {
+        setIsCallActive(false);
+        setLivekitToken(null);
+        setLivekitUrl(null);
+    };
 
     // ============================================
     // DATA FETCHING (same as before)
@@ -604,6 +663,23 @@ export default function StudyRoomScreen() {
                                 )}
                             </Pressable>
 
+                            {/* Video Call Button */}
+                            <Pressable
+                                style={[styles.headerBtn, isCallActive && styles.headerBtnActive]}
+                                onPress={isCallActive ? leaveCall : joinCall}
+                                disabled={joiningCall}
+                            >
+                                {joiningCall ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <Ionicons
+                                        name={isCallActive ? "videocam" : "videocam-outline"}
+                                        size={20}
+                                        color={isCallActive ? "#10B981" : "#FFF"}
+                                    />
+                                )}
+                            </Pressable>
+
                             {/* Settings/Delete for owner */}
                             {isMyRoom && (
                                 <Pressable style={styles.headerBtn} onPress={deleteMyRoom}>
@@ -692,6 +768,23 @@ export default function StudyRoomScreen() {
                     {showChat && (
                         <View style={styles.chatOverlay}>
                             <StudyRoomChat roomId={currentRoom.id} onNewMessage={() => { if (!showChat) setUnreadMessages(prev => prev + 1); }} onClose={() => setShowChat(false)} />
+                        </View>
+                    )}
+
+                    {/* Video Call Overlay */}
+                    {isCallActive && livekitToken && livekitUrl && (
+                        <View style={StyleSheet.absoluteFill}>
+                            <LiveKitRoom
+                                token={livekitToken}
+                                serverUrl={livekitUrl}
+                                roomName={currentRoom.name}
+                                onLeave={leaveCall}
+                                onError={(error) => {
+                                    console.error('LiveKit error:', error);
+                                    Alert.alert('Erro na Chamada', error.message);
+                                    leaveCall();
+                                }}
+                            />
                         </View>
                     )}
                 </SafeAreaView>

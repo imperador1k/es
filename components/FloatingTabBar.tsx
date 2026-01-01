@@ -1,18 +1,21 @@
 /**
- * Floating Tab Bar - Premium Design
- * Glassmorphism navigation with elegant FAB
+ * Floating Tab Bar - Ultra Premium Design
+ * Inspired by TripGlide with integrated center button
  */
 
-import { COLORS, RADIUS, SHADOWS, SPACING } from '@/lib/theme.premium';
+import { SHADOWS } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, usePathname } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
+    Easing,
     useAnimatedStyle,
     useSharedValue,
+    withRepeat,
+    withSequence,
     withSpring,
     withTiming
 } from 'react-native-reanimated';
@@ -34,48 +37,87 @@ interface TabItem {
 // ============================================
 
 const TABS: TabItem[] = [
-    { name: 'index', route: '/(tabs)', icon: 'home-outline', iconActive: 'home' },
+    { name: 'home', route: '/(tabs)', icon: 'home-outline', iconActive: 'home' },
     { name: 'calendar', route: '/(tabs)/calendar', icon: 'calendar-outline', iconActive: 'calendar' },
     { name: 'messages', route: '/(tabs)/messages', icon: 'chatbubble-outline', iconActive: 'chatbubble' },
+    { name: 'profile', route: '/(tabs)/profile', icon: 'person-outline', iconActive: 'person' },
 ];
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 // ============================================
-// SIMPLE FAB BUTTON
+// CENTER BUTTON (Integrated)
 // ============================================
 
-function SimpleFAB({ onPress }: { onPress: () => void }) {
+function CenterButton({ onPress }: { onPress: () => void }) {
     const scale = useSharedValue(1);
+    const glowOpacity = useSharedValue(0.4);
+    const rotation = useSharedValue(0);
 
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
+    useEffect(() => {
+        // Subtle glow pulse
+        glowOpacity.value = withRepeat(
+            withSequence(
+                withTiming(0.6, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0.3, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+            ),
+            -1,
+            true
+        );
+    }, []);
+
+    const animatedButtonStyle = useAnimatedStyle(() => ({
+        transform: [
+            { scale: scale.value },
+            { rotate: `${rotation.value}deg` }
+        ],
+    }));
+
+    const animatedGlowStyle = useAnimatedStyle(() => ({
+        opacity: glowOpacity.value,
+        transform: [{ scale: 1.3 }],
     }));
 
     const handlePressIn = () => {
-        scale.value = withTiming(0.95, { duration: 100 });
+        scale.value = withSpring(0.9, { damping: 15, stiffness: 300 });
+        rotation.value = withSpring(15, { damping: 10 });
     };
 
     const handlePressOut = () => {
-        scale.value = withSpring(1, { damping: 15 });
+        scale.value = withSpring(1, { damping: 10, stiffness: 200 });
+        rotation.value = withSpring(0, { damping: 10 });
     };
 
     return (
-        <AnimatedPressable
-            style={[styles.fabButton, animatedStyle]}
-            onPress={onPress}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-        >
-            <LinearGradient
-                colors={['#6366F1', '#8B5CF6']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.fabGradient}
+        <View style={styles.centerButtonWrapper}>
+            {/* Glow Effect */}
+            <Animated.View style={[styles.centerButtonGlow, animatedGlowStyle]}>
+                <LinearGradient
+                    colors={['rgba(99, 102, 241, 0.5)', 'rgba(139, 92, 246, 0.3)', 'transparent']}
+                    style={styles.glowGradient}
+                />
+            </Animated.View>
+
+            {/* Main Button */}
+            <AnimatedPressable
+                style={[styles.centerButton, animatedButtonStyle]}
+                onPress={onPress}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
             >
-                <Ionicons name="add" size={26} color="#FFF" />
-            </LinearGradient>
-        </AnimatedPressable>
+                <LinearGradient
+                    colors={['#6366F1', '#8B5CF6', '#A855F7']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.centerButtonGradient}
+                >
+                    <View style={styles.centerButtonInner}>
+                        <Ionicons name="add" size={28} color="#FFF" />
+                    </View>
+                </LinearGradient>
+            </AnimatedPressable>
+        </View>
     );
 }
 
@@ -93,39 +135,56 @@ function TabItemButton({
     onPress: () => void;
 }) {
     const scale = useSharedValue(1);
-    const translateY = useSharedValue(0);
+    const iconScale = useSharedValue(1);
+    const bgOpacity = useSharedValue(isActive ? 1 : 0);
 
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [
-            { scale: scale.value },
-            { translateY: translateY.value },
-        ],
+    useEffect(() => {
+        bgOpacity.value = withSpring(isActive ? 1 : 0, { damping: 15 });
+        iconScale.value = withSequence(
+            withSpring(isActive ? 1.15 : 1, { damping: 10 }),
+            withSpring(1, { damping: 12 })
+        );
+    }, [isActive]);
+
+    const animatedContainerStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    const animatedBgStyle = useAnimatedStyle(() => ({
+        opacity: bgOpacity.value,
+        transform: [{ scale: bgOpacity.value * 0.2 + 0.8 }],
+    }));
+
+    const animatedIconStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: iconScale.value }],
     }));
 
     const handlePressIn = () => {
-        scale.value = withSpring(0.85, { damping: 15 });
-        translateY.value = withSpring(-2);
+        scale.value = withSpring(0.85, { damping: 15, stiffness: 400 });
     };
 
     const handlePressOut = () => {
-        scale.value = withSpring(1, { damping: 10 });
-        translateY.value = withSpring(0);
+        scale.value = withSpring(1, { damping: 10, stiffness: 200 });
     };
 
     return (
         <AnimatedPressable
-            style={[styles.tabItem, animatedStyle]}
+            style={[styles.tabItem, animatedContainerStyle]}
             onPress={onPress}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
         >
-            <View style={[styles.tabIconContainer, isActive && styles.tabIconContainerActive]}>
+            {/* Active Background Pill */}
+            <Animated.View style={[styles.tabActiveBg, animatedBgStyle]} />
+
+            {/* Icon */}
+            <Animated.View style={animatedIconStyle}>
                 <Ionicons
                     name={(isActive ? tab.iconActive : tab.icon) as any}
-                    size={22}
-                    color={isActive ? COLORS.text.primary : COLORS.text.tertiary}
+                    size={24}
+                    color={isActive ? '#FFF' : 'rgba(255,255,255,0.5)'}
                 />
-            </View>
+            </Animated.View>
         </AnimatedPressable>
     );
 }
@@ -152,11 +211,15 @@ export function FloatingTabBar() {
     return (
         <>
             <View style={styles.container}>
-                {/* Bar Background */}
-                <View style={styles.barContainer}>
-                    <BlurView intensity={60} tint="dark" style={styles.blurBar}>
+                {/* Premium Glass Bar */}
+                <BlurView
+                    intensity={Platform.OS === 'ios' ? 80 : 120}
+                    tint="dark"
+                    style={styles.barBlur}
+                >
+                    <View style={styles.barContent}>
                         {/* Left Tabs */}
-                        <View style={styles.tabsGroup}>
+                        <View style={styles.tabsSection}>
                             <TabItemButton
                                 tab={TABS[0]}
                                 isActive={isActive(TABS[0].route)}
@@ -169,27 +232,27 @@ export function FloatingTabBar() {
                             />
                         </View>
 
-                        {/* Center Spacer for FAB */}
-                        <View style={styles.fabSpacer} />
+                        {/* Center Button */}
+                        <CenterButton onPress={() => setQuickActionsVisible(true)} />
 
                         {/* Right Tabs */}
-                        <View style={styles.tabsGroup}>
+                        <View style={styles.tabsSection}>
                             <TabItemButton
                                 tab={TABS[2]}
                                 isActive={isActive(TABS[2].route)}
                                 onPress={() => handleTabPress(TABS[2].route)}
                             />
                             <TabItemButton
-                                tab={{ name: 'profile', route: '/(tabs)/profile', icon: 'person-outline', iconActive: 'person' }}
-                                isActive={isActive('/(tabs)/profile')}
-                                onPress={() => handleTabPress('/(tabs)/profile')}
+                                tab={TABS[3]}
+                                isActive={isActive(TABS[3].route)}
+                                onPress={() => handleTabPress(TABS[3].route)}
                             />
                         </View>
-                    </BlurView>
-                </View>
+                    </View>
 
-                {/* Floating FAB */}
-                <SimpleFAB onPress={() => setQuickActionsVisible(!quickActionsVisible)} />
+                    {/* Premium Border Glow */}
+                    <View style={styles.borderGlow} />
+                </BlurView>
             </View>
 
             {/* Quick Actions Modal */}
@@ -208,62 +271,95 @@ export function FloatingTabBar() {
 const styles = StyleSheet.create({
     container: {
         position: 'absolute',
-        bottom: 36,
-        left: 16,
-        right: 16,
+        bottom: 42,
+        left: 20,
+        right: 20,
         alignItems: 'center',
     },
-    barContainer: {
+
+    // Bar
+    barBlur: {
         width: '100%',
+        borderRadius: 32,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(20, 22, 28, 0.85)',
     },
-    blurBar: {
+    barContent: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: SPACING.sm,
-        paddingHorizontal: SPACING.md,
-        borderRadius: RADIUS['3xl'],
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+    },
+    borderGlow: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 32,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
-        overflow: 'hidden',
-        backgroundColor: 'rgba(24, 26, 32, 0.8)',
-    },
-    tabsGroup: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SPACING.xs,
-    },
-    tabItem: {
-        padding: SPACING.sm,
-    },
-    tabIconContainer: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    tabIconContainerActive: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-    },
-    fabSpacer: {
-        width: 60,
+        pointerEvents: 'none',
     },
 
-    // FAB
-    fabButton: {
-        position: 'absolute',
-        top: -10,
-        ...SHADOWS.md,
+    // Tabs
+    tabsSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
     },
-    fabGradient: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
+    tabItem: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: COLORS.background,
+        position: 'relative',
+    },
+    tabActiveBg: {
+        position: 'absolute',
+        width: '100%',
+        height: '100%',
+        borderRadius: 26,
+        backgroundColor: 'rgba(99, 102, 241, 0.25)',
+    },
+
+    // Center Button
+    centerButtonWrapper: {
+        position: 'relative',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    centerButtonGlow: {
+        position: 'absolute',
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+    },
+    glowGradient: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 36,
+    },
+    centerButton: {
+        width: 58,
+        height: 58,
+        borderRadius: 29,
+        ...SHADOWS.lg,
+    },
+    centerButtonGradient: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 29,
+        padding: 3,
+    },
+    centerButtonInner: {
+        flex: 1,
+        borderRadius: 26,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.15)',
     },
 });
 

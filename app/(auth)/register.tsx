@@ -1,13 +1,21 @@
+/**
+ * 🚀 PREMIUM REGISTER - TripGlide Style
+ * Consistent with app design: warm dark tones, elevated surfaces, organic radius
+ * Minimalist, Premium, Immersive
+ */
+
 import { useAuth } from '@/hooks/useAuth';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
-import { Ionicons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
-import { useState } from 'react';
-import * as WebBrowser from 'expo-web-browser';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { makeRedirectUri } from 'expo-auth-session';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Link } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -16,12 +24,62 @@ import {
     Text,
     TextInput,
     View,
-    Alert
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Necessário para o fluxo de browser
 WebBrowser.maybeCompleteAuthSession();
+
+// ============================================
+// PASSWORD STRENGTH
+// ============================================
+
+function PasswordStrength({ password }: { password: string }) {
+    const getStrength = () => {
+        let score = 0;
+        if (password.length >= 6) score++;
+        if (password.length >= 8) score++;
+        if (/[A-Z]/.test(password)) score++;
+        if (/[0-9]/.test(password)) score++;
+        if (/[^A-Za-z0-9]/.test(password)) score++;
+        return score;
+    };
+
+    const strength = getStrength();
+    const getColor = () => {
+        if (strength <= 1) return COLORS.error;
+        if (strength <= 2) return COLORS.warning;
+        if (strength <= 3) return COLORS.success;
+        return COLORS.accent.primary;
+    };
+    const getLabel = () => {
+        if (strength <= 1) return 'Fraca';
+        if (strength <= 2) return 'Razoável';
+        if (strength <= 3) return 'Boa';
+        return 'Excelente 💪';
+    };
+
+    if (!password) return null;
+
+    return (
+        <View style={styles.strengthContainer}>
+            <View style={styles.strengthBars}>
+                {[1, 2, 3, 4].map((bar) => (
+                    <View
+                        key={bar}
+                        style={[
+                            styles.strengthBar,
+                            { backgroundColor: bar <= strength ? getColor() : COLORS.surfaceMuted },
+                        ]}
+                    />
+                ))}
+            </View>
+            <Text style={[styles.strengthLabel, { color: getColor() }]}>{getLabel()}</Text>
+        </View>
+    );
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function RegisterScreen() {
     const [email, setEmail] = useState('');
@@ -30,68 +88,55 @@ export default function RegisterScreen() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    
-    // Estado para loading do Social Login
     const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+    const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
     const { signUp, loading: authLoading } = useAuth();
-
     const loading = authLoading || isOAuthLoading;
 
-    // Função auxiliar (podes copiar a mesma ou importar se tiveres utils)
+    // Animations
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(30)).current;
+    const successScale = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+        ]).start();
+    }, []);
+
+    useEffect(() => {
+        if (success) {
+            Animated.spring(successScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }).start();
+        }
+    }, [success]);
+
     const extractParamsFromUrl = (url: string) => {
         const params = new URLSearchParams(url.split('#')[1]);
-        return {
-            access_token: params.get('access_token'),
-            refresh_token: params.get('refresh_token'),
-        };
+        return { access_token: params.get('access_token'), refresh_token: params.get('refresh_token') };
     };
 
     const performOAuth = async (provider: 'google' | 'discord') => {
         try {
             setError('');
             setIsOAuthLoading(true);
-
-            const redirectUrl = makeRedirectUri({
-                scheme: 'escolaa',
-                path: 'auth/callback',
-            });
-
+            const redirectUrl = makeRedirectUri({ scheme: 'escolaa', path: 'auth/callback' });
             const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: provider,
-                options: {
-                    redirectTo: redirectUrl,
-                    skipBrowserRedirect: true,
-                },
+                provider,
+                options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
             });
-
             if (error) throw error;
-            if (!data?.url) throw new Error('O Supabase não retornou um URL.');
-
-            const result = await WebBrowser.openAuthSessionAsync(
-                data.url,
-                redirectUrl
-            );
-
+            if (!data?.url) throw new Error('URL não retornado');
+            const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
             if (result.type === 'success' && result.url) {
-                // AQUI ESTÁ A CORREÇÃO: Forçar a sessão manualmente
                 const { access_token, refresh_token } = extractParamsFromUrl(result.url);
-
                 if (access_token && refresh_token) {
-                    const { error } = await supabase.auth.setSession({
-                        access_token,
-                        refresh_token,
-                    });
-                    if (error) throw error;
-                    // Sucesso! O AuthProvider vai redirecionar sozinho
-                } else {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (!session) throw new Error('Sessão não encontrada.');
+                    await supabase.auth.setSession({ access_token, refresh_token });
                 }
             }
         } catch (err: any) {
-            console.error("[OAuth Error]", err);
-            setError(err.message || 'Erro ao conectar com o provedor.');
+            setError(err.message || 'Erro ao conectar');
         } finally {
             setIsOAuthLoading(false);
         }
@@ -100,7 +145,7 @@ export default function RegisterScreen() {
     const handleRegister = async () => {
         setError('');
         if (!email || !password || !confirmPassword) {
-            setError('Por favor, preenche todos os campos');
+            setError('Preenche todos os campos');
             return;
         }
         if (password !== confirmPassword) {
@@ -119,31 +164,45 @@ export default function RegisterScreen() {
         }
     };
 
+    const passwordsMatch = password && confirmPassword && password === confirmPassword;
+
+    // Success Screen
     if (success) {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.successContainer}>
+            <View style={styles.container}>
+                <Animated.View style={[styles.successContainer, { transform: [{ scale: successScale }] }]}>
                     <View style={styles.successCard}>
-                        <View style={styles.successIcon}>
-                            <Ionicons name="checkmark" size={40} color={colors.success.primary} />
+                        <View style={styles.successIconWrap}>
+                            <LinearGradient
+                                colors={[COLORS.success, '#059669']}
+                                style={styles.successIcon}
+                            >
+                                <Ionicons name="checkmark" size={48} color="#FFF" />
+                            </LinearGradient>
                         </View>
-                        <Text style={styles.successTitle}>Conta Criada!</Text>
+                        <Text style={styles.successTitle}>Conta Criada! 🎉</Text>
                         <Text style={styles.successSubtitle}>
-                            Verifica o teu email para confirmar a conta e depois faz login.
+                            Verifica o teu email para confirmar a conta e começa a tua jornada académica!
                         </Text>
                         <Link href="/(auth)/login" asChild>
                             <Pressable style={styles.successButton}>
-                                <Text style={styles.successButtonText}>Ir para Login</Text>
+                                <LinearGradient
+                                    colors={COLORS.brand.gradient as [string, string]}
+                                    style={styles.successButtonGradient}
+                                >
+                                    <Text style={styles.successButtonText}>Ir para Login</Text>
+                                    <Ionicons name="arrow-forward" size={20} color="#FFF" />
+                                </LinearGradient>
                             </Pressable>
                         </Link>
                     </View>
-                </View>
-            </SafeAreaView>
+                </Animated.View>
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.keyboardView}
@@ -153,135 +212,208 @@ export default function RegisterScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Criar Conta</Text>
-                        <Text style={styles.subtitle}>Junta-te à aventura académica! 🚀</Text>
-                    </View>
-
-                    {/* Form */}
-                    <View style={styles.form}>
-                        {/* Email */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Email</Text>
-                            <View style={styles.inputWrapper}>
-                                <Ionicons name="mail-outline" size={20} color={colors.text.tertiary} style={styles.inputIcon} />
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="exemplo@email.com"
-                                    placeholderTextColor={colors.text.tertiary}
-                                    keyboardType="email-address"
-                                    autoCapitalize="none"
-                                    value={email}
-                                    onChangeText={setEmail}
-                                />
+                    <Animated.View
+                        style={[
+                            styles.content,
+                            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+                        ]}
+                    >
+                        {/* Header Section */}
+                        <View style={styles.headerSection}>
+                            <View style={styles.headerIconWrap}>
+                                <LinearGradient
+                                    colors={COLORS.brand.gradient as [string, string]}
+                                    style={styles.headerIcon}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                >
+                                    <Ionicons name="rocket" size={32} color="#FFF" />
+                                </LinearGradient>
                             </View>
+                            <Text style={styles.headerTitle}>Cria a tua conta</Text>
+                            <Text style={styles.headerSubtitle}>Junta-te a milhares de estudantes</Text>
                         </View>
 
-                        {/* Password */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Password</Text>
-                            <View style={styles.inputWrapper}>
-                                <Ionicons name="lock-closed-outline" size={20} color={colors.text.tertiary} style={styles.inputIcon} />
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Mínimo 6 caracteres"
-                                    placeholderTextColor={colors.text.tertiary}
-                                    secureTextEntry={!showPassword}
-                                    value={password}
-                                    onChangeText={setPassword}
-                                />
-                                <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
-                                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.text.tertiary} />
-                                </Pressable>
+                        {/* Form Card */}
+                        <View style={styles.formCard}>
+                            {/* Email */}
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Email</Text>
+                                <View style={[styles.inputContainer, focusedInput === 'email' && styles.inputFocused]}>
+                                    <Ionicons
+                                        name="mail-outline"
+                                        size={20}
+                                        color={focusedInput === 'email' ? COLORS.accent.primary : COLORS.text.tertiary}
+                                    />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="O teu melhor email"
+                                        placeholderTextColor={COLORS.text.muted}
+                                        keyboardType="email-address"
+                                        autoCapitalize="none"
+                                        value={email}
+                                        onChangeText={setEmail}
+                                        onFocus={() => setFocusedInput('email')}
+                                        onBlur={() => setFocusedInput(null)}
+                                    />
+                                </View>
                             </View>
+
+                            {/* Password */}
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Password</Text>
+                                <View style={[styles.inputContainer, focusedInput === 'password' && styles.inputFocused]}>
+                                    <Ionicons
+                                        name="lock-closed-outline"
+                                        size={20}
+                                        color={focusedInput === 'password' ? COLORS.accent.primary : COLORS.text.tertiary}
+                                    />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Mínimo 6 caracteres"
+                                        placeholderTextColor={COLORS.text.muted}
+                                        secureTextEntry={!showPassword}
+                                        value={password}
+                                        onChangeText={setPassword}
+                                        onFocus={() => setFocusedInput('password')}
+                                        onBlur={() => setFocusedInput(null)}
+                                    />
+                                    <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+                                        <Ionicons
+                                            name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                                            size={20}
+                                            color={COLORS.text.tertiary}
+                                        />
+                                    </Pressable>
+                                </View>
+                                <PasswordStrength password={password} />
+                            </View>
+
+                            {/* Confirm Password */}
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Confirmar Password</Text>
+                                <View style={[
+                                    styles.inputContainer,
+                                    focusedInput === 'confirm' && styles.inputFocused,
+                                    passwordsMatch && styles.inputSuccess,
+                                ]}>
+                                    <Ionicons
+                                        name={passwordsMatch ? "checkmark-circle" : "lock-closed-outline"}
+                                        size={20}
+                                        color={passwordsMatch ? COLORS.success : (focusedInput === 'confirm' ? COLORS.accent.primary : COLORS.text.tertiary)}
+                                    />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Repete a password"
+                                        placeholderTextColor={COLORS.text.muted}
+                                        secureTextEntry={!showPassword}
+                                        value={confirmPassword}
+                                        onChangeText={setConfirmPassword}
+                                        onFocus={() => setFocusedInput('confirm')}
+                                        onBlur={() => setFocusedInput(null)}
+                                    />
+                                    {passwordsMatch && (
+                                        <Ionicons name="checkmark" size={18} color={COLORS.success} />
+                                    )}
+                                </View>
+                            </View>
+
+                            {/* Error */}
+                            {error ? (
+                                <View style={styles.errorBox}>
+                                    <Ionicons name="alert-circle" size={18} color={COLORS.error} />
+                                    <Text style={styles.errorText}>{error}</Text>
+                                </View>
+                            ) : null}
+
+                            {/* Submit Button */}
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.submitButton,
+                                    pressed && styles.submitPressed,
+                                    loading && styles.submitDisabled,
+                                ]}
+                                onPress={handleRegister}
+                                disabled={loading}
+                            >
+                                <LinearGradient
+                                    colors={loading ? [COLORS.surfaceMuted, COLORS.surfaceMuted] : COLORS.brand.gradient as [string, string]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.submitGradient}
+                                >
+                                    {loading ? (
+                                        <ActivityIndicator color={COLORS.text.primary} />
+                                    ) : (
+                                        <>
+                                            <Text style={styles.submitText}>Criar Conta</Text>
+                                            <Ionicons name="sparkles" size={20} color="#FFF" />
+                                        </>
+                                    )}
+                                </LinearGradient>
+                            </Pressable>
                         </View>
-
-                        {/* Confirm Password */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Confirmar Password</Text>
-                            <View style={styles.inputWrapper}>
-                                <Ionicons name="lock-closed-outline" size={20} color={colors.text.tertiary} style={styles.inputIcon} />
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Repete a password"
-                                    placeholderTextColor={colors.text.tertiary}
-                                    secureTextEntry={!showPassword}
-                                    value={confirmPassword}
-                                    onChangeText={setConfirmPassword}
-                                />
-                            </View>
-                        </View>
-
-                        {/* Error */}
-                        {error ? (
-                            <View style={styles.errorContainer}>
-                                <Ionicons name="alert-circle" size={16} color={colors.danger.primary} />
-                                <Text style={styles.errorText}>{error}</Text>
-                            </View>
-                        ) : null}
-
-                        {/* Submit */}
-                        <Pressable
-                            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-                            onPress={handleRegister}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color={colors.text.inverse} />
-                            ) : (
-                                <Text style={styles.submitText}>Criar Conta</Text>
-                            )}
-                        </Pressable>
 
                         {/* Divider */}
-                        <View style={styles.divider}>
+                        <View style={styles.dividerRow}>
                             <View style={styles.dividerLine} />
                             <Text style={styles.dividerText}>ou regista-te com</Text>
                             <View style={styles.dividerLine} />
                         </View>
 
                         {/* Social Buttons */}
-                        <View style={styles.socialButtons}>
+                        <View style={styles.socialGrid}>
                             <Pressable
-                                style={styles.socialButton}
+                                style={({ pressed }) => [styles.socialButton, pressed && styles.socialPressed]}
                                 onPress={() => performOAuth('google')}
                                 disabled={loading}
                             >
-                                <Ionicons name="logo-google" size={20} color="#DB4437" />
-                                <Text style={styles.socialButtonText}>Google</Text>
+                                <MaterialCommunityIcons name="google" size={22} color="#EA4335" />
+                                <Text style={styles.socialText}>Google</Text>
                             </Pressable>
 
                             <Pressable
-                                style={styles.socialButton}
+                                style={({ pressed }) => [styles.socialButton, pressed && styles.socialPressed]}
                                 onPress={() => performOAuth('discord')}
                                 disabled={loading}
                             >
-                                <Ionicons name="logo-discord" size={20} color="#5865F2" />
-                                <Text style={styles.socialButtonText}>Discord</Text>
+                                <Ionicons name="logo-discord" size={22} color="#5865F2" />
+                                <Text style={styles.socialText}>Discord</Text>
                             </Pressable>
                         </View>
-                    </View>
 
-                    {/* Login Link */}
-                    <View style={styles.loginContainer}>
-                        <Text style={styles.loginText}>Já tens conta? </Text>
-                        <Link href="/(auth)/login" asChild>
-                            <Pressable>
-                                <Text style={styles.loginLink}>Entra aqui</Text>
-                            </Pressable>
-                        </Link>
-                    </View>
+                        {/* Login Link */}
+                        <View style={styles.loginRow}>
+                            <Text style={styles.loginText}>Já tens conta? </Text>
+                            <Link href="/(auth)/login" asChild>
+                                <Pressable>
+                                    <Text style={styles.loginLink}>Entra aqui</Text>
+                                </Pressable>
+                            </Link>
+                        </View>
+
+                        {/* Terms */}
+                        <Text style={styles.termsText}>
+                            Ao criar conta, aceitas os nossos{' '}
+                            <Text style={styles.termsLink}>Termos de Serviço</Text>
+                            {' '}e{' '}
+                            <Text style={styles.termsLink}>Política de Privacidade</Text>
+                        </Text>
+                    </Animated.View>
                 </ScrollView>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
+
+// ============================================
+// STYLES - TripGlide Design System
+// ============================================
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     keyboardView: {
         flex: 1,
@@ -289,198 +421,271 @@ const styles = StyleSheet.create({
     scrollContent: {
         flexGrow: 1,
         justifyContent: 'center',
-        paddingHorizontal: spacing['2xl'],
-        paddingVertical: spacing['2xl'],
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING['2xl'],
+    },
+    content: {
+        gap: SPACING.xl,
     },
 
     // Header
-    header: {
+    headerSection: {
         alignItems: 'center',
-        marginBottom: spacing['3xl'],
+        marginBottom: SPACING.md,
     },
-    title: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+    headerIconWrap: {
+        marginBottom: SPACING.md,
     },
-    subtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        marginTop: spacing.xs,
+    headerIcon: {
+        width: 72,
+        height: 72,
+        borderRadius: RADIUS['2xl'],
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...SHADOWS.lg,
+    },
+    headerTitle: {
+        fontSize: 28,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+        marginTop: SPACING.xs,
     },
 
-    // Form
-    form: {
-        gap: spacing.lg,
+    // Form Card
+    formCard: {
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.xl,
+        gap: SPACING.lg,
+        ...SHADOWS.sm,
     },
+
+    // Inputs
     inputGroup: {
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
-    label: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
+    inputLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
-    inputWrapper: {
+    inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
+        gap: SPACING.md,
         borderWidth: 1,
-        borderColor: colors.border,
-        ...shadows.sm,
+        borderColor: 'transparent',
     },
-    inputIcon: {
-        marginLeft: spacing.lg,
+    inputFocused: {
+        borderColor: COLORS.accent.primary,
+        backgroundColor: COLORS.accent.subtle,
+    },
+    inputSuccess: {
+        borderColor: COLORS.success,
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
     },
     input: {
         flex: 1,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.lg,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        paddingVertical: SPACING.xs,
     },
-    eyeButton: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.lg,
+
+    // Password Strength
+    strengthContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
+        marginTop: SPACING.xs,
+    },
+    strengthBars: {
+        flex: 1,
+        flexDirection: 'row',
+        gap: 4,
+    },
+    strengthBar: {
+        flex: 1,
+        height: 4,
+        borderRadius: 2,
+    },
+    strengthLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.semibold,
     },
 
     // Error
-    errorContainer: {
+    errorBox: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.danger.light,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.md,
+        gap: SPACING.sm,
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.lg,
     },
     errorText: {
-        fontSize: typography.size.sm,
-        color: colors.danger.primary,
         flex: 1,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.error,
     },
 
     // Submit
     submitButton: {
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.lg,
-        alignItems: 'center',
-        marginTop: spacing.md,
-        ...shadows.md,
+        borderRadius: RADIUS.xl,
+        overflow: 'hidden',
+        marginTop: SPACING.sm,
     },
-    submitButtonDisabled: {
+    submitPressed: {
+        opacity: 0.9,
+        transform: [{ scale: 0.98 }],
+    },
+    submitDisabled: {
         opacity: 0.7,
     },
-    submitText: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
-
-    // Divider (Adicionei estes estilos que faltavam)
-    divider: {
+    submitGradient: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginVertical: spacing.lg,
+        justifyContent: 'center',
+        paddingVertical: SPACING.lg,
+        gap: SPACING.sm,
+    },
+    submitText: {
+        fontSize: TYPOGRAPHY.size.md,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+
+    // Divider
+    dividerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
     },
     dividerLine: {
         flex: 1,
         height: 1,
-        backgroundColor: colors.border,
+        backgroundColor: COLORS.glassBorder,
     },
     dividerText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginHorizontal: spacing.md,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.muted,
     },
 
-    // Social Buttons (Adicionei estes estilos que faltavam)
-    socialButtons: {
+    // Social
+    socialGrid: {
         flexDirection: 'row',
-        gap: spacing.md,
+        justifyContent: 'center',
+        gap: SPACING.md,
     },
     socialButton: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
+        gap: SPACING.sm,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        paddingVertical: SPACING.lg,
         borderWidth: 1,
-        borderColor: colors.border,
-        paddingVertical: spacing.md,
-        gap: spacing.sm,
-        ...shadows.sm,
+        borderColor: COLORS.glassBorder,
+        ...SHADOWS.sm,
     },
-    socialButtonText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+    socialPressed: {
+        backgroundColor: COLORS.surfaceElevated,
+    },
+    socialText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
 
     // Login
-    loginContainer: {
+    loginRow: {
         flexDirection: 'row',
         justifyContent: 'center',
-        marginTop: spacing['3xl'],
     },
     loginText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
     },
     loginLink: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.accent.primary,
+    },
+
+    // Terms
+    termsText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.muted,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    termsLink: {
+        color: COLORS.text.secondary,
+        textDecorationLine: 'underline',
     },
 
     // Success
     successContainer: {
         flex: 1,
         justifyContent: 'center',
-        paddingHorizontal: spacing['2xl'],
+        paddingHorizontal: SPACING.xl,
     },
     successCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing['2xl'],
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING['2xl'],
         alignItems: 'center',
-        ...shadows.lg,
+        ...SHADOWS.lg,
+    },
+    successIconWrap: {
+        marginBottom: SPACING.xl,
     },
     successIcon: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
-        backgroundColor: colors.success.light,
+        width: 88,
+        height: 88,
+        borderRadius: 44,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
     },
     successTitle: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
+        fontSize: 26,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.sm,
     },
     successSubtitle: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
         textAlign: 'center',
-        marginBottom: spacing.xl,
-        lineHeight: 20,
+        lineHeight: 24,
+        marginBottom: SPACING.xl,
     },
     successButton: {
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing['2xl'],
-        ...shadows.md,
+        borderRadius: RADIUS.xl,
+        overflow: 'hidden',
+        width: '100%',
+    },
+    successButtonGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: SPACING.lg,
+        gap: SPACING.sm,
     },
     successButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+        fontSize: TYPOGRAPHY.size.md,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
 });

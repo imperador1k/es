@@ -162,7 +162,7 @@ export interface TeamWithMemberCount extends Team {
 // CHANNELS & GROUP MESSAGES
 // ============================================
 
-export type ChannelType = 'text' | 'voice' | 'announcements' | 'resources';
+export type ChannelType = 'chat' | 'voice' | 'announcements' | 'resources';
 
 export interface Channel {
     id: string;

@@ -1,5 +1,5 @@
 import { useFriends } from '@/hooks/useFriends';
-import { borderRadius, colors, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS as borderRadius, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -13,6 +13,12 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// Compatibility layer
+const colors = {
+    ...COLORS,
+    surfaceSubtle: COLORS.surfaceMuted,
+};
 
 export default function QRScannerScreen() {
     const [permission, requestPermission] = useCameraPermissions();

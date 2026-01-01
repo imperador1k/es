@@ -5,7 +5,7 @@
 
 import { TimePicker } from '@/components/ui/TimePicker';
 import { useSchedule, useSubjects } from '@/hooks/useSubjects';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { RADIUS as borderRadius, COLORS as colors, SHADOWS as shadows, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
 import {
     CLASS_TYPE_NAMES,
     ClassSession,
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.md,
         borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        borderBottomColor: colors.surfaceElevated,
     },
     cancelText: {
         fontSize: typography.size.base,
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
     },
     errorText: {
         fontSize: typography.size.xs,
-        color: colors.danger.primary,
+        color: colors.error,
         marginTop: spacing.xs,
     },
 
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
         borderRadius: borderRadius.md,
         backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
     },
     dayOptionSelected: {
         backgroundColor: colors.accent.primary,
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
         borderRadius: borderRadius.md,
         backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
     },
     typeOptionSelected: {
         backgroundColor: colors.accent.primary,
@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
         gap: spacing.sm,
         backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: colors.surfaceElevated,
         borderRadius: borderRadius.md,
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.md,

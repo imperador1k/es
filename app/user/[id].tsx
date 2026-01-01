@@ -1,10 +1,18 @@
+/**
+ * User Profile Detail Screen - Premium Dark Design
+ * Ecrã para ver detalhes de perfil de outro utilizador
+ * Inclui badges reais, stats e ações sociais
+ */
+
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, getTierStyle, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { getUserBadges, UserBadge } from '@/services/badgeService';
 import { Profile, Tier } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -19,14 +27,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const TIER_EMOJI: Record<Tier, string> = {
-    Bronze: '🥉',
-    Prata: '🥈',
-    Ouro: '🥇',
-    Platina: '💎',
-    Diamante: '👑',
-    Elite: '🔥',
+// ============================================
+// CONSTANTS
+// ============================================
+
+const TIER_CONFIG: Record<Tier, { emoji: string; gradient: [string, string]; text: string }> = {
+    Bronze: { emoji: '🥉', gradient: ['#CD7F32', '#8B4513'], text: '#CD7F32' },
+    Prata: { emoji: '🥈', gradient: ['#C0C0C0', '#808080'], text: '#C0C0C0' },
+    Ouro: { emoji: '🥇', gradient: ['#FFD700', '#FFA500'], text: '#F59E0B' },
+    Platina: { emoji: '💎', gradient: ['#E5E4E2', '#A8A9AD'], text: '#94A3B8' },
+    Diamante: { emoji: '👑', gradient: ['#60A5FA', '#3B82F6'], text: '#3B82F6' },
+    Elite: { emoji: '🔥', gradient: ['#A855F7', '#7C3AED'], text: '#7C3AED' },
 };
+
+// ============================================
+// COMPONENT
+// ============================================
 
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -34,7 +50,9 @@ export default function UserProfileScreen() {
     const { friends, sendFriendRequest, pendingRequests } = useFriends();
     const { startOrGetConversation } = useStartConversation();
 
+    // State
     const [profile, setProfile] = useState<Profile | null>(null);
+    const [badges, setBadges] = useState<UserBadge[]>([]);
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
 
@@ -43,12 +61,14 @@ export default function UserProfileScreen() {
     const hasPending = pendingRequests.some(p => p.friend_id === id);
     const isMe = id === currentUser?.id;
 
-    // Carregar perfil
+    // Carregar dados
     useEffect(() => {
-        async function loadProfile() {
+        async function loadData() {
             if (!id) return;
             try {
                 setLoading(true);
+
+                // Carregar perfil
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('*')
@@ -57,15 +77,20 @@ export default function UserProfileScreen() {
 
                 if (error) throw error;
                 setProfile(data as Profile);
+
+                // Carregar badges
+                const userBadges = await getUserBadges(id);
+                setBadges(userBadges);
             } catch (err) {
                 console.error(err);
             } finally {
                 setLoading(false);
             }
         }
-        loadProfile();
+        loadData();
     }, [id]);
 
+    // Handlers
     const handleAddFriend = async () => {
         if (!id) return;
         setSending(true);
@@ -84,20 +109,23 @@ export default function UserProfileScreen() {
         }
     };
 
+    // Loading
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color={COLORS.accent.primary} />
                 </View>
             </SafeAreaView>
         );
     }
 
+    // Error
     if (!profile) {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.errorContainer}>
+                    <Ionicons name="person-outline" size={64} color={COLORS.text.tertiary} />
                     <Text style={styles.errorText}>Utilizador não encontrado</Text>
                     <Pressable style={styles.backBtn} onPress={() => router.back()}>
                         <Text style={styles.backBtnText}>Voltar</Text>
@@ -107,44 +135,84 @@ export default function UserProfileScreen() {
         );
     }
 
-    const tier = profile.current_tier || 'Bronze';
-    const tierStyle = getTierStyle(tier.toLowerCase());
-    const tierEmoji = TIER_EMOJI[tier];
+    // Computed
+    const tier = (profile.current_tier || 'Bronze') as Tier;
+    const tierConfig = TIER_CONFIG[tier];
     const level = Math.floor((profile.current_xp || 0) / 200) + 1;
+    const xpProgress = ((profile.current_xp || 0) % 200) / 200;
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
-            <View style={styles.header}>
+            {/* Header with Gradient */}
+            <LinearGradient
+                colors={tierConfig.gradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.headerGradient}
+            >
                 <Pressable style={styles.backButton} onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text.primary} />
+                    <Ionicons name="arrow-back" size={22} color="#FFF" />
                 </Pressable>
                 <Text style={styles.headerTitle}>Perfil</Text>
                 <View style={{ width: 40 }} />
-            </View>
+            </LinearGradient>
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Profile Card */}
-                <View style={styles.profileCard}>
-                    {/* Avatar */}
-                    {profile.avatar_url ? (
-                        <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-                    ) : (
-                        <View style={[styles.avatarFallback, { backgroundColor: tierStyle.bg }]}>
-                            <Text style={[styles.avatarInitial, { color: tierStyle.text }]}>
-                                {(profile.full_name || profile.username || 'U').charAt(0).toUpperCase()}
-                            </Text>
+            <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* Profile Hero Card */}
+                <View style={styles.heroCard}>
+                    {/* Avatar with Tier Ring */}
+                    <View style={styles.avatarContainer}>
+                        <LinearGradient
+                            colors={tierConfig.gradient}
+                            style={styles.avatarRing}
+                        >
+                            {profile.avatar_url ? (
+                                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                            ) : (
+                                <View style={styles.avatarFallback}>
+                                    <Text style={styles.avatarInitial}>
+                                        {(profile.full_name || profile.username || 'U').charAt(0).toUpperCase()}
+                                    </Text>
+                                </View>
+                            )}
+                        </LinearGradient>
+                        {/* Level Badge */}
+                        <View style={styles.levelBadge}>
+                            <Text style={styles.levelText}>{level}</Text>
                         </View>
-                    )}
+                    </View>
 
-                    {/* Info */}
+                    {/* Name & Username */}
                     <Text style={styles.name}>{profile.full_name || profile.username}</Text>
                     <Text style={styles.username}>@{profile.username || 'utilizador'}</Text>
 
                     {/* Tier Badge */}
-                    <View style={[styles.tierBadge, { backgroundColor: tierStyle.bg }]}>
-                        <Text style={styles.tierEmoji}>{tierEmoji}</Text>
-                        <Text style={[styles.tierText, { color: tierStyle.text }]}>{tier}</Text>
+                    <LinearGradient
+                        colors={tierConfig.gradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.tierBadge}
+                    >
+                        <Text style={styles.tierEmoji}>{tierConfig.emoji}</Text>
+                        <Text style={styles.tierText}>{tier}</Text>
+                    </LinearGradient>
+
+                    {/* XP Progress */}
+                    <View style={styles.xpContainer}>
+                        <View style={styles.xpBar}>
+                            <LinearGradient
+                                colors={tierConfig.gradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={[styles.xpFill, { width: `${xpProgress * 100}%` }]}
+                            />
+                        </View>
+                        <Text style={styles.xpText}>
+                            {(profile.current_xp || 0) % 200} / 200 XP
+                        </Text>
                     </View>
 
                     {/* Actions */}
@@ -152,13 +220,18 @@ export default function UserProfileScreen() {
                         <View style={styles.actions}>
                             {isFriend ? (
                                 <Pressable style={styles.messageBtn} onPress={handleMessage}>
-                                    <Ionicons name="chatbubble-outline" size={18} color={colors.text.inverse} />
-                                    <Text style={styles.messageBtnText}>Mensagem</Text>
+                                    <LinearGradient
+                                        colors={[COLORS.accent.primary, COLORS.accent.dark]}
+                                        style={styles.actionGradient}
+                                    >
+                                        <Ionicons name="chatbubble" size={18} color="#FFF" />
+                                        <Text style={styles.actionBtnText}>Mensagem</Text>
+                                    </LinearGradient>
                                 </Pressable>
                             ) : hasPending ? (
                                 <View style={styles.pendingBtn}>
-                                    <Ionicons name="time-outline" size={18} color={colors.text.secondary} />
-                                    <Text style={styles.pendingBtnText}>Pendente</Text>
+                                    <Ionicons name="time-outline" size={18} color={COLORS.text.secondary} />
+                                    <Text style={styles.pendingBtnText}>Pedido Pendente</Text>
                                 </View>
                             ) : (
                                 <Pressable
@@ -166,52 +239,110 @@ export default function UserProfileScreen() {
                                     onPress={handleAddFriend}
                                     disabled={sending}
                                 >
-                                    {sending ? (
-                                        <ActivityIndicator size="small" color={colors.text.inverse} />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="person-add" size={18} color={colors.text.inverse} />
-                                            <Text style={styles.addBtnText}>Adicionar</Text>
-                                        </>
-                                    )}
+                                    <LinearGradient
+                                        colors={['#10B981', '#059669']}
+                                        style={styles.actionGradient}
+                                    >
+                                        {sending ? (
+                                            <ActivityIndicator size="small" color="#FFF" />
+                                        ) : (
+                                            <>
+                                                <Ionicons name="person-add" size={18} color="#FFF" />
+                                                <Text style={styles.actionBtnText}>Adicionar</Text>
+                                            </>
+                                        )}
+                                    </LinearGradient>
                                 </Pressable>
                             )}
                         </View>
                     )}
                 </View>
 
-                {/* Stats */}
+                {/* Stats Grid */}
                 <View style={styles.statsGrid}>
-                    <View style={styles.statBox}>
-                        <Text style={styles.statValue}>{level}</Text>
-                        <Text style={styles.statLabel}>Nível</Text>
-                    </View>
-                    <View style={styles.statBox}>
+                    <View style={styles.statCard}>
+                        <LinearGradient
+                            colors={['#8B5CF6', '#6D28D9']}
+                            style={styles.statIcon}
+                        >
+                            <Ionicons name="flash" size={20} color="#FFF" />
+                        </LinearGradient>
                         <Text style={styles.statValue}>{(profile.current_xp || 0).toLocaleString()}</Text>
-                        <Text style={styles.statLabel}>XP</Text>
+                        <Text style={styles.statLabel}>XP Total</Text>
                     </View>
-                    <View style={styles.statBox}>
+                    <View style={styles.statCard}>
+                        <LinearGradient
+                            colors={['#F59E0B', '#D97706']}
+                            style={styles.statIcon}
+                        >
+                            <Ionicons name="flame" size={20} color="#FFF" />
+                        </LinearGradient>
                         <Text style={styles.statValue}>{profile.current_streak || 0}</Text>
-                        <Text style={styles.statLabel}>Streak 🔥</Text>
+                        <Text style={styles.statLabel}>Streak</Text>
+                    </View>
+                    <View style={styles.statCard}>
+                        <LinearGradient
+                            colors={['#10B981', '#059669']}
+                            style={styles.statIcon}
+                        >
+                            <Ionicons name="trophy" size={20} color="#FFF" />
+                        </LinearGradient>
+                        <Text style={styles.statValue}>{badges.length}</Text>
+                        <Text style={styles.statLabel}>Badges</Text>
                     </View>
                 </View>
 
-                {/* Badges placeholder */}
+                {/* Badges Section */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Badges</Text>
-                    <View style={styles.badgesPlaceholder}>
-                        <Text style={styles.placeholderText}>Em breve...</Text>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>🏆 Conquistas</Text>
+                        <Text style={styles.sectionCount}>{badges.length}</Text>
                     </View>
+
+                    {badges.length > 0 ? (
+                        <View style={styles.badgesGrid}>
+                            {badges.map((ub) => (
+                                <View key={ub.id} style={styles.badgeCard}>
+                                    <Text style={styles.badgeEmoji}>
+                                        {ub.badge?.icon || '🏅'}
+                                    </Text>
+                                    <Text style={styles.badgeName} numberOfLines={1}>
+                                        {ub.badge?.name || 'Badge'}
+                                    </Text>
+                                    <Text style={styles.badgeDate}>
+                                        {new Date(ub.unlocked_at).toLocaleDateString('pt-PT', {
+                                            day: '2-digit',
+                                            month: 'short',
+                                        })}
+                                    </Text>
+                                </View>
+                            ))}
+                        </View>
+                    ) : (
+                        <View style={styles.emptyBadges}>
+                            <Ionicons name="ribbon-outline" size={48} color={COLORS.text.tertiary} />
+                            <Text style={styles.emptyText}>
+                                {isMe ? 'Ainda não tens badges' : 'Este utilizador ainda não tem badges'}
+                            </Text>
+                        </View>
+                    )}
                 </View>
+
+                {/* Bottom Spacer */}
+                <View style={{ height: 40 }} />
             </ScrollView>
         </SafeAreaView>
     );
 }
 
+// ============================================
+// STYLES
+// ============================================
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
@@ -222,33 +353,30 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        gap: SPACING.lg,
     },
     errorText: {
-        fontSize: typography.size.md,
-        color: colors.text.primary,
-        marginBottom: spacing.lg,
+        fontSize: TYPOGRAPHY.size.lg,
+        color: COLORS.text.primary,
     },
     backBtn: {
-        backgroundColor: colors.surface,
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
+        backgroundColor: COLORS.surface,
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.lg,
     },
     backBtnText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
     },
 
     // Header
-    header: {
+    headerGradient: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.lg,
     },
     backButton: {
         width: 40,
@@ -256,170 +384,272 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.2)',
     },
     headerTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
 
     scrollContent: {
-        paddingHorizontal: spacing.xl,
-        paddingTop: spacing.xl,
-        paddingBottom: 120,
+        paddingHorizontal: SPACING.lg,
+        paddingTop: SPACING.lg,
     },
 
-    // Profile Card
-    profileCard: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: spacing['2xl'],
+    // Hero Card
+    heroCard: {
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING['2xl'],
         alignItems: 'center',
-        marginBottom: spacing.lg,
-        ...shadows.md,
+        marginBottom: SPACING.lg,
+        ...SHADOWS.lg,
     },
-    avatar: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        marginBottom: spacing.lg,
+    avatarContainer: {
+        position: 'relative',
+        marginBottom: SPACING.lg,
     },
-    avatarFallback: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
+    avatarRing: {
+        width: 110,
+        height: 110,
+        borderRadius: 55,
+        padding: 4,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
+    },
+    avatar: {
+        width: 102,
+        height: 102,
+        borderRadius: 51,
+        borderWidth: 3,
+        borderColor: COLORS.background,
+    },
+    avatarFallback: {
+        width: 102,
+        height: 102,
+        borderRadius: 51,
+        backgroundColor: COLORS.surfaceElevated,
+        borderWidth: 3,
+        borderColor: COLORS.background,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     avatarInitial: {
-        fontSize: typography.size['3xl'],
-        fontWeight: typography.weight.bold,
+        fontSize: 40,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    levelBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: COLORS.accent.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 3,
+        borderColor: COLORS.surface,
+    },
+    levelText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
     name: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     username: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
     tierBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.xs,
-        borderRadius: borderRadius.full,
-        marginTop: spacing.md,
-        gap: spacing.xs,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.full,
+        marginTop: SPACING.md,
+        gap: SPACING.xs,
     },
     tierEmoji: {
-        fontSize: 14,
+        fontSize: 16,
     },
     tierText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+    xpContainer: {
+        width: '100%',
+        marginTop: SPACING.lg,
+        alignItems: 'center',
+    },
+    xpBar: {
+        width: '100%',
+        height: 6,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    xpFill: {
+        height: '100%',
+        borderRadius: 3,
+    },
+    xpText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginTop: SPACING.xs,
     },
 
     // Actions
     actions: {
         flexDirection: 'row',
-        marginTop: spacing.xl,
-        gap: spacing.md,
+        marginTop: SPACING.xl,
+        gap: SPACING.md,
     },
     messageBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        gap: spacing.sm,
-        ...shadows.sm,
-    },
-    messageBtnText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+        borderRadius: RADIUS.lg,
+        overflow: 'hidden',
+        ...SHADOWS.md,
     },
     addBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.accent.primary,
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        gap: spacing.sm,
-        ...shadows.sm,
+        borderRadius: RADIUS.lg,
+        overflow: 'hidden',
+        ...SHADOWS.md,
     },
     addBtnDisabled: {
         opacity: 0.7,
     },
-    addBtnText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+    actionGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+    },
+    actionBtnText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
     },
     pendingBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surfaceSubtle,
-        paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.md,
-        borderRadius: borderRadius.lg,
-        gap: spacing.sm,
+        backgroundColor: COLORS.surfaceMuted,
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.lg,
+        gap: SPACING.sm,
     },
     pendingBtnText: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
     },
 
     // Stats
     statsGrid: {
         flexDirection: 'row',
-        gap: spacing.md,
-        marginBottom: spacing.xl,
+        gap: SPACING.md,
+        marginBottom: SPACING.xl,
     },
-    statBox: {
+    statCard: {
         flex: 1,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.lg,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.lg,
         alignItems: 'center',
-        ...shadows.sm,
+        ...SHADOWS.sm,
+    },
+    statIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: SPACING.sm,
     },
     statValue: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
     statLabel: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
 
     // Section
     section: {
-        marginBottom: spacing.xl,
+        marginBottom: SPACING.xl,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: SPACING.md,
     },
     sectionTitle: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.md,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
     },
-    badgesPlaceholder: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.xl,
+    sectionCount: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.accent.primary,
+        backgroundColor: COLORS.accent.subtle,
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
+    },
+
+    // Badges Grid
+    badgesGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: SPACING.md,
+    },
+    badgeCard: {
+        width: '30%',
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
         alignItems: 'center',
-        ...shadows.sm,
+        ...SHADOWS.sm,
     },
-    placeholderText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+    badgeEmoji: {
+        fontSize: 32,
+        marginBottom: SPACING.xs,
+    },
+    badgeName: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
+        textAlign: 'center',
+    },
+    badgeDate: {
+        fontSize: 10,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
+    },
+    emptyBadges: {
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING['2xl'],
+        alignItems: 'center',
+        gap: SPACING.md,
+        ...SHADOWS.sm,
+    },
+    emptyText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        textAlign: 'center',
     },
 });

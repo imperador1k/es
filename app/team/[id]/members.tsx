@@ -62,7 +62,7 @@ const ROLE_ICONS: Record<TeamRole, string> = {
 // ============================================
 
 export default function TeamMembersScreen() {
-    const { teamId } = useLocalSearchParams<{ teamId: string }>();
+    const { id: teamId } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
 
     const [members, setMembers] = useState<TeamMemberWithProfile[]>([]);

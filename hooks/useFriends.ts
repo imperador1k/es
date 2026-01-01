@@ -207,30 +207,99 @@ export function useFriends() {
 }
 
 /**
- * Hook para procurar utilizadores
+ * Hook para procurar utilizadores com dados de educação
  */
 export function useSearchUsers() {
   const { user } = useAuthContext();
-  const [results, setResults] = useState<Profile[]>([]);
+  const [results, setResults] = useState<(Profile & { 
+    education?: {
+      school_name?: string;
+      university_name?: string;
+      degree_name?: string;
+      level?: string;
+      year?: number;
+    } | null 
+  })[]>([]);
   const [searching, setSearching] = useState(false);
+  const [filters, setFilters] = useState<{
+    schoolId?: string;
+    universityId?: string;
+    level?: string;
+  }>({});
 
-  const search = async (query: string) => {
-    if (!query.trim() || query.length < 2) {
-      setResults([]);
-      return;
+  const search = async (query: string, customFilters?: typeof filters) => {
+    const activeFilters = customFilters || filters;
+    
+    // Allow empty query if we have filters
+    if (!query.trim() && !activeFilters.schoolId && !activeFilters.universityId && !activeFilters.level) {
+      if (query.length < 2) {
+        setResults([]);
+        return;
+      }
     }
 
     try {
       setSearching(true);
-      const { data, error } = await supabase
+      
+      // Build query with education data
+      let queryBuilder = supabase
         .from('profiles')
-        .select('*')
+        .select(`
+          *,
+          user_education(
+            level,
+            year,
+            uni_year,
+            school:schools(id, name),
+            university:universities(id, name),
+            degree:degrees(id, name)
+          )
+        `)
         .neq('id', user?.id || '')
-        .or(`username.ilike.%${query}%,full_name.ilike.%${query}%`)
-        .limit(20);
+        .limit(30);
+
+      // Text search
+      if (query.trim().length >= 2) {
+        queryBuilder = queryBuilder.or(`username.ilike.%${query}%,full_name.ilike.%${query}%`);
+      }
+
+      const { data, error } = await queryBuilder;
 
       if (error) throw error;
-      setResults((data as Profile[]) || []);
+
+      // Map and filter results
+      let mapped = (data || []).map((p: any) => {
+        const edu = p.user_education?.[0];
+        return {
+          ...p,
+          education: edu ? {
+            school_name: edu.school?.name,
+            university_name: edu.university?.name,
+            degree_name: edu.degree?.name,
+            level: edu.level,
+            year: edu.year || edu.uni_year,
+          } : null
+        };
+      });
+
+      // Apply education filters client-side (for flexibility)
+      if (activeFilters.schoolId) {
+        mapped = mapped.filter(p => 
+          p.user_education?.[0]?.school?.id === activeFilters.schoolId
+        );
+      }
+      if (activeFilters.universityId) {
+        mapped = mapped.filter(p => 
+          p.user_education?.[0]?.university?.id === activeFilters.universityId
+        );
+      }
+      if (activeFilters.level) {
+        mapped = mapped.filter(p => 
+          p.user_education?.[0]?.level === activeFilters.level
+        );
+      }
+
+      setResults(mapped);
     } catch (err) {
       console.error('Erro na pesquisa:', err);
       setResults([]);
@@ -241,5 +310,10 @@ export function useSearchUsers() {
 
   const clear = () => setResults([]);
 
-  return { results, searching, search, clear };
+  const updateFilters = (newFilters: typeof filters) => {
+    setFilters(newFilters);
+  };
+
+  return { results, searching, search, clear, filters, updateFilters };
 }
+

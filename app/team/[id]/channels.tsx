@@ -21,10 +21,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS as borderRadius, SHADOWS as shadows, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Channel, TeamRole } from '@/types/database.types';
 import { canUser } from '@/utils/permissions';
+
+// Compatibility layer
+const colors = { ...COLORS, divider: COLORS.surfaceElevated, surfaceSubtle: COLORS.surfaceMuted };
 
 // ============================================
 // TYPES
@@ -40,7 +43,7 @@ interface ChannelTypeOption {
 }
 
 const CHANNEL_TYPES: ChannelTypeOption[] = [
-    { value: 'text', label: 'Chat', icon: 'chatbubble-outline', description: 'Conversa geral' },
+    { value: 'chat', label: 'Chat', icon: 'chatbubble-outline', description: 'Conversa geral' },
     { value: 'announcements', label: 'Anúncios', icon: 'megaphone-outline', description: 'Apenas staff pode enviar' },
     { value: 'resources', label: 'Recursos', icon: 'folder-outline', description: 'Partilha de materiais' },
 ];
@@ -65,7 +68,7 @@ export default function TeamChannelsScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
     const [channelName, setChannelName] = useState('');
-    const [channelType, setChannelType] = useState<ChannelType>('text');
+    const [channelType, setChannelType] = useState<ChannelType>('chat');
     const [saving, setSaving] = useState(false);
 
     // Permissões
@@ -137,7 +140,7 @@ export default function TeamChannelsScreen() {
     const openCreateModal = () => {
         setEditingChannel(null);
         setChannelName('');
-        setChannelType('text');
+        setChannelType('chat');
         setModalVisible(true);
     };
 

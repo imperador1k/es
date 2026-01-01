@@ -283,7 +283,7 @@ function EmptyMessages({ channelName }: { channelName: string }) {
     }, []);
 
     return (
-        <Animated.View style={[styles.emptyContainer, { transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.emptyContainer, { transform: [{ scale: scaleAnim }, { scaleY: -1 }] }]}>
             <View style={styles.emptyIconWrap}>
                 <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyIconGradient}>
                     <Text style={styles.emptyEmoji}>💬</Text>
@@ -573,7 +573,7 @@ const styles = StyleSheet.create({
     fileHintMe: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
     // Empty
-    emptyContainer: { alignItems: 'center', paddingVertical: 80, transform: [{ scaleY: -1 }] },
+    emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 250 },
     emptyIconWrap: { position: 'relative', marginBottom: SPACING.xl },
     emptyIconGradient: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
     emptyEmoji: { fontSize: 36 },

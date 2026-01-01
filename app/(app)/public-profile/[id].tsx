@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
     actionBtn: { borderRadius: RADIUS.xl, overflow: 'hidden', ...SHADOWS.md },
     actionBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md },
     actionBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
-    pendingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceElevated, paddingVertical: SPACING.md, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.surfaceMuted },
+    pendingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceElevated, paddingVertical: SPACING.md, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
     pendingBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.tertiary },
     requestBtns: { flexDirection: 'row', gap: SPACING.sm },
     acceptBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, backgroundColor: '#10B981', paddingVertical: SPACING.md, borderRadius: RADIUS.xl },

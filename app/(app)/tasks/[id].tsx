@@ -5,7 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS as borderRadius, SHADOWS as shadows, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
@@ -25,6 +25,15 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// Compatibility layer for old theme colors
+const colors = {
+    ...COLORS,
+    divider: COLORS.surfaceElevated,
+    success: { primary: '#10B981', light: '#D1FAE5' },
+    warning: { primary: '#F59E0B', light: '#FEF3C7' },
+    danger: { primary: '#EF4444', light: '#FEE2E2' },
+};
 
 // ============================================
 // TYPES

@@ -32,7 +32,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // ============================================
 
 function UserCard({ user, isFriend, sending, onAdd, onMessage, index }: {
-    user: Profile;
+    user: Profile & {
+        education?: {
+            school_name?: string;
+            university_name?: string;
+            degree_name?: string;
+            level?: string;
+            year?: number;
+        } | null
+    };
     isFriend: boolean;
     sending: boolean;
     onAdd: () => void;
@@ -57,6 +65,10 @@ function UserCard({ user, isFriend, sending, onAdd, onMessage, index }: {
     const handlePressOut = () => {
         Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
     };
+
+    // Education info
+    const eduLabel = user.education?.university_name || user.education?.school_name;
+    const courseLabel = user.education?.degree_name || (user.education?.year ? `${user.education.year}º Ano` : null);
 
     return (
         <Animated.View style={[{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
@@ -91,6 +103,20 @@ function UserCard({ user, isFriend, sending, onAdd, onMessage, index }: {
                         )}
                     </View>
                     <Text style={styles.userUsername}>@{user.username || 'utilizador'}</Text>
+
+                    {/* Education Info */}
+                    {eduLabel && (
+                        <View style={styles.educationRow}>
+                            <Ionicons
+                                name={user.education?.university_name ? "school" : "business"}
+                                size={12}
+                                color={COLORS.text.tertiary}
+                            />
+                            <Text style={styles.educationText} numberOfLines={1}>
+                                {eduLabel}{courseLabel ? ` • ${courseLabel}` : ''}
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
                 {/* Action Button */}
@@ -303,6 +329,8 @@ const styles = StyleSheet.create({
     userNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
     userName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary, flex: 1 },
     userUsername: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
+    educationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+    educationText: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, flex: 1 },
     friendBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#10B98120', paddingHorizontal: 8, paddingVertical: 2, borderRadius: RADIUS.sm },
     friendBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.bold, color: '#10B981' },
 

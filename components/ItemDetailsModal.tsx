@@ -1,19 +1,23 @@
 /**
- * Item Details Modal
- * Modal adaptativo baseado no tipo de item do calendário
+ * 📋 Item Details Modal - PREMIUM REDESIGN
+ * Beautiful adaptive modal for calendar items
  */
 
-import { AgendaItem, formatTimeRange, getItemColor, getItemTypeIcon } from '@/hooks/useCalendarItems';
+import { AgendaItem, formatTimeRange, getItemColor } from '@/hooks/useCalendarItems';
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Animated,
     Modal,
     Pressable,
+    ScrollView,
     StyleSheet,
     Text,
     View,
@@ -30,23 +34,34 @@ interface ItemDetailsModalProps {
     onUpdate: () => void;
 }
 
+// Type colors and gradients
+const TYPE_CONFIG: Record<string, { gradient: [string, string]; icon: string; emoji: string }> = {
+    class: { gradient: ['#6366F1', '#8B5CF6'], icon: 'school', emoji: '📚' },
+    event: { gradient: ['#F59E0B', '#D97706'], icon: 'calendar', emoji: '📅' },
+    task: { gradient: ['#10B981', '#059669'], icon: 'checkbox', emoji: '✅' },
+    todo: { gradient: ['#EC4899', '#DB2777'], icon: 'list', emoji: '📝' },
+};
+
 // ============================================
 // COMPONENT
 // ============================================
 
-export function ItemDetailsModal({
-    visible,
-    item,
-    onClose,
-    onUpdate,
-}: ItemDetailsModalProps) {
+export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetailsModalProps) {
     const { user } = useAuthContext();
     const [loading, setLoading] = useState(false);
+    const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+    // Animate on open
+    useState(() => {
+        if (visible) {
+            Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+        }
+    });
 
     if (!item) return null;
 
     const itemColor = item.color || getItemColor(item.item_type, item.category);
-    const iconName = getItemTypeIcon(item.item_type, item.category) as keyof typeof Ionicons.glyphMap;
+    const config = TYPE_CONFIG[item.item_type] || TYPE_CONFIG.event;
     const timeRange = formatTimeRange(item.start_at, item.end_at);
 
     // ============================================
@@ -56,33 +71,20 @@ export function ItemDetailsModal({
     const handleCompleteTask = async () => {
         if (!user?.id) return;
         setLoading(true);
-
         try {
-            // Determine which table to update based on item source
             const isPersonalTodo = item.item_type === 'todo';
             const table = isPersonalTodo ? 'personal_todos' : 'tasks';
-
-            // Extract real ID (remove virtual prefix if present)
             const realId = item.id.includes('-') ? item.id.split('-').pop() : item.id;
 
-            const { error } = await supabase
-                .from(table)
-                .update({ is_completed: !item.is_completed })
-                .eq('id', realId);
-
+            const { error } = await supabase.from(table).update({ is_completed: !item.is_completed }).eq('id', realId);
             if (error) throw error;
 
-            Alert.alert(
-                item.is_completed ? '✅ Reaberta!' : '🎉 Concluída!',
-                item.is_completed ? 'Tarefa reaberta com sucesso.' : 'Parabéns! Tarefa concluída.',
-                [{ text: 'OK' }]
-            );
-
+            Alert.alert(item.is_completed ? '✅ Reaberta!' : '🎉 Concluída!', item.is_completed ? 'Tarefa reaberta.' : 'Parabéns!');
             onUpdate();
             onClose();
         } catch (err) {
-            console.error('❌ Error updating task:', err);
-            Alert.alert('Erro', 'Não foi possível atualizar a tarefa.');
+            console.error('❌ Error:', err);
+            Alert.alert('Erro', 'Não foi possível atualizar.');
         } finally {
             setLoading(false);
         }
@@ -90,41 +92,45 @@ export function ItemDetailsModal({
 
     const handleDeleteEvent = async () => {
         if (!user?.id) return;
-
-        Alert.alert(
-            'Apagar Evento',
-            'Tens a certeza que queres apagar este evento?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Apagar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        setLoading(true);
-                        try {
-                            const realId = item.id.includes('-') ? item.id.split('-').pop() : item.id;
-
-                            const { error } = await supabase
-                                .from('events')
-                                .delete()
-                                .eq('id', realId);
-
-                            if (error) throw error;
-
-                            Alert.alert('✅ Apagado!', 'Evento removido com sucesso.');
-                            onUpdate();
-                            onClose();
-                        } catch (err) {
-                            console.error('❌ Error deleting event:', err);
-                            Alert.alert('Erro', 'Não foi possível apagar o evento.');
-                        } finally {
-                            setLoading(false);
-                        }
-                    },
+        Alert.alert('Apagar Evento', 'Tens a certeza?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Apagar',
+                style: 'destructive',
+                onPress: async () => {
+                    setLoading(true);
+                    try {
+                        const realId = item.id.includes('-') ? item.id.split('-').pop() : item.id;
+                        const { error } = await supabase.from('events').delete().eq('id', realId);
+                        if (error) throw error;
+                        Alert.alert('✅ Apagado!', 'Evento removido.');
+                        onUpdate();
+                        onClose();
+                    } catch (err) {
+                        Alert.alert('Erro', 'Não foi possível apagar.');
+                    } finally {
+                        setLoading(false);
+                    }
                 },
-            ]
-        );
+            },
+        ]);
     };
+
+    // ============================================
+    // INFO CARD COMPONENT
+    // ============================================
+
+    const InfoCard = ({ icon, label, value, color }: { icon: string; label: string; value: string; color?: string }) => (
+        <View style={styles.infoCard}>
+            <View style={[styles.infoIconWrap, { backgroundColor: `${color || '#6366F1'}20` }]}>
+                <Ionicons name={icon as any} size={18} color={color || '#6366F1'} />
+            </View>
+            <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>{label}</Text>
+                <Text style={styles.infoValue}>{value}</Text>
+            </View>
+        </View>
+    );
 
     // ============================================
     // RENDER CONTENT BY TYPE
@@ -136,40 +142,24 @@ export function ItemDetailsModal({
             case 'todo':
                 return (
                     <>
-                        {/* Description */}
                         {item.description && (
-                            <View style={styles.section}>
-                                <Text style={styles.sectionLabel}>Descrição</Text>
-                                <Text style={styles.description}>{item.description}</Text>
+                            <View style={styles.descriptionCard}>
+                                <Text style={styles.descriptionText}>{item.description}</Text>
                             </View>
                         )}
 
-                        {/* Due Date */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Prazo</Text>
-                            <View style={styles.infoRow}>
-                                <Ionicons name="calendar-outline" size={16} color={colors.text.secondary} />
-                                <Text style={styles.infoText}>
-                                    {new Date(item.start_at).toLocaleDateString('pt-PT', {
-                                        weekday: 'long',
-                                        day: 'numeric',
-                                        month: 'long',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                    })}
-                                </Text>
-                            </View>
-                        </View>
+                        <InfoCard
+                            icon="calendar"
+                            label="Prazo"
+                            value={new Date(item.start_at).toLocaleDateString('pt-PT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            color="#6366F1"
+                        />
 
-                        {/* Status */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Estado</Text>
+                        {/* Status Badge */}
+                        <View style={styles.statusSection}>
+                            <Text style={styles.statusLabel}>Estado</Text>
                             <View style={[styles.statusBadge, item.is_completed && styles.statusCompleted]}>
-                                <Ionicons
-                                    name={item.is_completed ? 'checkmark-circle' : 'ellipse-outline'}
-                                    size={16}
-                                    color={item.is_completed ? '#FFF' : colors.text.secondary}
-                                />
+                                <Ionicons name={item.is_completed ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={item.is_completed ? '#FFF' : COLORS.text.secondary} />
                                 <Text style={[styles.statusText, item.is_completed && styles.statusTextCompleted]}>
                                     {item.is_completed ? 'Concluída' : 'Pendente'}
                                 </Text>
@@ -177,27 +167,14 @@ export function ItemDetailsModal({
                         </View>
 
                         {/* Action Button */}
-                        <Pressable
-                            style={[
-                                styles.actionButton,
-                                { backgroundColor: item.is_completed ? colors.warning.primary : colors.success.primary },
-                            ]}
-                            onPress={handleCompleteTask}
-                            disabled={loading}
-                        >
+                        <Pressable style={styles.primaryBtn} onPress={handleCompleteTask} disabled={loading}>
                             {loading ? (
                                 <ActivityIndicator color="#FFF" />
                             ) : (
-                                <>
-                                    <Ionicons
-                                        name={item.is_completed ? 'refresh-outline' : 'checkmark-circle-outline'}
-                                        size={22}
-                                        color="#FFF"
-                                    />
-                                    <Text style={styles.actionButtonText}>
-                                        {item.is_completed ? 'Reabrir Tarefa' : 'Marcar como Concluída'}
-                                    </Text>
-                                </>
+                                <LinearGradient colors={item.is_completed ? ['#F59E0B', '#D97706'] : ['#10B981', '#059669']} style={styles.primaryBtnGradient}>
+                                    <Ionicons name={item.is_completed ? 'refresh' : 'checkmark-circle'} size={22} color="#FFF" />
+                                    <Text style={styles.primaryBtnText}>{item.is_completed ? 'Reabrir Tarefa' : 'Marcar Concluída'}</Text>
+                                </LinearGradient>
                             )}
                         </Pressable>
                     </>
@@ -206,88 +183,31 @@ export function ItemDetailsModal({
             case 'event':
                 return (
                     <>
-                        {/* Time */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Horário</Text>
-                            <View style={styles.infoRow}>
-                                <Ionicons name="time-outline" size={16} color={colors.text.secondary} />
-                                <Text style={styles.infoText}>{timeRange}</Text>
-                            </View>
-                        </View>
-
-                        {/* Location */}
-                        {item.room && (
-                            <View style={styles.section}>
-                                <Text style={styles.sectionLabel}>Local</Text>
-                                <View style={styles.infoRow}>
-                                    <Ionicons name="location-outline" size={16} color={colors.text.secondary} />
-                                    <Text style={styles.infoText}>{item.room}</Text>
-                                </View>
-                            </View>
-                        )}
-
-                        {/* Description */}
+                        <InfoCard icon="time" label="Horário" value={timeRange} color="#F59E0B" />
+                        {item.room && <InfoCard icon="location" label="Local" value={item.room} color="#EF4444" />}
                         {item.description && (
-                            <View style={styles.section}>
-                                <Text style={styles.sectionLabel}>Descrição</Text>
-                                <Text style={styles.description}>{item.description}</Text>
+                            <View style={styles.descriptionCard}>
+                                <Text style={styles.descriptionText}>{item.description}</Text>
                             </View>
                         )}
 
-                        {/* Action Buttons */}
-                        <View style={styles.actionRow}>
-                            <Pressable
-                                style={[styles.actionButtonSmall, styles.deleteButton]}
-                                onPress={handleDeleteEvent}
-                                disabled={loading}
-                            >
-                                <Ionicons name="trash-outline" size={18} color="#FFF" />
-                                <Text style={styles.actionButtonSmallText}>Apagar</Text>
-                            </Pressable>
-                        </View>
+                        <Pressable style={styles.deleteBtn} onPress={handleDeleteEvent} disabled={loading}>
+                            <Ionicons name="trash" size={18} color="#FFF" />
+                            <Text style={styles.deleteBtnText}>Apagar Evento</Text>
+                        </Pressable>
                     </>
                 );
 
             case 'class':
                 return (
                     <>
-                        {/* Time */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Horário</Text>
-                            <View style={styles.infoRow}>
-                                <Ionicons name="time-outline" size={16} color={colors.text.secondary} />
-                                <Text style={styles.infoText}>{timeRange}</Text>
-                            </View>
-                        </View>
+                        <InfoCard icon="time" label="Horário" value={timeRange} color="#6366F1" />
+                        {item.room && <InfoCard icon="location" label="Sala" value={item.room} color="#10B981" />}
+                        {item.subject_name && <InfoCard icon="book" label="Disciplina" value={item.subject_name} color="#8B5CF6" />}
 
-                        {/* Room */}
-                        {item.room && (
-                            <View style={styles.section}>
-                                <Text style={styles.sectionLabel}>Sala</Text>
-                                <View style={styles.infoRow}>
-                                    <Ionicons name="location-outline" size={16} color={colors.text.secondary} />
-                                    <Text style={styles.infoText}>{item.room}</Text>
-                                </View>
-                            </View>
-                        )}
-
-                        {/* Subject */}
-                        {item.subject_name && (
-                            <View style={styles.section}>
-                                <Text style={styles.sectionLabel}>Disciplina</Text>
-                                <View style={styles.infoRow}>
-                                    <Ionicons name="book-outline" size={16} color={colors.text.secondary} />
-                                    <Text style={styles.infoText}>{item.subject_name}</Text>
-                                </View>
-                            </View>
-                        )}
-
-                        {/* Info Badge */}
                         <View style={styles.infoBadge}>
-                            <Ionicons name="information-circle-outline" size={18} color={colors.accent.primary} />
-                            <Text style={styles.infoBadgeText}>
-                                Esta é uma aula recorrente do teu horário escolar.
-                            </Text>
+                            <Ionicons name="information-circle" size={18} color="#6366F1" />
+                            <Text style={styles.infoBadgeText}>Aula recorrente do teu horário escolar.</Text>
                         </View>
                     </>
                 );
@@ -297,43 +217,38 @@ export function ItemDetailsModal({
         }
     };
 
-    // ============================================
-    // RENDER
-    // ============================================
-
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            transparent
-            onRequestClose={onClose}
-        >
-            <Pressable style={styles.backdrop} onPress={onClose} />
-            <View style={styles.container}>
+        <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+            <Pressable style={styles.backdrop} onPress={onClose}>
+                <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+            </Pressable>
+
+            <Animated.View style={[styles.container, { transform: [{ scale: scaleAnim }] }]}>
                 {/* Handle */}
                 <View style={styles.handle} />
 
-                {/* Header */}
-                <View style={styles.header}>
-                    <View style={[styles.iconContainer, { backgroundColor: `${itemColor}20` }]}>
-                        <Ionicons name={iconName} size={24} color={itemColor} />
-                    </View>
+                {/* Header with Gradient */}
+                <LinearGradient colors={config.gradient} style={styles.header}>
                     <View style={styles.headerContent}>
-                        <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-                        <View style={[styles.typeBadge, { backgroundColor: itemColor }]}>
-                            <Text style={styles.typeBadgeText}>{getItemTypeLabel(item.item_type)}</Text>
+                        <Text style={styles.headerEmoji}>{config.emoji}</Text>
+                        <View style={styles.headerText}>
+                            <Text style={styles.headerTitle} numberOfLines={2}>{item.title}</Text>
+                            <View style={styles.typeBadge}>
+                                <Text style={styles.typeBadgeText}>{getItemTypeLabel(item.item_type)}</Text>
+                            </View>
                         </View>
                     </View>
-                    <Pressable onPress={onClose} style={styles.closeButton}>
-                        <Ionicons name="close" size={24} color={colors.text.secondary} />
+                    <Pressable style={styles.closeBtn} onPress={onClose}>
+                        <Ionicons name="close" size={22} color="#FFF" />
                     </Pressable>
-                </View>
+                </LinearGradient>
 
                 {/* Content */}
-                <View style={styles.content}>
+                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     {renderContent()}
-                </View>
-            </View>
+                    <View style={{ height: 40 }} />
+                </ScrollView>
+            </Animated.View>
         </Modal>
     );
 }
@@ -353,177 +268,56 @@ function getItemTypeLabel(itemType: string): string {
 }
 
 // ============================================
-// STYLES
+// STYLES - Premium Design
 // ============================================
 
 const styles = StyleSheet.create({
-    backdrop: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    container: {
-        backgroundColor: colors.surface,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        paddingBottom: spacing['3xl'],
-        maxHeight: '80%',
-    },
-    handle: {
-        width: 40,
-        height: 4,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: 2,
-        alignSelf: 'center',
-        marginTop: spacing.md,
-        marginBottom: spacing.lg,
-    },
+    backdrop: { flex: 1, justifyContent: 'flex-end' },
+    container: { backgroundColor: COLORS.background, borderTopLeftRadius: RADIUS['2xl'], borderTopRightRadius: RADIUS['2xl'], maxHeight: '85%', ...SHADOWS.lg },
+    handle: { width: 40, height: 4, backgroundColor: COLORS.surfaceElevated, borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        paddingHorizontal: spacing.xl,
-        marginBottom: spacing.lg,
-    },
-    iconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: spacing.md,
-    },
-    headerContent: {
-        flex: 1,
-    },
-    title: {
-        fontSize: typography.size.xl,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
-    },
-    typeBadge: {
-        alignSelf: 'flex-start',
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 3,
-        borderRadius: borderRadius.full,
-    },
-    typeBadgeText: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    closeButton: {
-        width: 36,
-        height: 36,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    header: { flexDirection: 'row', alignItems: 'flex-start', padding: SPACING.lg, marginTop: SPACING.sm, borderRadius: RADIUS.xl, marginHorizontal: SPACING.md },
+    headerContent: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md },
+    headerEmoji: { fontSize: 36 },
+    headerText: { flex: 1 },
+    headerTitle: { fontSize: TYPOGRAPHY.size.xl, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF', marginBottom: SPACING.xs },
+    typeBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: RADIUS.sm },
+    typeBadgeText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
 
     // Content
-    content: {
-        paddingHorizontal: spacing.xl,
-    },
-    section: {
-        marginBottom: spacing.lg,
-    },
-    sectionLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
-        marginBottom: spacing.xs,
-    },
-    description: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-        lineHeight: 22,
-    },
-    infoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-    },
-    infoText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-    },
+    content: { padding: SPACING.md },
+
+    // Info Cards
+    infoCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.sm },
+    infoIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    infoContent: { flex: 1, marginLeft: SPACING.md },
+    infoLabel: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
+    infoValue: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+
+    // Description
+    descriptionCard: { backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.sm },
+    descriptionText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary, lineHeight: 22 },
 
     // Status
-    statusBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        gap: spacing.xs,
-        backgroundColor: colors.surfaceSubtle,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
-    },
-    statusCompleted: {
-        backgroundColor: colors.success.primary,
-    },
-    statusText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    statusTextCompleted: {
-        color: '#FFF',
-    },
+    statusSection: { marginBottom: SPACING.md },
+    statusLabel: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, marginBottom: SPACING.xs },
+    statusBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: SPACING.xs, backgroundColor: COLORS.surfaceElevated, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full },
+    statusCompleted: { backgroundColor: '#10B981' },
+    statusText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.secondary },
+    statusTextCompleted: { color: '#FFF' },
 
-    // Action Buttons
-    actionButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        padding: spacing.lg,
-        borderRadius: borderRadius.xl,
-        marginTop: spacing.lg,
-    },
-    actionButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.bold,
-        color: '#FFF',
-    },
-    actionRow: {
-        flexDirection: 'row',
-        gap: spacing.md,
-        marginTop: spacing.lg,
-    },
-    actionButtonSmall: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.xs,
-        padding: spacing.md,
-        borderRadius: borderRadius.lg,
-    },
-    deleteButton: {
-        backgroundColor: '#EF4444',
-    },
-    actionButtonSmallText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
+    // Buttons
+    primaryBtn: { borderRadius: RADIUS.xl, overflow: 'hidden', marginTop: SPACING.md },
+    primaryBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md },
+    primaryBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: '#EF4444', paddingVertical: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.md },
+    deleteBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 
     // Info Badge
-    infoBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.accent.light,
-        padding: spacing.md,
-        borderRadius: borderRadius.lg,
-        marginTop: spacing.md,
-    },
-    infoBadgeText: {
-        flex: 1,
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
-    },
+    infoBadge: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: '#6366F120', padding: SPACING.md, borderRadius: RADIUS.lg, marginTop: SPACING.md },
+    infoBadgeText: { flex: 1, fontSize: TYPOGRAPHY.size.sm, color: '#6366F1' },
 });
 
 export default ItemDetailsModal;

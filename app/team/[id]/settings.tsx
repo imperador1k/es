@@ -22,11 +22,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS as borderRadius, SHADOWS as shadows, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { notifyTeamUpdated } from '@/services/teamNotifications';
 import { TeamRole } from '@/types/database.types';
+
+// Compatibility layer
+const colors = {
+    ...COLORS,
+    divider: COLORS.surfaceElevated,
+    surfaceSubtle: COLORS.surfaceMuted,
+    success: { primary: '#10B981' },
+    warning: { primary: '#F59E0B' },
+    danger: { primary: '#EF4444' },
+};
 
 // ============================================
 // TYPES

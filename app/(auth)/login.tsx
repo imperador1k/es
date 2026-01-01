@@ -1,107 +1,88 @@
+/**
+ * 🚀 PREMIUM LOGIN - TripGlide Style
+ * Consistent with app design: warm dark tones, elevated surfaces, organic radius
+ * Minimalist, Premium, Immersive
+ */
+
 import { useAuth } from '@/hooks/useAuth';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
-import { supabase } from '@/lib/supabase'; // Importação direta necessária para o OAuth customizado
-import { Ionicons } from '@expo/vector-icons';
-import { Link, useRouter } from 'expo-router';
-import { useState, useEffect } from 'react';
-import * as WebBrowser from 'expo-web-browser';
+import { supabase } from '@/lib/supabase';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { makeRedirectUri } from 'expo-auth-session';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Link, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
+    Dimensions,
     KeyboardAvoidingView,
     Platform,
     Pressable,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
     View,
-    Alert
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Necessário para o fluxo de browser funcionar corretamente no Android/iOS
 WebBrowser.maybeCompleteAuthSession();
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [localError, setLocalError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    
-    // Vamos usar o estado de loading local para o OAuth também
     const [isOAuthLoading, setIsOAuthLoading] = useState(false);
-    
+    const [focusedInput, setFocusedInput] = useState<string | null>(null);
+
     const { signIn, loading: authLoading } = useAuth();
     const router = useRouter();
-
     const loading = authLoading || isOAuthLoading;
 
-    // Função auxiliar para tirar o token do URL
+    // Animations
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(30)).current;
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+        ]).start();
+    }, []);
+
     const extractParamsFromUrl = (url: string) => {
         const params = new URLSearchParams(url.split('#')[1]);
-        return {
-            access_token: params.get('access_token'),
-            refresh_token: params.get('refresh_token'),
-        };
+        return { access_token: params.get('access_token'), refresh_token: params.get('refresh_token') };
     };
 
-    // Função "God Tier" para lidar com Google e Discord
     const performOAuth = async (provider: 'google' | 'discord') => {
         try {
             setLocalError('');
             setIsOAuthLoading(true);
-
-            // 1. Criar o URL de retorno (escolaa://auth/callback)
-            const redirectUrl = makeRedirectUri({
-                scheme: 'escolaa',
-                path: 'auth/callback',
-            });
-
-            console.log(`[OAuth] Iniciando login com ${provider}. Redirecionar para: ${redirectUrl}`);
-
-            // 2. Iniciar o fluxo com o Supabase
+            const redirectUrl = makeRedirectUri({ scheme: 'escolaa', path: 'auth/callback' });
             const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: provider,
-                options: {
-                    redirectTo: redirectUrl,
-                    skipBrowserRedirect: true,
-                },
+                provider,
+                options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
             });
-
             if (error) throw error;
-            if (!data?.url) throw new Error('O Supabase não retornou um URL de login.');
-
-            // 3. Abrir o Browser do Sistema e esperar que ele volte
-            const result = await WebBrowser.openAuthSessionAsync(
-                data.url,
-                redirectUrl
-            );
-
-            // 4. Verificar o resultado e FORÇAR a sessão
+            if (!data?.url) throw new Error('URL não retornado');
+            const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
             if (result.type === 'success' && result.url) {
-                // Truque de Mestre: Ler o token diretamente do URL
                 const { access_token, refresh_token } = extractParamsFromUrl(result.url);
-
                 if (access_token && refresh_token) {
-                    const { error } = await supabase.auth.setSession({
-                        access_token,
-                        refresh_token,
-                    });
-                    if (error) throw error;
-                    console.log("[OAuth] Sessão definida manualmente com sucesso!");
-                } else {
-                    // Fallback (plano B)
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (!session) throw new Error('Sessão não detetada.');
+                    await supabase.auth.setSession({ access_token, refresh_token });
                 }
-            } else {
-                console.log("[OAuth] Cancelado pelo utilizador.");
             }
-
         } catch (err: any) {
-            console.error("[OAuth Error]", err);
-            setLocalError(err.message || 'Erro ao conectar com o provedor.');
-            Alert.alert('Erro no Login', err.message);
+            setLocalError(err.message || 'Erro ao conectar');
         } finally {
             setIsOAuthLoading(false);
         }
@@ -110,11 +91,9 @@ export default function LoginScreen() {
     const handleLogin = async () => {
         setLocalError('');
         if (!email || !password) {
-            setLocalError('Por favor, preenche todos os campos');
+            setLocalError('Preenche todos os campos');
             return;
         }
-        
-        // Login normal com Email/Pass
         const result = await signIn(email, password);
         if (!result.success) {
             setLocalError(result.error?.message || 'Erro ao entrar');
@@ -122,288 +101,432 @@ export default function LoginScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.keyboardView}
             >
-                <View style={styles.content}>
-                    {/* Logo */}
-                    <View style={styles.logoContainer}>
-                        <View style={styles.logoIcon}>
-                            <Ionicons name="flash" size={32} color={colors.accent.primary} />
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <Animated.View
+                        style={[
+                            styles.content,
+                            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+                        ]}
+                    >
+                        {/* Logo Section */}
+                        <View style={styles.logoSection}>
+                            <View style={styles.logoContainer}>
+                                <LinearGradient
+                                    colors={COLORS.brand.gradient as [string, string]}
+                                    style={styles.logoGradient}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                >
+                                    <Ionicons name="flash" size={36} color="#FFF" />
+                                </LinearGradient>
+                            </View>
+                            <Text style={styles.logoText}>Escola+</Text>
+                            <Text style={styles.tagline}>O teu superpoder académico</Text>
                         </View>
-                        <Text style={styles.logoText}>Escola+</Text>
-                        <Text style={styles.tagline}>Aprende. Conquista. Evolui.</Text>
-                    </View>
 
-                    {/* Form */}
-                    <View style={styles.form}>
-                        {/* Email */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Email</Text>
-                            <View style={styles.inputWrapper}>
-                                <Ionicons name="mail-outline" size={20} color={colors.text.tertiary} style={styles.inputIcon} />
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="exemplo@email.com"
-                                    placeholderTextColor={colors.text.tertiary}
-                                    keyboardType="email-address"
-                                    autoCapitalize="none"
-                                    value={email}
-                                    onChangeText={setEmail}
-                                />
+                        {/* Welcome Card */}
+                        <View style={styles.welcomeCard}>
+                            <View style={styles.welcomeHeader}>
+                                <Text style={styles.welcomeEmoji}>👋</Text>
+                                <View>
+                                    <Text style={styles.welcomeTitle}>Bem-vindo de volta!</Text>
+                                    <Text style={styles.welcomeSubtitle}>Entra na tua conta para continuar</Text>
+                                </View>
                             </View>
                         </View>
 
-                        {/* Password */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Password</Text>
-                            <View style={styles.inputWrapper}>
-                                <Ionicons name="lock-closed-outline" size={20} color={colors.text.tertiary} style={styles.inputIcon} />
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="••••••••"
-                                    placeholderTextColor={colors.text.tertiary}
-                                    secureTextEntry={!showPassword}
-                                    value={password}
-                                    onChangeText={setPassword}
-                                />
-                                <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
-                                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.text.tertiary} />
-                                </Pressable>
+                        {/* Form Card */}
+                        <View style={styles.formCard}>
+                            {/* Email Input */}
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Email</Text>
+                                <View style={[styles.inputContainer, focusedInput === 'email' && styles.inputFocused]}>
+                                    <Ionicons
+                                        name="mail-outline"
+                                        size={20}
+                                        color={focusedInput === 'email' ? COLORS.accent.primary : COLORS.text.tertiary}
+                                    />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="exemplo@email.com"
+                                        placeholderTextColor={COLORS.text.muted}
+                                        keyboardType="email-address"
+                                        autoCapitalize="none"
+                                        value={email}
+                                        onChangeText={setEmail}
+                                        onFocus={() => setFocusedInput('email')}
+                                        onBlur={() => setFocusedInput(null)}
+                                    />
+                                </View>
                             </View>
+
+                            {/* Password Input */}
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Password</Text>
+                                <View style={[styles.inputContainer, focusedInput === 'password' && styles.inputFocused]}>
+                                    <Ionicons
+                                        name="lock-closed-outline"
+                                        size={20}
+                                        color={focusedInput === 'password' ? COLORS.accent.primary : COLORS.text.tertiary}
+                                    />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="••••••••"
+                                        placeholderTextColor={COLORS.text.muted}
+                                        secureTextEntry={!showPassword}
+                                        value={password}
+                                        onChangeText={setPassword}
+                                        onFocus={() => setFocusedInput('password')}
+                                        onBlur={() => setFocusedInput(null)}
+                                    />
+                                    <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+                                        <Ionicons
+                                            name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                                            size={20}
+                                            color={COLORS.text.tertiary}
+                                        />
+                                    </Pressable>
+                                </View>
+                            </View>
+
+                            {/* Forgot Password */}
+                            <Pressable style={styles.forgotButton}>
+                                <Text style={styles.forgotText}>Esqueceste a password?</Text>
+                            </Pressable>
+
+                            {/* Error */}
+                            {localError ? (
+                                <View style={styles.errorBox}>
+                                    <Ionicons name="alert-circle" size={18} color={COLORS.error} />
+                                    <Text style={styles.errorText}>{localError}</Text>
+                                </View>
+                            ) : null}
+
+                            {/* Submit Button */}
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.submitButton,
+                                    pressed && styles.submitPressed,
+                                    loading && styles.submitDisabled,
+                                ]}
+                                onPress={handleLogin}
+                                disabled={loading}
+                            >
+                                <LinearGradient
+                                    colors={loading ? [COLORS.surfaceMuted, COLORS.surfaceMuted] : COLORS.brand.gradient as [string, string]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.submitGradient}
+                                >
+                                    {loading ? (
+                                        <ActivityIndicator color={COLORS.text.primary} />
+                                    ) : (
+                                        <>
+                                            <Text style={styles.submitText}>Entrar</Text>
+                                            <Ionicons name="arrow-forward" size={20} color="#FFF" />
+                                        </>
+                                    )}
+                                </LinearGradient>
+                            </Pressable>
                         </View>
-
-                        {/* Error */}
-                        {localError ? (
-                            <View style={styles.errorContainer}>
-                                <Ionicons name="alert-circle" size={16} color={colors.danger.primary} />
-                                <Text style={styles.errorText}>{localError}</Text>
-                            </View>
-                        ) : null}
-
-                        {/* Submit */}
-                        <Pressable
-                            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-                            onPress={handleLogin}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color={colors.text.inverse} />
-                            ) : (
-                                <Text style={styles.submitText}>Entrar</Text>
-                            )}
-                        </Pressable>
 
                         {/* Divider */}
-                        <View style={styles.divider}>
+                        <View style={styles.dividerRow}>
                             <View style={styles.dividerLine} />
                             <Text style={styles.dividerText}>ou continua com</Text>
                             <View style={styles.dividerLine} />
                         </View>
 
                         {/* Social Buttons */}
-                        <View style={styles.socialButtons}>
+                        <View style={styles.socialGrid}>
                             <Pressable
-                                style={styles.socialButton}
+                                style={({ pressed }) => [styles.socialButton, pressed && styles.socialPressed]}
                                 onPress={() => performOAuth('google')}
                                 disabled={loading}
                             >
-                                <Ionicons name="logo-google" size={20} color="#DB4437" />
-                                <Text style={styles.socialButtonText}>Google</Text>
+                                <MaterialCommunityIcons name="google" size={22} color="#EA4335" />
+                                <Text style={styles.socialText}>Google</Text>
                             </Pressable>
 
                             <Pressable
-                                style={styles.socialButton}
+                                style={({ pressed }) => [styles.socialButton, pressed && styles.socialPressed]}
                                 onPress={() => performOAuth('discord')}
                                 disabled={loading}
                             >
-                                <Ionicons name="logo-discord" size={20} color="#5865F2" />
-                                <Text style={styles.socialButtonText}>Discord</Text>
+                                <Ionicons name="logo-discord" size={22} color="#5865F2" />
+                                <Text style={styles.socialText}>Discord</Text>
                             </Pressable>
                         </View>
 
-                        {/* Forgot Password */}
-                        <Pressable style={styles.forgotPassword}>
-                            <Text style={styles.forgotPasswordText}>Esqueceste a password?</Text>
-                        </Pressable>
-                    </View>
+                        {/* Register Link */}
+                        <View style={styles.registerRow}>
+                            <Text style={styles.registerText}>Não tens conta? </Text>
+                            <Link href="/(auth)/register" asChild>
+                                <Pressable>
+                                    <Text style={styles.registerLink}>Cria aqui</Text>
+                                </Pressable>
+                            </Link>
+                        </View>
 
-                    {/* Register Link */}
-                    <View style={styles.registerContainer}>
-                        <Text style={styles.registerText}>Não tens conta? </Text>
-                        <Link href="/(auth)/register" asChild>
-                            <Pressable>
-                                <Text style={styles.registerLink}>Regista-te</Text>
-                            </Pressable>
-                        </Link>
-                    </View>
-                </View>
+                        {/* Terms */}
+                        <Text style={styles.termsText}>
+                            Ao continuar, aceitas os nossos{' '}
+                            <Text style={styles.termsLink}>Termos de Serviço</Text>
+                            {' '}e{' '}
+                            <Text style={styles.termsLink}>Política de Privacidade</Text>
+                        </Text>
+                    </Animated.View>
+                </ScrollView>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
-// Mantive os teus estilos exatamente como estavam
+// ============================================
+// STYLES - TripGlide Design System
+// ============================================
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     keyboardView: {
         flex: 1,
     },
-    content: {
-        flex: 1,
+    scrollContent: {
+        flexGrow: 1,
         justifyContent: 'center',
-        paddingHorizontal: spacing['2xl'],
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: SPACING['3xl'],
+    },
+    content: {
+        gap: SPACING.xl,
+    },
+
+    // Logo
+    logoSection: {
+        alignItems: 'center',
+        marginBottom: SPACING.lg,
     },
     logoContainer: {
-        alignItems: 'center',
-        marginBottom: spacing['4xl'],
+        marginBottom: SPACING.md,
     },
-    logoIcon: {
-        width: 64,
-        height: 64,
-        borderRadius: 16,
-        backgroundColor: colors.accent.light,
+    logoGradient: {
+        width: 80,
+        height: 80,
+        borderRadius: RADIUS['2xl'],
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
+        ...SHADOWS.lg,
     },
     logoText: {
-        fontSize: typography.size['3xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: 32,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
         letterSpacing: -1,
     },
     tagline: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-        marginTop: spacing.xs,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+        marginTop: SPACING.xs,
     },
-    form: {
-        gap: spacing.lg,
+
+    // Welcome Card
+    welcomeCard: {
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        ...SHADOWS.sm,
     },
-    inputGroup: {
-        gap: spacing.sm,
-    },
-    label: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-    },
-    inputWrapper: {
+    welcomeHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        borderWidth: 1,
-        borderColor: colors.border,
-        ...shadows.sm,
+        gap: SPACING.md,
     },
-    inputIcon: {
-        marginLeft: spacing.lg,
+    welcomeEmoji: {
+        fontSize: 40,
+    },
+    welcomeTitle: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+    },
+    welcomeSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+        marginTop: 2,
+    },
+
+    // Form Card
+    formCard: {
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.xl,
+        gap: SPACING.lg,
+        ...SHADOWS.sm,
+    },
+
+    // Inputs
+    inputGroup: {
+        gap: SPACING.sm,
+    },
+    inputLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.xl,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
+        gap: SPACING.md,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    inputFocused: {
+        borderColor: COLORS.accent.primary,
+        backgroundColor: COLORS.accent.subtle,
     },
     input: {
         flex: 1,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.lg,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        paddingVertical: SPACING.xs,
     },
-    eyeButton: {
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.lg,
+
+    // Forgot
+    forgotButton: {
+        alignSelf: 'flex-end',
     },
-    errorContainer: {
+    forgotText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.accent.primary,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+
+    // Error
+    errorBox: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.danger.light,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.md,
+        gap: SPACING.sm,
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.lg,
     },
     errorText: {
-        fontSize: typography.size.sm,
-        color: colors.danger.primary,
         flex: 1,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.error,
     },
+
+    // Submit
     submitButton: {
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        paddingVertical: spacing.lg,
-        alignItems: 'center',
-        marginTop: spacing.md,
-        ...shadows.md,
+        borderRadius: RADIUS.xl,
+        overflow: 'hidden',
+        marginTop: SPACING.sm,
     },
-    submitButtonDisabled: {
+    submitPressed: {
+        opacity: 0.9,
+        transform: [{ scale: 0.98 }],
+    },
+    submitDisabled: {
         opacity: 0.7,
     },
-    submitText: {
-        fontSize: typography.size.md,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
-    },
-    forgotPassword: {
-        alignItems: 'center',
-        marginTop: spacing.sm,
-    },
-    forgotPasswordText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
-    },
-    registerContainer: {
+    submitGradient: {
         flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'center',
-        marginTop: spacing['3xl'],
+        paddingVertical: SPACING.lg,
+        gap: SPACING.sm,
     },
-    registerText: {
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
+    submitText: {
+        fontSize: TYPOGRAPHY.size.md,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
     },
-    registerLink: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.accent.primary,
-    },
-    divider: {
+
+    // Divider
+    dividerRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginVertical: spacing.lg,
+        gap: SPACING.md,
     },
     dividerLine: {
         flex: 1,
         height: 1,
-        backgroundColor: colors.border,
+        backgroundColor: COLORS.glassBorder,
     },
     dividerText: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        marginHorizontal: spacing.md,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.muted,
     },
-    socialButtons: {
+
+    // Social
+    socialGrid: {
         flexDirection: 'row',
-        gap: spacing.md,
+        justifyContent: 'center',
+        gap: SPACING.md,
     },
     socialButton: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
+        gap: SPACING.sm,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        paddingVertical: SPACING.lg,
         borderWidth: 1,
-        borderColor: colors.border,
-        paddingVertical: spacing.md,
-        gap: spacing.sm,
-        ...shadows.sm,
+        borderColor: COLORS.glassBorder,
+        ...SHADOWS.sm,
     },
-    socialButtonText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.primary,
+    socialPressed: {
+        backgroundColor: COLORS.surfaceElevated,
+    },
+    socialText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
+    },
+
+    // Register
+    registerRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+    },
+    registerText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+    },
+    registerLink: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.accent.primary,
+    },
+
+    // Terms
+    termsText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.muted,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    termsLink: {
+        color: COLORS.text.secondary,
+        textDecorationLine: 'underline',
     },
 });
