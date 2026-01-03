@@ -5,11 +5,11 @@
 
 import { IncomingCallModal } from '@/components/IncomingCallModal';
 import { supabase } from '@/lib/supabase';
+import { useAlert } from '@/providers/AlertProvider'; // Added
 import { useAuthContext } from '@/providers/AuthProvider';
 import { getLiveKitToken } from '@/services/livekitService';
 import { router } from 'expo-router';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
 
 // ============================================
 // TYPES
@@ -68,6 +68,7 @@ const CallContext = createContext<CallContextType | null>(null);
 
 export function CallProvider({ children }: { children: React.ReactNode }) {
     const { user } = useAuthContext();
+    const { showAlert } = useAlert(); // Added
     const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
     const [outgoingCall, setOutgoingCall] = useState<OutgoingCall | null>(null);
     const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
@@ -157,7 +158,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 console.log('[CallContext] Call rejected by', signal.callerName);
                 if (outgoingCall?.conversationId === signal.conversationId) {
                     setOutgoingCall(null);
-                    Alert.alert('Chamada Recusada', `${signal.callerName} recusou a chamada.`);
+                    showAlert({ title: 'Chamada Recusada', message: `${signal.callerName} recusou a chamada.` });
                 }
                 break;
 
@@ -272,7 +273,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             } as any);
         } catch (error) {
             console.error('[CallContext] Failed to join LiveKit room:', error);
-            Alert.alert('Erro', 'Não foi possível conectar à chamada');
+            showAlert({ title: 'Erro', message: 'Não foi possível conectar à chamada' });
         }
     }, [user]);
 

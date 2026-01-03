@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +14,6 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     FlatList,
@@ -21,7 +21,7 @@ import {
     RefreshControl,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -65,6 +65,7 @@ const EFFECT_CONFIG: Record<string, { icon: string; gradient: readonly [string, 
 export default function ConsumablesScreen() {
     const { user } = useAuthContext();
     const { profile, refetchProfile } = useProfile();
+    const { showAlert } = useAlert();
 
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -147,38 +148,42 @@ export default function ConsumablesScreen() {
             confirmMessage = `⚡ Ativar XP Boost ${mult}x?\n\nTodo o XP que ganhares nas próximas ${hours} horas será multiplicado por ${mult}!`;
         }
 
-        Alert.alert('Usar Consumível', confirmMessage, [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Usar!',
-                onPress: async () => {
-                    setUsing(item.id);
+        showAlert({
+            title: 'Usar Consumível',
+            message: confirmMessage,
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Usar!',
+                    onPress: async () => {
+                        setUsing(item.id);
 
-                    try {
-                        const { data, error } = await supabase.rpc('use_consumable', {
-                            p_user_id: user.id,
-                            p_inventory_id: item.id,
-                        });
+                        try {
+                            const { data, error } = await supabase.rpc('use_consumable', {
+                                p_user_id: user.id,
+                                p_inventory_id: item.id,
+                            });
 
-                        if (error) throw error;
+                            if (error) throw error;
 
-                        if (data?.success) {
-                            Alert.alert('✅ Ativado!', data.message || 'Consumível ativado com sucesso!');
-                            // Remover do inventário local
-                            setItems((prev) => prev.filter((i) => i.id !== item.id));
-                            refetchProfile();
-                        } else {
-                            Alert.alert('Erro', data?.error || 'Não foi possível usar.');
+                            if (data?.success) {
+                                showAlert({ title: '✅ Ativado!', message: data.message || 'Consumível ativado com sucesso!' });
+                                // Remover do inventário local
+                                setItems((prev) => prev.filter((i) => i.id !== item.id));
+                                refetchProfile();
+                            } else {
+                                showAlert({ title: 'Erro', message: data?.error || 'Não foi possível usar.' });
+                            }
+                        } catch (err: any) {
+                            console.error('Erro ao usar consumível:', err);
+                            showAlert({ title: 'Erro', message: err.message });
+                        } finally {
+                            setUsing(null);
                         }
-                    } catch (err: any) {
-                        console.error('Erro ao usar consumível:', err);
-                        Alert.alert('Erro', err.message);
-                    } finally {
-                        setUsing(null);
-                    }
+                    },
                 },
-            },
-        ]);
+            ]
+        });
     };
 
     // ============================================

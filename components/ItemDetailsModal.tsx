@@ -6,6 +6,7 @@
 import { AgendaItem, formatTimeRange, getItemColor } from '@/hooks/useCalendarItems';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider'; // Added
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -13,7 +14,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Modal,
     Pressable,
@@ -48,6 +48,7 @@ const TYPE_CONFIG: Record<string, { gradient: [string, string]; icon: string; em
 
 export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetailsModalProps) {
     const { user } = useAuthContext();
+    const { showAlert } = useAlert(); // Added
     const [loading, setLoading] = useState(false);
     const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
@@ -79,12 +80,15 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
             const { error } = await supabase.from(table).update({ is_completed: !item.is_completed }).eq('id', realId);
             if (error) throw error;
 
-            Alert.alert(item.is_completed ? '✅ Reaberta!' : '🎉 Concluída!', item.is_completed ? 'Tarefa reaberta.' : 'Parabéns!');
+            showAlert({
+                title: item.is_completed ? '✅ Reaberta!' : '🎉 Concluída!',
+                message: item.is_completed ? 'Tarefa reaberta.' : 'Parabéns!'
+            });
             onUpdate();
             onClose();
         } catch (err) {
             console.error('❌ Error:', err);
-            Alert.alert('Erro', 'Não foi possível atualizar.');
+            showAlert({ title: 'Erro', message: 'Não foi possível atualizar.' });
         } finally {
             setLoading(false);
         }
@@ -92,28 +96,32 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
 
     const handleDeleteEvent = async () => {
         if (!user?.id) return;
-        Alert.alert('Apagar Evento', 'Tens a certeza?', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Apagar',
-                style: 'destructive',
-                onPress: async () => {
-                    setLoading(true);
-                    try {
-                        const realId = item.id.includes('-') ? item.id.split('-').pop() : item.id;
-                        const { error } = await supabase.from('events').delete().eq('id', realId);
-                        if (error) throw error;
-                        Alert.alert('✅ Apagado!', 'Evento removido.');
-                        onUpdate();
-                        onClose();
-                    } catch (err) {
-                        Alert.alert('Erro', 'Não foi possível apagar.');
-                    } finally {
-                        setLoading(false);
-                    }
+        showAlert({
+            title: 'Apagar Evento',
+            message: 'Tens a certeza?',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Apagar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setLoading(true);
+                        try {
+                            const realId = item.id.includes('-') ? item.id.split('-').pop() : item.id;
+                            const { error } = await supabase.from('events').delete().eq('id', realId);
+                            if (error) throw error;
+                            showAlert({ title: '✅ Apagado!', message: 'Evento removido.' });
+                            onUpdate();
+                            onClose();
+                        } catch (err) {
+                            showAlert({ title: 'Erro', message: 'Não foi possível apagar.' });
+                        } finally {
+                            setLoading(false);
+                        }
+                    },
                 },
-            },
-        ]);
+            ]
+        });
     };
 
     // ============================================

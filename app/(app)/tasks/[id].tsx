@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS as borderRadius, SHADOWS as shadows, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
@@ -15,14 +16,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Linking,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -82,6 +82,7 @@ interface Submission {
 export default function TaskDetailScreen() {
     const { id: taskId } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     // State
     const [task, setTask] = useState<TaskDetail | null>(null);
@@ -174,7 +175,7 @@ export default function TaskDetailScreen() {
             });
         } catch (err) {
             console.error('Error picking file:', err);
-            Alert.alert('Erro', 'Não foi possível selecionar o ficheiro.');
+            showAlert({ title: 'Erro', message: 'Não foi possível selecionar o ficheiro.' });
         }
     };
 
@@ -216,7 +217,7 @@ export default function TaskDetailScreen() {
 
         // Validate
         if (task.config?.requires_file_upload && !selectedFile && !submission?.file_url) {
-            Alert.alert('Atenção', 'É obrigatório anexar um ficheiro.');
+            showAlert({ title: 'Atenção', message: 'É obrigatório anexar um ficheiro.' });
             return;
         }
 
@@ -249,13 +250,17 @@ export default function TaskDetailScreen() {
             const result = data as { success: boolean; is_late: boolean; message: string };
             const lateMsg = result.is_late ? ' (Entrega atrasada)' : '';
 
-            Alert.alert('✅ Entregue!', `O teu trabalho foi submetido com sucesso.${lateMsg}`, [
-                { text: 'OK', onPress: () => fetchTask() },
-            ]);
+            showAlert({
+                title: '✅ Entregue!',
+                message: `O teu trabalho foi submetido com sucesso.${lateMsg}`,
+                buttons: [
+                    { text: 'OK', onPress: () => fetchTask() },
+                ]
+            });
             setSelectedFile(null);
         } catch (err: any) {
             console.error('Submit error:', err);
-            Alert.alert('Erro', err?.message || 'Não foi possível submeter.');
+            showAlert({ title: 'Erro', message: err?.message || 'Não foi possível submeter.' });
         } finally {
             setSubmitting(false);
         }
@@ -264,10 +269,10 @@ export default function TaskDetailScreen() {
     const handleCompletePersonal = async () => {
         if (!task || !user?.id) return;
 
-        Alert.alert(
-            'Marcar como Concluída?',
-            'Esta ação não pode ser desfeita.',
-            [
+        showAlert({
+            title: 'Marcar como Concluída?',
+            message: 'Esta ação não pode ser desfeita.',
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Concluir',
@@ -283,21 +288,25 @@ export default function TaskDetailScreen() {
                             const result = data as { success: boolean; xp_awarded: number; message: string };
 
                             if (!result.success) {
-                                Alert.alert('Aviso', result.message);
+                                showAlert({ title: 'Aviso', message: result.message });
                                 return;
                             }
 
-                            Alert.alert('🎉 Tarefa Concluída!', `Ganhaste ${result.xp_awarded} XP!`, [
-                                { text: 'OK', onPress: () => router.back() },
-                            ]);
+                            showAlert({
+                                title: '🎉 Tarefa Concluída!',
+                                message: `Ganhaste ${result.xp_awarded} XP!`,
+                                buttons: [
+                                    { text: 'OK', onPress: () => router.back() },
+                                ]
+                            });
                         } catch (err: any) {
                             console.error('Complete error:', err);
-                            Alert.alert('Erro', err?.message || 'Não foi possível concluir.');
+                            showAlert({ title: 'Erro', message: err?.message || 'Não foi possível concluir.' });
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     // ============================================

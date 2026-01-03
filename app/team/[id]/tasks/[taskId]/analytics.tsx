@@ -6,13 +6,13 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     KeyboardAvoidingView,
     Linking,
@@ -23,7 +23,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View
+    View,
 } from 'react-native';
 import { PieChart } from 'react-native-gifted-charts';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -68,6 +68,9 @@ type FilterType = 'all' | 'submitted' | 'graded' | 'missing';
 export default function TaskAnalyticsScreen() {
     const { id: teamId, taskId } = useLocalSearchParams<{ id: string; taskId: string }>();
     const { user } = useAuthContext();
+
+
+    const { showAlert } = useAlert();
 
     const [analytics, setAnalytics] = useState<TaskAnalytics | null>(null);
     const [students, setStudents] = useState<StudentSubmission[]>([]);
@@ -186,7 +189,7 @@ export default function TaskAnalyticsScreen() {
 
     const handleOpenGrading = (student: StudentSubmission) => {
         if (student.status === 'missing') {
-            Alert.alert('Sem Entrega', 'Este aluno ainda não entregou o trabalho.');
+            showAlert({ title: 'Sem Entrega', message: 'Este aluno ainda não entregou o trabalho.' });
             return;
         }
         setSelectedStudent(student);
@@ -200,7 +203,7 @@ export default function TaskAnalyticsScreen() {
 
         const score = parseInt(gradeScore);
         if (isNaN(score) || score < 0 || score > analytics.max_score) {
-            Alert.alert('Erro', `A nota deve estar entre 0 e ${analytics.max_score}.`);
+            showAlert({ title: 'Erro', message: `A nota deve estar entre 0 e ${analytics.max_score}.` });
             return;
         }
 
@@ -216,15 +219,15 @@ export default function TaskAnalyticsScreen() {
             const result = data as { success: boolean; xp_awarded: number; message: string };
             if (!result.success) throw new Error(result.message || 'Failed to grade submission');
 
-            Alert.alert(
-                '✅ Nota Lançada!',
-                `${selectedStudent.full_name} recebeu ${score}/${analytics.max_score}${result.xp_awarded > 0 ? ` e +${result.xp_awarded} XP` : ''}.`
-            );
+            showAlert({
+                title: '✅ Nota Lançada!',
+                message: `${selectedStudent.full_name} recebeu ${score}/${analytics.max_score}${result.xp_awarded > 0 ? ` e +${result.xp_awarded} XP` : ''}.`
+            });
             setGradingModalVisible(false);
             fetchAnalytics();
         } catch (err: any) {
             console.error('Grading error:', err);
-            Alert.alert('Erro', err?.message || 'Não foi possível lançar a nota.');
+            showAlert({ title: 'Erro', message: err?.message || 'Não foi possível lançar a nota.' });
         } finally {
             setGrading(false);
         }

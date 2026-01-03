@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +14,6 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     FlatList,
@@ -68,6 +68,7 @@ const RARITY_GLOW: Record<string, string> = {
 export default function ShopScreen() {
     const { user } = useAuthContext();
     const { profile, refetchProfile } = useProfile();
+    const { showAlert } = useAlert();
 
     const [items, setItems] = useState<ShopItem[]>([]);
     const [ownedItems, setOwnedItems] = useState<Set<string>>(new Set());
@@ -130,40 +131,47 @@ export default function ShopScreen() {
         const userXP = profile?.current_xp || 0;
 
         if (!item.is_consumable && ownedItems.has(item.id)) {
-            Alert.alert('Já Adquirido', 'Já possuis este item!');
+            showAlert({ title: 'Já Adquirido', message: 'Já possuis este item!' });
             return;
         }
 
         if (userXP < item.price) {
-            Alert.alert('XP Insuficiente', `Precisas de ${item.price} XP mas tens ${userXP} XP.`);
+            showAlert({ title: 'XP Insuficiente', message: `Precisas de ${item.price} XP mas tens ${userXP} XP.` });
             return;
         }
 
-        Alert.alert('🛒 Confirmar Compra', `Comprar "${item.name}" por ${item.price} XP?`, [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Comprar!',
-                onPress: async () => {
-                    setPurchasing(item.id);
-                    try {
-                        const { data, error } = await supabase.rpc('purchase_shop_item', { p_user_id: user.id, p_item_id: item.id });
-                        if (error) throw error;
+        showAlert({
+            title: '🛒 Confirmar Compra',
+            message: `Comprar "${item.name}" por ${item.price} XP?`,
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Comprar!',
+                    onPress: async () => {
+                        setPurchasing(item.id);
+                        try {
+                            const { data, error } = await supabase.rpc('purchase_shop_item', { p_user_id: user.id, p_item_id: item.id });
+                            if (error) throw error;
 
-                        if (data?.success) {
-                            Alert.alert('🎉 Compra Realizada!', `Adquiriste "${data.item_name}"!\n\nNovo saldo: ${data.new_xp} XP`);
-                            setOwnedItems((prev) => new Set([...prev, item.id]));
-                            refetchProfile();
-                        } else {
-                            Alert.alert('Erro', data?.error || 'Compra falhou.');
+                            if (data?.success) {
+                                showAlert({
+                                    title: '🎉 Compra Realizada!',
+                                    message: `Adquiriste "${data.item_name}"!\n\nNovo saldo: ${data.new_xp} XP`
+                                });
+                                setOwnedItems((prev) => new Set([...prev, item.id]));
+                                refetchProfile();
+                            } else {
+                                showAlert({ title: 'Erro', message: data?.error || 'Compra falhou.' });
+                            }
+                        } catch (err: any) {
+                            showAlert({ title: 'Erro', message: err.message });
+                        } finally {
+                            setPurchasing(null);
                         }
-                    } catch (err: any) {
-                        Alert.alert('Erro', err.message);
-                    } finally {
-                        setPurchasing(null);
-                    }
+                    },
                 },
-            },
-        ]);
+            ]
+        });
     };
 
     // ============================================

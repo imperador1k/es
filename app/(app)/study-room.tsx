@@ -11,6 +11,7 @@ import { useStartConversation } from '@/hooks/useDMs';
 import { useStudyRoomAudio } from '@/hooks/useStudyRoomAudio';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { getLiveKitToken, getRoomName } from '@/services/livekitService';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +21,6 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     Image,
@@ -33,7 +33,7 @@ import {
     Text,
     TextInput,
     TouchableWithoutFeedback,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -208,6 +208,7 @@ function ParticipantAvatar({ participant, isMe, onPress }: { participant: Partic
 export default function StudyRoomScreen() {
     const { user } = useAuthContext();
     const { startOrGetConversation } = useStartConversation();
+    const { showAlert } = useAlert();
     const insets = useSafeAreaInsets();
     const [startingDM, setStartingDM] = useState(false);
     const headerAnim = useRef(new Animated.Value(0)).current;
@@ -328,7 +329,7 @@ export default function StudyRoomScreen() {
             setIsCallActive(true);
         } catch (error) {
             console.error('[Study Room] Failed to join call:', error);
-            Alert.alert('Erro', 'Não foi possível entrar na chamada');
+            showAlert({ title: 'Erro', message: 'Não foi possível entrar na chamada' });
         } finally {
             setJoiningCall(false);
         }
@@ -428,10 +429,10 @@ export default function StudyRoomScreen() {
                 await fetchParticipants(roomId);
                 await fetchRooms();
             } else {
-                Alert.alert('Erro', data?.error || 'Não foi possível entrar na sala');
+                showAlert({ title: 'Erro', message: data?.error || 'Não foi possível entrar na sala' });
             }
         } catch (err: any) {
-            Alert.alert('Erro', err.message);
+            showAlert({ title: 'Erro', message: err.message });
         }
     };
 
@@ -442,20 +443,20 @@ export default function StudyRoomScreen() {
             const { data, error } = await supabase.rpc('leave_study_room');
             if (error) throw error;
             if (data?.xp_earned > 0) {
-                Alert.alert('🎉 Sessão Terminada!', `Estudaste ${data.focus_minutes} minutos e ganhaste ${data.xp_earned} XP!`);
+                showAlert({ title: '🎉 Sessão Terminada!', message: `Estudaste ${data.focus_minutes} minutos e ganhaste ${data.xp_earned} XP!` });
             }
             setCurrentRoom(null);
             setParticipants([]);
             setFocusMinutes(0);
             await fetchRooms();
         } catch (err: any) {
-            Alert.alert('Erro', err.message);
+            showAlert({ title: 'Erro', message: err.message });
         }
     };
 
     const createRoom = async () => {
         if (!newRoomName.trim()) {
-            Alert.alert('Erro', 'Dá um nome à tua sala');
+            showAlert({ title: 'Erro', message: 'Dá um nome à tua sala' });
             return;
         }
         setCreating(true);
@@ -480,10 +481,10 @@ export default function StudyRoomScreen() {
                 }
                 await fetchRooms();
             } else {
-                Alert.alert('Erro', data?.error || 'Não foi possível criar a sala');
+                showAlert({ title: 'Erro', message: data?.error || 'Não foi possível criar a sala' });
             }
         } catch (err: any) {
-            Alert.alert('Erro', err.message);
+            showAlert({ title: 'Erro', message: err.message });
         } finally {
             setCreating(false);
         }
@@ -499,22 +500,26 @@ export default function StudyRoomScreen() {
     };
 
     const deleteMyRoom = async () => {
-        Alert.alert('Apagar Sala', 'Tens a certeza que queres apagar a tua sala?', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Apagar', style: 'destructive',
-                onPress: async () => {
-                    try {
-                        const { error } = await supabase.rpc('delete_my_room');
-                        if (error) throw error;
-                        setCurrentRoom(null);
-                        await fetchRooms();
-                    } catch (err: any) {
-                        Alert.alert('Erro', err.message);
-                    }
+        showAlert({
+            title: 'Apagar Sala',
+            message: 'Tens a certeza que queres apagar a tua sala?',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Apagar', style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const { error } = await supabase.rpc('delete_my_room');
+                            if (error) throw error;
+                            setCurrentRoom(null);
+                            await fetchRooms();
+                        } catch (err: any) {
+                            showAlert({ title: 'Erro', message: err.message });
+                        }
+                    },
                 },
-            },
-        ]);
+            ]
+        });
     };
 
     const sendReaction = async (emoji: string, toUserId?: string) => {
@@ -781,7 +786,7 @@ export default function StudyRoomScreen() {
                                 onLeave={leaveCall}
                                 onError={(error) => {
                                     console.error('LiveKit error:', error);
-                                    Alert.alert('Erro na Chamada', error.message);
+                                    showAlert({ title: 'Erro na Chamada', message: error.message });
                                     leaveCall();
                                 }}
                             />

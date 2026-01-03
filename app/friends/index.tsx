@@ -6,6 +6,7 @@
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { FriendWithProfile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,7 +14,6 @@ import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     FlatList,
     Image,
@@ -21,7 +21,7 @@ import {
     RefreshControl,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -134,6 +134,7 @@ function EmptyFriends() {
 export default function FriendsScreen() {
     const { friends, loading, refetch, removeFriend } = useFriends();
     const { startOrGetConversation } = useStartConversation();
+    const { showAlert } = useAlert();
     const [refreshing, setRefreshing] = useState(false);
     const headerAnim = useRef(new Animated.Value(0)).current;
 
@@ -155,14 +156,14 @@ export default function FriendsScreen() {
     };
 
     const handleRemove = (friend: FriendWithProfile) => {
-        Alert.alert(
-            'Remover Amigo',
-            `Tens a certeza que queres remover ${friend.profile.full_name || friend.profile.username}?`,
-            [
+        showAlert({
+            title: 'Remover Amigo',
+            message: `Tens a certeza que queres remover ${friend.profile.full_name || friend.profile.username}?`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 { text: 'Remover', style: 'destructive', onPress: () => removeFriend(friend.friendship_id) },
             ]
-        );
+        });
     };
 
     if (loading && friends.length === 0) {

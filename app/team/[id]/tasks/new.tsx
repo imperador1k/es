@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -14,7 +15,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     KeyboardAvoidingView,
     Platform,
@@ -60,6 +60,7 @@ const STEP_CONFIG = [
 export default function CreateTaskScreen() {
     const { id: teamId } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     const [step, setStep] = useState(1);
     const [publishing, setPublishing] = useState(false);
@@ -117,7 +118,7 @@ export default function CreateTaskScreen() {
 
     const handleNext = () => {
         if (!canContinue()) {
-            Alert.alert('Atenção', 'Preenche os campos obrigatórios.');
+            showAlert({ title: 'Atenção', message: 'Preenche os campos obrigatórios.' });
             return;
         }
         setStep((prev) => Math.min(prev + 1, 3));
@@ -170,10 +171,15 @@ export default function CreateTaskScreen() {
                 });
             }
 
-            Alert.alert('🚀 Tarefa Publicada!', 'A tarefa foi criada com sucesso.', [{ text: 'OK', onPress: () => router.back() }]);
+
+            showAlert({
+                title: '🚀 Tarefa Publicada!',
+                message: 'A tarefa foi criada com sucesso.',
+                buttons: [{ text: 'OK', onPress: () => router.back() }]
+            });
         } catch (error) {
             console.error('Error publishing task:', error);
-            Alert.alert('Erro', 'Não foi possível criar a tarefa.');
+            showAlert({ title: 'Erro', message: 'Não foi possível criar a tarefa.' });
         } finally {
             setPublishing(false);
         }

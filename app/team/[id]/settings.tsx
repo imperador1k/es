@@ -10,7 +10,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Image,
     Pressable,
     ScrollView,
@@ -23,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS as borderRadius, SHADOWS as shadows, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { notifyTeamUpdated } from '@/services/teamNotifications';
@@ -62,6 +62,7 @@ export default function TeamSettingsScreen() {
     const router = useRouter();
     const { user } = useAuthContext();
     const { profile } = useProfile();
+    const { showAlert } = useAlert();
 
     // Estados
     const [loading, setLoading] = useState(true);
@@ -114,7 +115,7 @@ export default function TeamSettingsScreen() {
             }
         } catch (err) {
             console.error('Erro ao carregar equipa:', err);
-            Alert.alert('Erro', 'Não foi possível carregar as definições.');
+            showAlert({ title: 'Erro', message: 'Não foi possível carregar as definições.' });
         } finally {
             setLoading(false);
         }
@@ -152,7 +153,7 @@ export default function TeamSettingsScreen() {
         }
 
         if (!editName.trim()) {
-            Alert.alert('Erro', 'O nome da equipa é obrigatório.');
+            showAlert({ title: 'Erro', message: 'O nome da equipa é obrigatório.' });
             return;
         }
 
@@ -190,10 +191,10 @@ export default function TeamSettingsScreen() {
                 changeDescription: 'atualizou as definições da equipa',
             });
 
-            Alert.alert('✅ Guardado', 'As alterações foram guardadas.');
+            showAlert({ title: '✅ Guardado', message: 'As alterações foram guardadas.' });
         } catch (err: any) {
             console.error('❌ Erro ao guardar:', err);
-            Alert.alert('Erro', err.message || 'Não foi possível guardar as alterações.');
+            showAlert({ title: 'Erro', message: err.message || 'Não foi possível guardar as alterações.' });
         } finally {
             setSaving(false);
         }
@@ -206,7 +207,7 @@ export default function TeamSettingsScreen() {
     const handleCopyCode = async () => {
         if (!team?.invite_code) return;
         await Clipboard.setStringAsync(team.invite_code);
-        Alert.alert('✅ Copiado!', `Código "${team.invite_code}" copiado para a área de transferência.`);
+        showAlert({ title: '✅ Copiado!', message: `Código "${team.invite_code}" copiado para a área de transferência.` });
     };
 
     // ============================================
@@ -214,10 +215,10 @@ export default function TeamSettingsScreen() {
     // ============================================
 
     const handleGenerateNewCode = () => {
-        Alert.alert(
-            'Gerar Novo Código?',
-            'O código atual deixará de funcionar. Continuar?',
-            [
+        showAlert({
+            title: 'Gerar Novo Código?',
+            message: 'O código atual deixará de funcionar. Continuar?',
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Gerar',
@@ -236,20 +237,20 @@ export default function TeamSettingsScreen() {
                             if (error) throw error;
 
                             setTeam({ ...team!, invite_code: data.invite_code });
-                            Alert.alert('✅ Novo Código', `Código atualizado para: ${data.invite_code}`);
+                            showAlert({ title: '✅ Novo Código', message: `Código atualizado para: ${data.invite_code}` });
                         } catch (err: any) {
                             console.error('Erro ao gerar código:', err);
                             if (err.code === '23505') {
                                 // Colisão de código, tentar novamente
                                 handleGenerateNewCode();
                             } else {
-                                Alert.alert('Erro', 'Não foi possível gerar novo código.');
+                                showAlert({ title: 'Erro', message: 'Não foi possível gerar novo código.' });
                             }
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     // ============================================
@@ -273,7 +274,7 @@ export default function TeamSettingsScreen() {
             const asset = result.assets[0];
 
             if (!asset.base64) {
-                Alert.alert('Erro', 'Não foi possível processar a imagem.');
+                showAlert({ title: 'Erro', message: 'Não foi possível processar a imagem.' });
                 return;
             }
 
@@ -320,10 +321,10 @@ export default function TeamSettingsScreen() {
 
                 // Atualizar estado local
                 setTeam({ ...team, icon_url: publicUrl });
-                Alert.alert('✅ Sucesso', 'Avatar da equipa atualizado!');
+                showAlert({ title: '✅ Sucesso', message: 'Avatar da equipa atualizado!' });
             } catch (err: any) {
                 console.error('Erro ao fazer upload:', err);
-                Alert.alert('Erro', err.message || 'Não foi possível atualizar o avatar.');
+                showAlert({ title: 'Erro', message: err.message || 'Não foi possível atualizar o avatar.' });
             } finally {
                 setUploadingAvatar(false);
             }
@@ -336,17 +337,17 @@ export default function TeamSettingsScreen() {
 
     const handleLeaveTeam = () => {
         if (isOwner) {
-            Alert.alert(
-                'Não podes sair',
-                'Como owner, tens que transferir a posse ou apagar a equipa.'
-            );
+            showAlert({
+                title: 'Não podes sair',
+                message: 'Como owner, tens que transferir a posse ou apagar a equipa.'
+            });
             return;
         }
 
-        Alert.alert(
-            'Sair da Equipa?',
-            `Tens a certeza que queres sair de "${team?.name}"?`,
-            [
+        showAlert({
+            title: 'Sair da Equipa?',
+            message: `Tens a certeza que queres sair de "${team?.name}"?`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Sair',
@@ -361,17 +362,19 @@ export default function TeamSettingsScreen() {
 
                             if (error) throw error;
 
-                            Alert.alert('👋 Saíste', 'Deixaste a equipa.', [
-                                { text: 'OK', onPress: () => router.replace('/(tabs)') },
-                            ]);
+                            showAlert({
+                                title: '👋 Saíste',
+                                message: 'Deixaste a equipa.',
+                                buttons: [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]
+                            });
                         } catch (err) {
                             console.error('Erro ao sair:', err);
-                            Alert.alert('Erro', 'Não foi possível sair da equipa.');
+                            showAlert({ title: 'Erro', message: 'Não foi possível sair da equipa.' });
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     // ============================================
@@ -381,19 +384,19 @@ export default function TeamSettingsScreen() {
     const handleDeleteTeam = () => {
         if (!isOwner) return;
 
-        Alert.alert(
-            '⚠️ Apagar Equipa',
-            `Esta ação é IRREVERSÍVEL. Todos os dados serão perdidos.`,
-            [
+        showAlert({
+            title: '⚠️ Apagar Equipa',
+            message: `Esta ação é IRREVERSÍVEL. Todos os dados serão perdidos.`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Apagar Permanentemente',
                     style: 'destructive',
                     onPress: () => {
-                        Alert.alert(
-                            '🔴 Confirmação Final',
-                            `Escreve o nome da equipa para confirmar:\n\n"${team?.name}"`,
-                            [
+                        showAlert({
+                            title: '🔴 Confirmação Final',
+                            message: `Escreve o nome da equipa para confirmar:\n\n"${team?.name}"`,
+                            buttons: [
                                 { text: 'Cancelar', style: 'cancel' },
                                 {
                                     text: 'Apagar',
@@ -420,21 +423,23 @@ export default function TeamSettingsScreen() {
 
                                             if (error) throw error;
 
-                                            Alert.alert('🗑️ Apagado', 'A equipa foi eliminada.', [
-                                                { text: 'OK', onPress: () => router.replace('/(tabs)') },
-                                            ]);
+                                            showAlert({
+                                                title: '🗑️ Apagado',
+                                                message: 'A equipa foi eliminada.',
+                                                buttons: [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]
+                                            });
                                         } catch (err) {
                                             console.error('Erro ao apagar:', err);
-                                            Alert.alert('Erro', 'Não foi possível apagar a equipa.');
+                                            showAlert({ title: 'Erro', message: 'Não foi possível apagar a equipa.' });
                                         }
                                     },
                                 },
                             ]
-                        );
+                        });
                     },
                 },
             ]
-        );
+        });
     };
 
     // ============================================

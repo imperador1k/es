@@ -102,21 +102,46 @@ export function useAuth(): UseAuthReturn {
                 const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
                 
                 if (result.type === 'success' && result.url) {
-                    // Extrair tokens da URL de callback
-                    const url = new URL(result.url);
-                    const accessToken = url.searchParams.get('access_token');
-                    const refreshToken = url.searchParams.get('refresh_token');
+                    // Supabase retorna tokens no FRAGMENT (#) não nos query params (?)
+                    const url = result.url;
+                    
+                    // Extrair do fragment (após #)
+                    const hashParams = url.split('#')[1];
+                    if (hashParams) {
+                        const params = new URLSearchParams(hashParams);
+                        const accessToken = params.get('access_token');
+                        const refreshToken = params.get('refresh_token');
+                        
+                        if (accessToken && refreshToken) {
+                            await supabase.auth.setSession({
+                                access_token: accessToken,
+                                refresh_token: refreshToken,
+                            });
+                            return { success: true };
+                        }
+                    }
+                    
+                    // Fallback: tentar query params
+                    const urlObj = new URL(result.url);
+                    const accessToken = urlObj.searchParams.get('access_token');
+                    const refreshToken = urlObj.searchParams.get('refresh_token');
                     
                     if (accessToken && refreshToken) {
                         await supabase.auth.setSession({
                             access_token: accessToken,
                             refresh_token: refreshToken,
                         });
+                        return { success: true };
                     }
+                    
+                    console.log('OAuth callback URL:', result.url);
+                    return { success: false, error: { message: 'Não foi possível extrair tokens' } };
                 }
+                
+                return { success: false, error: { message: 'Login cancelado' } };
             }
 
-            return { success: true };
+            return { success: false, error: { message: 'URL de OAuth não disponível' } };
         } catch (error) {
             console.error('Google OAuth error:', error);
             return { success: false, error: { message: 'Erro ao entrar com Google' } };
@@ -147,20 +172,46 @@ export function useAuth(): UseAuthReturn {
                 const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
                 
                 if (result.type === 'success' && result.url) {
-                    const url = new URL(result.url);
-                    const accessToken = url.searchParams.get('access_token');
-                    const refreshToken = url.searchParams.get('refresh_token');
+                    // Supabase retorna tokens no FRAGMENT (#) não nos query params (?)
+                    const url = result.url;
+                    
+                    // Extrair do fragment (após #)
+                    const hashParams = url.split('#')[1];
+                    if (hashParams) {
+                        const params = new URLSearchParams(hashParams);
+                        const accessToken = params.get('access_token');
+                        const refreshToken = params.get('refresh_token');
+                        
+                        if (accessToken && refreshToken) {
+                            await supabase.auth.setSession({
+                                access_token: accessToken,
+                                refresh_token: refreshToken,
+                            });
+                            return { success: true };
+                        }
+                    }
+                    
+                    // Fallback: tentar query params
+                    const urlObj = new URL(result.url);
+                    const accessToken = urlObj.searchParams.get('access_token');
+                    const refreshToken = urlObj.searchParams.get('refresh_token');
                     
                     if (accessToken && refreshToken) {
                         await supabase.auth.setSession({
                             access_token: accessToken,
                             refresh_token: refreshToken,
                         });
+                        return { success: true };
                     }
+                    
+                    console.log('OAuth callback URL:', result.url);
+                    return { success: false, error: { message: 'Não foi possível extrair tokens' } };
                 }
+                
+                return { success: false, error: { message: 'Login cancelado' } };
             }
 
-            return { success: true };
+            return { success: false, error: { message: 'URL de OAuth não disponível' } };
         } catch (error) {
             console.error('Discord OAuth error:', error);
             return { success: false, error: { message: 'Erro ao entrar com Discord' } };

@@ -3,12 +3,12 @@
  * Ecrã para entrar em equipas via código ou explorar equipas públicas
  */
 
+import { useAlert } from '@/providers/AlertProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Image,
     Pressable,
@@ -16,7 +16,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -50,8 +50,10 @@ interface PublicTeam {
 
 export default function JoinTeamScreen() {
     const router = useRouter();
+
     const { user } = useAuthContext();
     const { profile } = useProfile();
+    const { showAlert } = useAlert();
 
     // Estado geral
     const [activeTab, setActiveTab] = useState<TabType>('code');
@@ -103,7 +105,7 @@ export default function JoinTeamScreen() {
             setPublicTeams(teamsWithCount);
         } catch (err) {
             console.error('Erro ao carregar equipas:', err);
-            Alert.alert('Erro', 'Não foi possível carregar as equipas públicas.');
+            showAlert({ title: 'Erro', message: 'Não foi possível carregar as equipas públicas.' });
         } finally {
             setLoadingTeams(false);
             setRefreshing(false);
@@ -128,12 +130,12 @@ export default function JoinTeamScreen() {
     const handleJoinViaCode = async () => {
         const code = inviteCode.trim().toUpperCase();
         if (!code) {
-            Alert.alert('Erro', 'Introduz um código de convite.');
+            showAlert({ title: 'Erro', message: 'Introduz um código de convite.' });
             return;
         }
 
         if (!user?.id) {
-            Alert.alert('Erro', 'Tens que estar autenticado.');
+            showAlert({ title: 'Erro', message: 'Tens que estar autenticado.' });
             return;
         }
 
@@ -163,19 +165,21 @@ export default function JoinTeamScreen() {
                     memberId: user.id,
                 });
 
-                Alert.alert('✅ Sucesso!', 'Entraste na equipa!', [
-                    {
+                showAlert({
+                    title: '✅ Sucesso!',
+                    message: 'Entraste na equipa!',
+                    buttons: [{
                         text: 'Ver Equipa',
                         onPress: () => router.replace(`/team/${data}` as any),
-                    },
-                ]);
+                    }]
+                });
                 setInviteCode('');
             } else {
-                Alert.alert('Erro', 'Código inválido ou já és membro desta equipa.');
+                showAlert({ title: 'Erro', message: 'Código inválido ou já és membro desta equipa.' });
             }
         } catch (err: any) {
             console.error('Erro ao entrar via código:', err);
-            Alert.alert('Erro', err.message || 'Não foi possível entrar na equipa.');
+            showAlert({ title: 'Erro', message: err.message || 'Não foi possível entrar na equipa.' });
         } finally {
             setJoining(false);
         }
@@ -187,7 +191,7 @@ export default function JoinTeamScreen() {
 
     const handleJoinPublicTeam = async (team: PublicTeam) => {
         if (!user?.id) {
-            Alert.alert('Erro', 'Tens que estar autenticado.');
+            showAlert({ title: 'Erro', message: 'Tens que estar autenticado.' });
             return;
         }
 
@@ -203,12 +207,14 @@ export default function JoinTeamScreen() {
                 .single();
 
             if (existingMember) {
-                Alert.alert('Info', 'Já és membro desta equipa!', [
-                    {
+                showAlert({
+                    title: 'Info',
+                    message: 'Já és membro desta equipa!',
+                    buttons: [{
                         text: 'Ver Equipa',
                         onPress: () => router.push(`/team/${team.id}` as any),
-                    },
-                ]);
+                    }]
+                });
                 return;
             }
 
@@ -229,15 +235,17 @@ export default function JoinTeamScreen() {
                 memberId: user.id,
             });
 
-            Alert.alert('✅ Sucesso!', `Entraste em "${team.name}"!`, [
-                {
+            showAlert({
+                title: '✅ Sucesso!',
+                message: `Entraste em "${team.name}"!`,
+                buttons: [{
                     text: 'Ver Equipa',
                     onPress: () => router.replace(`/team/${team.id}` as any),
-                },
-            ]);
+                }]
+            });
         } catch (err: any) {
             console.error('Erro ao entrar na equipa:', err);
-            Alert.alert('Erro', err.message || 'Não foi possível entrar na equipa.');
+            showAlert({ title: 'Erro', message: err.message || 'Não foi possível entrar na equipa.' });
         } finally {
             setJoiningTeamId(null);
         }

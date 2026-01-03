@@ -1,21 +1,20 @@
 /**
- * TaskDetailModal Component v2
- * Shows task details and allows completing/submitting
- * Uses task_submissions for team tasks (proper grading system)
- * Uses personal_todos toggle for personal tasks
+ * TaskDetailModal - TripGlide Premium Design
+ * Beautiful, modern, premium task details
  */
 
 import { supabase } from '@/lib/supabase';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { useAlert } from '@/providers/AlertProvider'; // Added
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
+    Dimensions,
     Modal,
     Pressable,
     ScrollView,
@@ -24,6 +23,9 @@ import {
     TextInput,
     View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // ============================================
 // TYPES
@@ -52,7 +54,9 @@ interface TaskDetailModalProps {
 // ============================================
 
 export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetailModalProps) {
+    const insets = useSafeAreaInsets();
     const { user } = useAuthContext();
+    const { showAlert } = useAlert(); // Added
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [comment, setComment] = useState('');
@@ -69,180 +73,121 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
         if (!dateStr) return 'Sem data';
         const date = new Date(dateStr);
         return date.toLocaleDateString('pt-PT', {
-            weekday: 'long',
+            weekday: 'short',
             day: 'numeric',
-            month: 'long',
+            month: 'short',
             hour: '2-digit',
             minute: '2-digit'
         });
     };
 
-    // Priority colors
+    // Priority config
     const priorityConfig = {
-        low: { color: '#10B981', label: 'Baixa' },
-        medium: { color: '#F59E0B', label: 'Média' },
-        high: { color: '#EF4444', label: 'Alta' },
+        low: { color: '#10B981', gradient: ['#10B981', '#34D399'] as [string, string], label: 'Baixa', icon: 'arrow-down' },
+        medium: { color: '#F59E0B', gradient: ['#F59E0B', '#FBBF24'] as [string, string], label: 'Média', icon: 'remove' },
+        high: { color: '#EF4444', gradient: ['#EF4444', '#F87171'] as [string, string], label: 'Alta', icon: 'arrow-up' },
     };
 
-    // Check if overdue
     const isOverdue = task.due_date ? new Date(task.due_date) < new Date() : false;
 
     // ============================================
-    // PERSONAL TODO: Toggle completion
+    // HANDLERS
     // ============================================
 
     const handleToggleTodo = async () => {
         if (!user?.id || task.type !== 'todo') return;
-
         setLoading(true);
         try {
-            const { error } = await supabase.rpc('toggle_todo_completion', {
-                p_todo_id: task.id,
-            });
-
+            const { error } = await supabase.rpc('toggle_todo_completion', { p_todo_id: task.id });
             if (error) throw error;
-
             onUpdate();
             onClose();
         } catch (err: any) {
-            Alert.alert('Erro', err.message || 'Não foi possível atualizar');
+            showAlert({ title: 'Erro', message: err.message || 'Não foi possível atualizar' });
         } finally {
             setLoading(false);
         }
     };
 
-    // ============================================
-    // TEAM TASK: Pick file
-    // ============================================
-
     const handlePickFile = async () => {
         try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: '*/*',
-                copyToCacheDirectory: true,
-            });
-
+            const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
             if (result.canceled || !result.assets[0]) return;
-
             const asset = result.assets[0];
-            setSelectedFile({
-                uri: asset.uri,
-                name: asset.name,
-                mimeType: asset.mimeType || 'application/octet-stream',
-            });
+            setSelectedFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType || 'application/octet-stream' });
         } catch (err) {
             console.error('Pick file error:', err);
         }
     };
 
-    // ============================================
-    // TEAM TASK: Submit (file + link + comment)
-    // ============================================
-
     const handleSubmit = async () => {
         if (!user?.id || task.type !== 'task') return;
-
-        // At least file, link, or just mark as done
         setLoading(true);
         try {
             let fileUrl: string | null = null;
             let fileName: string | null = null;
             let fileType: string | null = null;
 
-            // Upload file if selected
             if (selectedFile) {
                 setUploading(true);
-
-                const base64Data = await FileSystem.readAsStringAsync(selectedFile.uri, {
-                    encoding: 'base64',
-                });
-
+                const base64Data = await FileSystem.readAsStringAsync(selectedFile.uri, { encoding: 'base64' });
                 const ext = selectedFile.name.split('.').pop() || 'file';
                 const path = `${task.id}/${user.id}/${Date.now()}.${ext}`;
-
-                const { error: uploadError } = await supabase.storage
-                    .from('task-submissions')
-                    .upload(path, decode(base64Data), {
-                        contentType: selectedFile.mimeType,
-                    });
-
+                const { error: uploadError } = await supabase.storage.from('task-submissions').upload(path, decode(base64Data), { contentType: selectedFile.mimeType });
                 if (uploadError) throw uploadError;
-
-                const { data: urlData } = supabase.storage
-                    .from('task-submissions')
-                    .getPublicUrl(path);
-
+                const { data: urlData } = supabase.storage.from('task-submissions').getPublicUrl(path);
                 fileUrl = urlData.publicUrl;
                 fileName = selectedFile.name;
                 fileType = selectedFile.mimeType;
                 setUploading(false);
             }
 
-            // Insert/update submission
-            const { error: submitError } = await supabase
-                .from('task_submissions')
-                .upsert({
-                    task_id: task.id,
-                    user_id: user.id,
-                    file_url: fileUrl,
-                    file_name: fileName,
-                    file_type: fileType,
-                    link_url: linkUrl.trim() || null,
-                    content: comment.trim() || null,
-                    status: 'submitted',
-                    submitted_at: new Date().toISOString(),
-                    is_late: isOverdue,
-                }, {
-                    onConflict: 'task_id,user_id',
-                });
+            const { error: submitError } = await supabase.from('task_submissions').upsert({
+                task_id: task.id,
+                user_id: user.id,
+                file_url: fileUrl,
+                file_name: fileName,
+                file_type: fileType,
+                link_url: linkUrl.trim() || null,
+                content: comment.trim() || null,
+                status: 'submitted',
+                submitted_at: new Date().toISOString(),
+                is_late: isOverdue,
+            }, { onConflict: 'task_id,user_id' });
 
             if (submitError) throw submitError;
-
-            Alert.alert('Sucesso', 'Tarefa entregue com sucesso! ✅');
+            showAlert({ title: 'Sucesso', message: 'Tarefa entregue! ✅' });
             setSelectedFile(null);
             setLinkUrl('');
             setComment('');
             onUpdate();
             onClose();
         } catch (err: any) {
-            console.error('Submit error:', err);
-            Alert.alert('Erro', err.message || 'Erro ao submeter');
+            showAlert({ title: 'Erro', message: err.message || 'Erro ao submeter' });
         } finally {
             setLoading(false);
             setUploading(false);
         }
     };
 
-    // ============================================
-    // TEAM TASK: Quick complete (no file)
-    // ============================================
-
     const handleQuickComplete = async () => {
         if (!user?.id || task.type !== 'task') return;
-
         setLoading(true);
         try {
-            const { error } = await supabase
-                .from('task_submissions')
-                .upsert({
-                    task_id: task.id,
-                    user_id: user.id,
-                    status: 'submitted',
-                    content: comment.trim() || 'Marcado como concluído',
-                    submitted_at: new Date().toISOString(),
-                    is_late: isOverdue,
-                }, {
-                    onConflict: 'task_id,user_id',
-                });
-
+            const { error } = await supabase.from('task_submissions').upsert({
+                task_id: task.id,
+                user_id: user.id,
+                status: 'submitted',
+                content: comment.trim() || 'Marcado como concluído',
+                submitted_at: new Date().toISOString(),
+                is_late: isOverdue,
+            }, { onConflict: 'task_id,user_id' });
             if (error) throw error;
-
-            Alert.alert('Sucesso', 'Tarefa marcada como concluída!');
+            showAlert({ title: 'Sucesso', message: 'Tarefa concluída!' });
             onUpdate();
             onClose();
         } catch (err: any) {
-            console.error('Complete error:', err);
-            Alert.alert('Erro', err.message || 'Erro ao completar');
+            showAlert({ title: 'Erro', message: err.message || 'Erro ao completar' });
         } finally {
             setLoading(false);
         }
@@ -253,42 +198,48 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
     // ============================================
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            transparent
-            onRequestClose={onClose}
-        >
+        <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose} statusBarTranslucent>
             <View style={styles.overlay}>
-                <View style={styles.container}>
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <Pressable onPress={onClose} style={styles.closeButton}>
-                            <Ionicons name="close" size={24} color={colors.text.primary} />
-                        </Pressable>
-                        <View style={styles.headerCenter}>
-                            <Text style={styles.headerType}>
-                                {isTeamTask ? '📋 Tarefa de Equipa' : '✓ Tarefa Pessoal'}
-                            </Text>
-                        </View>
-                        <View style={{ width: 40 }} />
+                <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+
+                <View style={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
+                    {/* Handle */}
+                    <View style={styles.handleArea}>
+                        <View style={styles.handle} />
                     </View>
 
-                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                        {/* Title */}
+                    {/* Header with gradient */}
+                    <View style={styles.header}>
+                        <View style={styles.headerTop}>
+                            <View style={[styles.typeBadge, { backgroundColor: isTeamTask ? 'rgba(99,102,241,0.15)' : 'rgba(16,185,129,0.15)' }]}>
+                                <Ionicons
+                                    name={isTeamTask ? 'people' : 'person'}
+                                    size={14}
+                                    color={isTeamTask ? '#818CF8' : '#10B981'}
+                                />
+                                <Text style={[styles.typeBadgeText, { color: isTeamTask ? '#818CF8' : '#10B981' }]}>
+                                    {isTeamTask ? 'Equipa' : 'Pessoal'}
+                                </Text>
+                            </View>
+
+                            <Pressable onPress={onClose} style={styles.closeButton}>
+                                <Ionicons name="close" size={22} color="rgba(255,255,255,0.6)" />
+                            </Pressable>
+                        </View>
+
                         <Text style={styles.title}>{task.title}</Text>
 
-                        {/* Status Badges */}
+                        {/* Status Row */}
                         <View style={styles.statusRow}>
+                            {/* Status Badge */}
                             <View style={[
                                 styles.statusBadge,
-                                { backgroundColor: task.is_completed ? '#10B98120' : isOverdue ? '#EF444420' : '#F59E0B20' }
+                                { backgroundColor: task.is_completed ? 'rgba(16,185,129,0.15)' : isOverdue ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)' }
                             ]}>
-                                <Ionicons
-                                    name={task.is_completed ? 'checkmark-circle' : isOverdue ? 'alert-circle' : 'time'}
-                                    size={16}
-                                    color={task.is_completed ? '#10B981' : isOverdue ? '#EF4444' : '#F59E0B'}
-                                />
+                                <View style={[
+                                    styles.statusDot,
+                                    { backgroundColor: task.is_completed ? '#10B981' : isOverdue ? '#EF4444' : '#F59E0B' }
+                                ]} />
                                 <Text style={[
                                     styles.statusText,
                                     { color: task.is_completed ? '#10B981' : isOverdue ? '#EF4444' : '#F59E0B' }
@@ -297,71 +248,95 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                                 </Text>
                             </View>
 
+                            {/* Priority Badge */}
                             {task.priority && (
                                 <View style={[styles.priorityBadge, { backgroundColor: priorityConfig[task.priority].color + '20' }]}>
-                                    <View style={[styles.priorityDot, { backgroundColor: priorityConfig[task.priority].color }]} />
+                                    <Ionicons name={priorityConfig[task.priority].icon as any} size={12} color={priorityConfig[task.priority].color} />
                                     <Text style={[styles.priorityText, { color: priorityConfig[task.priority].color }]}>
                                         {priorityConfig[task.priority].label}
                                     </Text>
                                 </View>
                             )}
                         </View>
+                    </View>
 
-                        {/* Team Badge */}
-                        {task.team_name && (
-                            <View style={styles.infoRow}>
-                                <Ionicons name="people" size={18} color={task.team_color || colors.text.tertiary} />
-                                <Text style={[styles.infoText, { color: task.team_color || colors.text.secondary }]}>
-                                    {task.team_name}
-                                </Text>
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                        {/* Info Cards */}
+                        <View style={styles.infoCards}>
+                            {/* Team */}
+                            {task.team_name && (
+                                <View style={styles.infoCard}>
+                                    <View style={[styles.infoCardIcon, { backgroundColor: (task.team_color || '#6366F1') + '20' }]}>
+                                        <Ionicons name="people" size={18} color={task.team_color || '#6366F1'} />
+                                    </View>
+                                    <View>
+                                        <Text style={styles.infoCardLabel}>Equipa</Text>
+                                        <Text style={styles.infoCardValue}>{task.team_name}</Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Due Date */}
+                            <View style={styles.infoCard}>
+                                <View style={[styles.infoCardIcon, { backgroundColor: isOverdue ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)' }]}>
+                                    <Ionicons name="calendar" size={18} color={isOverdue ? '#EF4444' : '#3B82F6'} />
+                                </View>
+                                <View>
+                                    <Text style={styles.infoCardLabel}>Prazo</Text>
+                                    <Text style={[styles.infoCardValue, isOverdue && { color: '#EF4444' }]}>
+                                        {formatDate(task.due_date)}
+                                    </Text>
+                                </View>
                             </View>
-                        )}
-
-                        {/* Due Date */}
-                        <View style={styles.infoRow}>
-                            <Ionicons name="calendar" size={18} color={isOverdue ? '#EF4444' : colors.text.tertiary} />
-                            <Text style={[styles.infoText, isOverdue && { color: '#EF4444', fontWeight: '600' }]}>
-                                {formatDate(task.due_date)}
-                            </Text>
                         </View>
 
                         {/* Description */}
                         {task.description && (
-                            <View style={styles.descriptionSection}>
-                                <Text style={styles.sectionLabel}>Descrição</Text>
-                                <Text style={styles.description}>{task.description}</Text>
+                            <View style={styles.descriptionCard}>
+                                <Text style={styles.sectionTitle}>Descrição</Text>
+                                <Text style={styles.descriptionText}>{task.description}</Text>
                             </View>
                         )}
 
-                        {/* Submission Form (for team tasks) */}
+                        {/* Submission Form for Team Tasks */}
                         {isTeamTask && isPending && (
-                            <View style={styles.submissionForm}>
-                                <Text style={styles.sectionLabel}>Entrega</Text>
+                            <View style={styles.submissionSection}>
+                                <Text style={styles.sectionTitle}>Entrega</Text>
 
-                                {/* File picker */}
-                                <Pressable style={styles.fileButton} onPress={handlePickFile}>
-                                    <Ionicons
-                                        name={selectedFile ? 'document-attach' : 'cloud-upload-outline'}
-                                        size={24}
-                                        color={selectedFile ? '#10B981' : colors.accent.primary}
-                                    />
-                                    <Text style={[styles.fileButtonText, selectedFile && { color: '#10B981' }]}>
-                                        {selectedFile ? selectedFile.name : 'Anexar ficheiro (opcional)'}
-                                    </Text>
-                                    {selectedFile && (
-                                        <Pressable onPress={() => setSelectedFile(null)}>
-                                            <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
-                                        </Pressable>
-                                    )}
+                                {/* File Upload */}
+                                <Pressable style={styles.uploadButton} onPress={handlePickFile}>
+                                    <LinearGradient
+                                        colors={selectedFile ? ['#10B981', '#34D399'] : ['rgba(99,102,241,0.1)', 'rgba(139,92,246,0.1)']}
+                                        style={styles.uploadButtonGradient}
+                                    >
+                                        <Ionicons
+                                            name={selectedFile ? 'checkmark-circle' : 'cloud-upload'}
+                                            size={24}
+                                            color={selectedFile ? '#FFF' : '#818CF8'}
+                                        />
+                                        <View style={styles.uploadTextContainer}>
+                                            <Text style={[styles.uploadButtonText, selectedFile && { color: '#FFF' }]}>
+                                                {selectedFile ? selectedFile.name : 'Carregar ficheiro'}
+                                            </Text>
+                                            <Text style={[styles.uploadButtonHint, selectedFile && { color: 'rgba(255,255,255,0.7)' }]}>
+                                                {selectedFile ? 'Toca para mudar' : 'PDF, DOC, imagens...'}
+                                            </Text>
+                                        </View>
+                                        {selectedFile && (
+                                            <Pressable onPress={(e) => { e.stopPropagation(); setSelectedFile(null); }}>
+                                                <Ionicons name="close-circle" size={22} color="rgba(255,255,255,0.7)" />
+                                            </Pressable>
+                                        )}
+                                    </LinearGradient>
                                 </Pressable>
 
-                                {/* Link input */}
-                                <View style={styles.linkInputContainer}>
-                                    <Ionicons name="link-outline" size={20} color={colors.text.tertiary} />
+                                {/* Link Input */}
+                                <View style={styles.inputCard}>
+                                    <Ionicons name="link" size={20} color="rgba(255,255,255,0.4)" />
                                     <TextInput
-                                        style={styles.linkInput}
+                                        style={styles.textInput}
                                         placeholder="Adicionar link (opcional)"
-                                        placeholderTextColor={colors.text.tertiary}
+                                        placeholderTextColor="rgba(255,255,255,0.3)"
                                         value={linkUrl}
                                         onChangeText={setLinkUrl}
                                         autoCapitalize="none"
@@ -370,96 +345,95 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                                 </View>
 
                                 {/* Comment */}
-                                <TextInput
-                                    style={styles.commentInput}
-                                    placeholder="Comentário ou nota (opcional)"
-                                    placeholderTextColor={colors.text.tertiary}
-                                    value={comment}
-                                    onChangeText={setComment}
-                                    multiline
-                                    numberOfLines={3}
-                                />
+                                <View style={[styles.inputCard, { alignItems: 'flex-start' }]}>
+                                    <Ionicons name="chatbubble" size={20} color="rgba(255,255,255,0.4)" style={{ marginTop: 2 }} />
+                                    <TextInput
+                                        style={[styles.textInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                                        placeholder="Comentário (opcional)"
+                                        placeholderTextColor="rgba(255,255,255,0.3)"
+                                        value={comment}
+                                        onChangeText={setComment}
+                                        multiline
+                                    />
+                                </View>
 
-                                {/* Late warning */}
+                                {/* Late Warning */}
                                 {isOverdue && (
-                                    <View style={styles.lateWarning}>
-                                        <Ionicons name="warning" size={16} color="#EF4444" />
-                                        <Text style={styles.lateWarningText}>
-                                            Esta entrega será marcada como atrasada
-                                        </Text>
+                                    <View style={styles.warningCard}>
+                                        <Ionicons name="warning" size={18} color="#EF4444" />
+                                        <Text style={styles.warningText}>Esta entrega será marcada como atrasada</Text>
                                     </View>
                                 )}
                             </View>
                         )}
 
-                        {/* Spacer */}
-                        <View style={{ height: 100 }} />
+                        <View style={{ height: 120 }} />
                     </ScrollView>
 
-                    {/* Action Buttons */}
+                    {/* Action Button */}
                     {isPending && (
-                        <View style={styles.actions}>
+                        <View style={styles.actionContainer}>
                             {isTeamTask ? (
-                                <>
-                                    {/* Submit with file/link */}
-                                    {(selectedFile || linkUrl.trim()) ? (
-                                        <Pressable
-                                            style={styles.submitButton}
-                                            onPress={handleSubmit}
-                                            disabled={loading || uploading}
-                                        >
-                                            {(loading || uploading) ? (
-                                                <ActivityIndicator size="small" color="#FFF" />
-                                            ) : (
-                                                <>
-                                                    <Ionicons name="paper-plane" size={20} color="#FFF" />
-                                                    <Text style={styles.submitButtonText}>Entregar</Text>
-                                                </>
-                                            )}
-                                        </Pressable>
-                                    ) : (
-                                        /* Quick complete */
-                                        <Pressable
-                                            style={styles.completeButton}
-                                            onPress={handleQuickComplete}
-                                            disabled={loading}
-                                        >
-                                            {loading ? (
-                                                <ActivityIndicator size="small" color="#FFF" />
-                                            ) : (
-                                                <>
-                                                    <Ionicons name="checkmark-done" size={20} color="#FFF" />
-                                                    <Text style={styles.completeButtonText}>Marcar como Feita</Text>
-                                                </>
-                                            )}
-                                        </Pressable>
-                                    )}
-                                </>
-                            ) : (
-                                /* Personal Todo: Toggle */
                                 <Pressable
-                                    style={styles.completeButton}
+                                    style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                                    onPress={selectedFile || linkUrl.trim() ? handleSubmit : handleQuickComplete}
+                                    disabled={loading || uploading}
+                                >
+                                    <LinearGradient
+                                        colors={selectedFile || linkUrl.trim() ? ['#6366F1', '#8B5CF6'] : ['#10B981', '#34D399']}
+                                        style={styles.actionButtonGradient}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    >
+                                        {(loading || uploading) ? (
+                                            <ActivityIndicator size="small" color="#FFF" />
+                                        ) : (
+                                            <>
+                                                <Ionicons
+                                                    name={selectedFile || linkUrl.trim() ? 'paper-plane' : 'checkmark-done'}
+                                                    size={20}
+                                                    color="#FFF"
+                                                />
+                                                <Text style={styles.actionButtonText}>
+                                                    {selectedFile || linkUrl.trim() ? 'Entregar' : 'Marcar como Feita'}
+                                                </Text>
+                                            </>
+                                        )}
+                                    </LinearGradient>
+                                </Pressable>
+                            ) : (
+                                <Pressable
+                                    style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
                                     onPress={handleToggleTodo}
                                     disabled={loading}
                                 >
-                                    {loading ? (
-                                        <ActivityIndicator size="small" color="#FFF" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="checkmark-done" size={20} color="#FFF" />
-                                            <Text style={styles.completeButtonText}>Concluir Tarefa</Text>
-                                        </>
-                                    )}
+                                    <LinearGradient
+                                        colors={['#10B981', '#34D399']}
+                                        style={styles.actionButtonGradient}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    >
+                                        {loading ? (
+                                            <ActivityIndicator size="small" color="#FFF" />
+                                        ) : (
+                                            <>
+                                                <Ionicons name="checkmark-done" size={20} color="#FFF" />
+                                                <Text style={styles.actionButtonText}>Concluir Tarefa</Text>
+                                            </>
+                                        )}
+                                    </LinearGradient>
                                 </Pressable>
                             )}
                         </View>
                     )}
 
-                    {/* Already completed message */}
+                    {/* Completed State */}
                     {!isPending && (
-                        <View style={styles.completedMessage}>
-                            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                            <Text style={styles.completedText}>Esta tarefa já foi concluída!</Text>
+                        <View style={styles.completedContainer}>
+                            <LinearGradient colors={['rgba(16,185,129,0.15)', 'rgba(52,211,153,0.05)']} style={styles.completedGradient}>
+                                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+                                <Text style={styles.completedText}>Tarefa concluída!</Text>
+                            </LinearGradient>
                         </View>
                     )}
                 </View>
@@ -469,220 +443,272 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
 }
 
 // ============================================
-// STYLES
+// STYLES - TripGlide Premium
 // ============================================
 
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
         justifyContent: 'flex-end',
     },
     container: {
-        backgroundColor: colors.background,
-        borderTopLeftRadius: borderRadius['2xl'],
-        borderTopRightRadius: borderRadius['2xl'],
-        maxHeight: '90%',
+        backgroundColor: '#0C0C0E',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        maxHeight: SCREEN_HEIGHT * 0.92,
     },
+    handleArea: {
+        alignItems: 'center',
+        paddingTop: 14,
+        paddingBottom: 8,
+    },
+    handle: {
+        width: 36,
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.25)',
+        borderRadius: 2,
+    },
+
+    // Header
     header: {
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.06)',
+    },
+    headerTop: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: spacing.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
+        justifyContent: 'space-between',
+        marginBottom: 16,
+    },
+    typeBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    typeBadgeText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
     closeButton: {
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.08)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    headerCenter: {
-        flex: 1,
-        alignItems: 'center',
-    },
-    headerType: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
-        fontWeight: typography.weight.medium,
-    },
-    content: {
-        padding: spacing.lg,
-    },
     title: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.md,
+        fontSize: 24,
+        fontWeight: '700',
+        color: '#FFF',
+        letterSpacing: -0.5,
+        marginBottom: 14,
     },
     statusRow: {
         flexDirection: 'row',
-        gap: spacing.sm,
-        marginBottom: spacing.md,
+        gap: 10,
     },
     statusBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.xs,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
     },
-    statusText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-    },
-    priorityBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.xs,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: borderRadius.full,
-    },
-    priorityDot: {
+    statusDot: {
         width: 8,
         height: 8,
         borderRadius: 4,
     },
+    statusText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    priorityBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
     priorityText: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
+        fontSize: 12,
+        fontWeight: '600',
     },
-    infoRow: {
+
+    // Content
+    content: {
+        paddingHorizontal: 20,
+        paddingTop: 20,
+    },
+
+    // Info Cards
+    infoCards: {
+        gap: 12,
+        marginBottom: 20,
+    },
+    infoCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        marginBottom: spacing.sm,
+        gap: 14,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        padding: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
     },
-    infoText: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
+    infoCardIcon: {
+        width: 42,
+        height: 42,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    descriptionSection: {
-        marginTop: spacing.lg,
-        padding: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
+    infoCardLabel: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.5)',
+        marginBottom: 2,
     },
-    sectionLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.tertiary,
-        marginBottom: spacing.sm,
+    infoCardValue: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#FFF',
+    },
+
+    // Description
+    descriptionCard: {
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        padding: 16,
+        borderRadius: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    sectionTitle: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
         textTransform: 'uppercase',
-        letterSpacing: 0.5,
+        letterSpacing: 0.8,
+        marginBottom: 10,
     },
-    description: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        lineHeight: 24,
+    descriptionText: {
+        fontSize: 15,
+        color: 'rgba(255,255,255,0.85)',
+        lineHeight: 22,
     },
-    submissionForm: {
-        marginTop: spacing.lg,
+
+    // Submission
+    submissionSection: {
+        marginBottom: 20,
     },
-    fileButton: {
+    uploadButton: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        marginBottom: 12,
+    },
+    uploadButtonGradient: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        padding: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        borderWidth: 2,
-        borderStyle: 'dashed',
-        borderColor: colors.border,
-        marginBottom: spacing.sm,
+        gap: 14,
+        padding: 16,
     },
-    fileButtonText: {
+    uploadTextContainer: {
         flex: 1,
-        fontSize: typography.size.sm,
-        color: colors.text.secondary,
     },
-    linkInputContainer: {
+    uploadButtonText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#818CF8',
+    },
+    uploadButtonHint: {
+        fontSize: 12,
+        color: 'rgba(129,140,248,0.6)',
+        marginTop: 2,
+    },
+    inputCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.md,
-        marginBottom: spacing.sm,
+        gap: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        padding: 14,
+        borderRadius: 14,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
     },
-    linkInput: {
+    textInput: {
         flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        paddingVertical: spacing.md,
+        fontSize: 15,
+        color: '#FFF',
     },
-    commentInput: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.md,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        minHeight: 80,
-        textAlignVertical: 'top',
-    },
-    lateWarning: {
+    warningCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing.sm,
-        padding: spacing.sm,
-        backgroundColor: '#EF444410',
-        borderRadius: borderRadius.md,
-        marginTop: spacing.sm,
+        gap: 10,
+        backgroundColor: 'rgba(239,68,68,0.1)',
+        padding: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(239,68,68,0.2)',
     },
-    lateWarningText: {
-        fontSize: typography.size.sm,
+    warningText: {
+        fontSize: 13,
         color: '#EF4444',
+        flex: 1,
     },
-    actions: {
-        padding: spacing.lg,
-        paddingTop: 0,
+
+    // Action
+    actionContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        padding: 20,
+        backgroundColor: '#0C0C0E',
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.06)',
     },
-    submitButton: {
+    actionButton: {
+        borderRadius: 16,
+        overflow: 'hidden',
+    },
+    actionButtonGradient: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.sm,
-        padding: spacing.md,
-        backgroundColor: colors.accent.primary,
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
+        gap: 10,
+        paddingVertical: 16,
     },
-    submitButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
+    actionButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
         color: '#FFF',
     },
-    completeButton: {
+
+    // Completed
+    completedContainer: {
+        padding: 20,
+    },
+    completedGradient: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: spacing.sm,
-        padding: spacing.md,
-        backgroundColor: '#10B981',
-        borderRadius: borderRadius.lg,
-        ...shadows.md,
-    },
-    completeButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: '#FFF',
-    },
-    completedMessage: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: spacing.sm,
-        padding: spacing.lg,
-        backgroundColor: '#10B98110',
-        margin: spacing.lg,
-        marginTop: 0,
-        borderRadius: borderRadius.lg,
+        gap: 12,
+        padding: 18,
+        borderRadius: 16,
     },
     completedText: {
-        fontSize: typography.size.base,
+        fontSize: 16,
+        fontWeight: '600',
         color: '#10B981',
-        fontWeight: typography.weight.medium,
     },
 });

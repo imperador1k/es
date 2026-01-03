@@ -6,6 +6,7 @@
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends, useSearchUsers } from '@/hooks/useFriends';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { Profile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,7 +14,6 @@ import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     FlatList,
     Image,
@@ -23,7 +23,7 @@ import {
     Text,
     TextInput,
     TouchableWithoutFeedback,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -155,7 +155,9 @@ function UserCard({ user, isFriend, sending, onAdd, onMessage, index }: {
 export default function SearchFriendsScreen() {
     const { results, searching, search, clear } = useSearchUsers();
     const { sendFriendRequest, friends } = useFriends();
+
     const { startOrGetConversation } = useStartConversation();
+    const { showAlert } = useAlert();
     const [query, setQuery] = useState('');
     const [sending, setSending] = useState<string | null>(null);
     const headerAnim = useRef(new Animated.Value(0)).current;
@@ -178,9 +180,9 @@ export default function SearchFriendsScreen() {
         const success = await sendFriendRequest(userId);
         setSending(null);
         if (success) {
-            Alert.alert('✅ Pedido Enviado!', 'O teu pedido de amizade foi enviado.');
+            showAlert({ title: '✅ Pedido Enviado!', message: 'O teu pedido de amizade foi enviado.' });
         } else {
-            Alert.alert('Aviso', 'Já existe um pedido ou amizade com este utilizador.');
+            showAlert({ title: 'Aviso', message: 'Já existe um pedido ou amizade com este utilizador.' });
         }
     };
 

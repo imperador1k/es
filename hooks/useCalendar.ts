@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
+import { useAlert } from '@/providers/AlertProvider';
 import * as Calendar from 'expo-calendar';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
 
 export type CalendarEvent = {
   id: string;
@@ -14,6 +14,7 @@ export type CalendarEvent = {
 };
 
 export function useCalendar() {
+  const { showAlert } = useAlert();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -74,7 +75,7 @@ export function useCalendar() {
 
     } catch (error: any) {
       console.error("Erro no calendário:", error);
-      Alert.alert("Erro", "Não foi possível carregar a agenda.");
+      showAlert({ title: "Erro", message: "Não foi possível carregar a agenda." });
     } finally {
       setLoading(false);
     }

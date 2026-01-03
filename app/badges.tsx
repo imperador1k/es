@@ -4,6 +4,7 @@
  */
 
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Badge, checkAndAwardBadges, getAllBadges, getUserBadges, UserBadge } from '@/services/badgeService';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +13,6 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     FlatList,
@@ -21,7 +21,7 @@ import {
     RefreshControl,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -77,6 +77,7 @@ const RARITY_CONFIG = {
 
 export default function BadgesScreen() {
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     const [allBadges, setAllBadges] = useState<Badge[]>([]);
     const [userBadges, setUserBadges] = useState<UserBadge[]>([]);
@@ -120,9 +121,11 @@ export default function BadgesScreen() {
 
                 setTimeout(() => {
                     const names = result.badges_awarded.map((b) => `${b.icon} ${b.name}`);
-                    Alert.alert('🎉 NOVA CONQUISTA!', `Desbloqueaste:\n\n${names.join('\n')}\n\n+${result.total_xp_gained} XP!`, [
-                        { text: 'ÉPICO!' },
-                    ]);
+                    showAlert({
+                        title: '🎉 NOVA CONQUISTA!',
+                        message: `Desbloqueaste:\n\n${names.join('\n')}\n\n+${result.total_xp_gained} XP!`,
+                        buttons: [{ text: 'ÉPICO!' }]
+                    });
                 }, 1500);
             }
         };

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { useAuthContext } from '@/providers/AuthProvider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
@@ -12,16 +13,38 @@ interface PresenceState {
   lastSeen: string;
 }
 
+const PREFERRED_STATUS_KEY = '@preferred_status';
+
 /**
  * Hook para gerir o status de presença do utilizador
- * - Atualiza automaticamente online/offline baseado no AppState
- * - Permite definir status manual (DND, Away)
+ * 
+ * COMPORTAMENTO TIPO DISCORD:
+ * - Quando fecha a app → SEMPRE fica offline
+ * - Quando abre a app → Restaura o status preferido (online, away, dnd)
+ * - O utilizador pode definir o seu status preferido
  */
 export function usePresence() {
   const { user } = useAuthContext();
-  const [myStatus, setMyStatus] = useState<UserStatus>('online');
+  const [myStatus, setMyStatus] = useState<UserStatus>('offline');
+  const [preferredStatus, setPreferredStatus] = useState<Exclude<UserStatus, 'offline'>>('online');
   const [onlineUsers, setOnlineUsers] = useState<Map<string, PresenceState>>(new Map());
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const isAppActive = useRef(AppState.currentState === 'active');
+
+  // Carregar status preferido do AsyncStorage
+  useEffect(() => {
+    const loadPreferredStatus = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(PREFERRED_STATUS_KEY);
+        if (saved && (saved === 'online' || saved === 'away' || saved === 'dnd')) {
+          setPreferredStatus(saved as Exclude<UserStatus, 'offline'>);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar status preferido:', err);
+      }
+    };
+    loadPreferredStatus();
+  }, []);
 
   // Atualizar status na base de dados
   const updateStatus = useCallback(async (status: UserStatus) => {
@@ -42,9 +65,22 @@ export function usePresence() {
     }
   }, [user?.id]);
 
-  // Definir status manual (DND, Away, etc)
-  const setStatus = useCallback((status: UserStatus) => {
-    updateStatus(status);
+  // Definir status preferido (o que aparece quando abre a app)
+  // Não pode ser 'offline' - offline é automático quando fecha a app
+  const setStatus = useCallback(async (status: Exclude<UserStatus, 'offline'>) => {
+    setPreferredStatus(status);
+    
+    // Salvar no AsyncStorage para persistir
+    try {
+      await AsyncStorage.setItem(PREFERRED_STATUS_KEY, status);
+    } catch (err) {
+      console.error('Erro ao salvar status preferido:', err);
+    }
+    
+    // Se a app está ativa, aplicar imediatamente
+    if (isAppActive.current) {
+      updateStatus(status);
+    }
   }, [updateStatus]);
 
   // Verificar se um utilizador está online
@@ -62,8 +98,10 @@ export function usePresence() {
   useEffect(() => {
     if (!user?.id) return;
 
-    // Marcar como online ao iniciar
-    updateStatus('online');
+    // Marcar com status preferido ao iniciar (se app ativa)
+    if (isAppActive.current) {
+      updateStatus(preferredStatus);
+    }
 
     // Configurar canal de Presence
     channelRef.current = supabase.channel('presence:global', {
@@ -107,21 +145,22 @@ export function usePresence() {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [user?.id, updateStatus, myStatus]);
+  }, [user?.id, updateStatus, myStatus, preferredStatus]);
 
-  // Gerir AppState (app em background = offline)
+  // Gerir AppState - COMPORTAMENTO TIPO DISCORD
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
-        // App aberta -> Online (se não estiver em modo manual)
-        if (myStatus === 'offline') {
-          updateStatus('online');
-        }
-      } else if (nextState === 'background' || nextState === 'inactive') {
-        // App fechada -> Offline (se não estiver em DND/Away que são manuais)
-        if (myStatus === 'online') {
-          updateStatus('offline');
-        }
+      const wasActive = isAppActive.current;
+      isAppActive.current = nextState === 'active';
+
+      if (nextState === 'active' && !wasActive) {
+        // App abriu -> Restaurar status PREFERIDO (online, away, ou dnd)
+        console.log('📱 App aberta - restaurando status:', preferredStatus);
+        updateStatus(preferredStatus);
+      } else if ((nextState === 'background' || nextState === 'inactive') && wasActive) {
+        // App fechou -> SEMPRE offline (independente do status preferido)
+        console.log('📱 App fechada - marcando offline');
+        updateStatus('offline');
       }
     };
 
@@ -130,10 +169,11 @@ export function usePresence() {
     return () => {
       subscription.remove();
     };
-  }, [myStatus, updateStatus]);
+  }, [preferredStatus, updateStatus]);
 
   return {
     myStatus,
+    preferredStatus,
     setStatus,
     isUserOnline,
     getUserStatus,

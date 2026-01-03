@@ -10,12 +10,12 @@ import { SubjectDetailModal } from '@/components/schedule/SubjectDetailModal';
 import { WeeklyScheduleGrid } from '@/components/schedule/WeeklyScheduleGrid';
 import { useSchedule, useSubjects } from '@/hooks/useSubjects';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { ClassSessionWithSubject, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useState } from 'react';
 import {
-    Alert,
     FlatList,
     Pressable,
     RefreshControl,
@@ -106,6 +106,7 @@ function SubjectCard({
 export default function SubjectsScreen() {
     const { subjects, loading, fetchSubjects, deleteSubject } = useSubjects();
     const { schedule, loading: scheduleLoading, fetchSchedule, getScheduleByDay } = useSchedule();
+    const { showAlert } = useAlert();
 
     const [subjectModalVisible, setSubjectModalVisible] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
@@ -141,10 +142,10 @@ export default function SubjectsScreen() {
     };
 
     const handleDeleteSubject = (subject: Subject) => {
-        Alert.alert(
-            'Eliminar Disciplina',
-            `Eliminar "${subject.name}" e todas as aulas associadas?`,
-            [
+        showAlert({
+            title: 'Eliminar Disciplina',
+            message: `Eliminar "${subject.name}" e todas as aulas associadas?`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Eliminar',
@@ -154,7 +155,7 @@ export default function SubjectsScreen() {
                     },
                 },
             ]
-        );
+        });
     };
 
     // Quick add handlers

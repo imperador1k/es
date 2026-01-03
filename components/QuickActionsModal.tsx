@@ -1,9 +1,8 @@
 /**
- * QuickActionsModal - Full App Hub
- * Todas as páginas da app organizadas por importância
+ * QuickActionsModal V2 - Premium App Hub
+ * TODAS as ações destacadas com gradientes e visual premium
  */
 
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -20,9 +19,10 @@ import {
     Text,
     View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.92;
 
 // ============================================
 // TYPES
@@ -40,59 +40,52 @@ interface ActionItem {
     description?: string;
     gradient: [string, string];
     route: string;
-    featured?: boolean;
-}
-
-interface QuickLink {
-    id: string;
-    icon: string;
-    label: string;
-    route: string;
+    size?: 'large' | 'medium' | 'small';
 }
 
 // ============================================
-// DATA - Organized by Category
+// DATA - TODAS AS AÇÕES COM GRADIENTES
 // ============================================
 
-// Featured Actions (Biggest - Top Priority)
-const FEATURED_ACTIONS: ActionItem[] = [
+const MAIN_ACTIONS: ActionItem[] = [
     {
         id: 'subjects',
         icon: 'book',
         label: 'Disciplinas',
-        description: 'Gerir cadeiras',
+        description: 'Gerir as tuas cadeiras',
         gradient: ['#EC4899', '#F472B6'],
         route: '/(tabs)/subjects',
-        featured: true,
+        size: 'large',
     },
     {
         id: 'study-room',
-        icon: 'people',
+        icon: 'videocam',
         label: 'Study Room',
-        description: 'Estudar em grupo',
+        description: 'Estudar com amigos em vídeo',
         gradient: ['#6366F1', '#8B5CF6'],
         route: '/(app)/study-room',
-        featured: true,
+        size: 'large',
     },
 ];
 
-// Primary Actions (Important)
-const PRIMARY_ACTIONS: ActionItem[] = [
+const PRODUCTIVITY_ACTIONS: ActionItem[] = [
     {
-        id: 'tasks',
+        id: 'planner',
         icon: 'checkmark-circle',
         label: 'Tarefas',
         description: 'Planear estudos',
         gradient: ['#10B981', '#34D399'],
         route: '/(tabs)/planner',
+        size: 'medium',
     },
     {
-        id: 'activity',
-        icon: 'pulse',
-        label: 'Atividade',
-        description: 'O teu progresso',
-        gradient: ['#F59E0B', '#FBBF24'],
-        route: '/(tabs)/activity',
+        id: 'calendar',
+        icon: 'calendar',
+        label: 'Calendário',
+        description: 'Agenda e eventos',
+        gradient: ['#3B82F6', '#60A5FA'],
+        route: '/(tabs)/calendar',
+        size: 'medium',
     },
     {
         id: 'focus',
@@ -101,6 +94,7 @@ const PRIMARY_ACTIONS: ActionItem[] = [
         description: 'Pomodoro timer',
         gradient: ['#EF4444', '#F87171'],
         route: '/pomodoro',
+        size: 'medium',
     },
     {
         id: 'ai-tutor',
@@ -109,143 +103,202 @@ const PRIMARY_ACTIONS: ActionItem[] = [
         description: 'Ajuda inteligente',
         gradient: ['#8B5CF6', '#A78BFA'],
         route: '/(app)/ai-tutor',
+        size: 'medium',
     },
 ];
 
-// Secondary Quick Links
-const SOCIAL_LINKS: QuickLink[] = [
-    { id: 'teams', icon: 'people-outline', label: 'Equipas', route: '/(tabs)/teams' },
-    { id: 'leaderboard', icon: 'trophy-outline', label: 'Ranking', route: '/leaderboard' },
-    { id: 'badges', icon: 'ribbon-outline', label: 'Badges', route: '/badges' },
+const SOCIAL_ACTIONS: ActionItem[] = [
+    {
+        id: 'teams',
+        icon: 'people',
+        label: 'Equipas',
+        description: 'Grupos de estudo',
+        gradient: ['#F59E0B', '#FBBF24'],
+        route: '/(tabs)/teams',
+        size: 'medium',
+    },
+    {
+        id: 'messages',
+        icon: 'chatbubbles',
+        label: 'Mensagens',
+        description: 'Chat com amigos',
+        gradient: ['#06B6D4', '#22D3EE'],
+        route: '/(tabs)/messages',
+        size: 'medium',
+    },
+    {
+        id: 'leaderboard',
+        icon: 'trophy',
+        label: 'Ranking',
+        description: 'Competição semanal',
+        gradient: ['#F97316', '#FB923C'],
+        route: '/leaderboard',
+        size: 'medium',
+    },
+    {
+        id: 'activity',
+        icon: 'pulse',
+        label: 'Atividade',
+        description: 'O teu progresso',
+        gradient: ['#84CC16', '#A3E635'],
+        route: '/(tabs)/activity',
+        size: 'medium',
+    },
 ];
 
-const SHOP_LINKS: QuickLink[] = [
-    { id: 'shop', icon: 'diamond-outline', label: 'Loja', route: '/shop' },
-    { id: 'frames', icon: 'image-outline', label: 'Molduras', route: '/frames' },
-    { id: 'consumables', icon: 'flask-outline', label: 'Consumíveis', route: '/consumables' },
+const REWARDS_ACTIONS: ActionItem[] = [
+    {
+        id: 'shop',
+        icon: 'diamond',
+        label: 'Loja',
+        description: 'Gastar moedas',
+        gradient: ['#7C3AED', '#A78BFA'],
+        route: '/shop',
+        size: 'small',
+    },
+    {
+        id: 'badges',
+        icon: 'ribbon',
+        label: 'Badges',
+        description: 'Conquistas',
+        gradient: ['#EC4899', '#F472B6'],
+        route: '/badges',
+        size: 'small',
+    },
+    {
+        id: 'frames',
+        icon: 'image',
+        label: 'Molduras',
+        description: 'Customizar perfil',
+        gradient: ['#14B8A6', '#2DD4BF'],
+        route: '/frames',
+        size: 'small',
+    },
+    {
+        id: 'consumables',
+        icon: 'flask',
+        label: 'Consumíveis',
+        description: 'Power-ups',
+        gradient: ['#F43F5E', '#FB7185'],
+        route: '/consumables',
+        size: 'small',
+    },
 ];
 
-const UTILITY_LINKS: QuickLink[] = [
-    { id: 'calendar', icon: 'calendar-outline', label: 'Calendário', route: '/(tabs)/calendar' },
-    { id: 'messages', icon: 'chatbubble-outline', label: 'Mensagens', route: '/(tabs)/messages' },
-    { id: 'settings', icon: 'settings-outline', label: 'Definições', route: '/settings' },
+const UTILITY_ACTIONS: ActionItem[] = [
+    {
+        id: 'friends',
+        icon: 'person-add',
+        label: 'Amigos',
+        gradient: ['#0EA5E9', '#38BDF8'],
+        route: '/friends/search',
+        size: 'small',
+    },
+    {
+        id: 'notifications',
+        icon: 'notifications',
+        label: 'Notificações',
+        gradient: ['#EAB308', '#FDE047'],
+        route: '/notifications',
+        size: 'small',
+    },
+    {
+        id: 'settings',
+        icon: 'settings',
+        label: 'Definições',
+        gradient: ['#64748B', '#94A3B8'],
+        route: '/settings',
+        size: 'small',
+    },
+    {
+        id: 'profile',
+        icon: 'person',
+        label: 'Perfil',
+        gradient: ['#6366F1', '#818CF8'],
+        route: '/(tabs)/profile',
+        size: 'small',
+    },
 ];
 
 // ============================================
-// FEATURED CARD (Big, Beautiful)
+// ACTION CARD COMPONENT (Visual & Highlighted)
 // ============================================
 
-function FeaturedCard({
-    action,
-    onPress,
-}: {
-    action: ActionItem;
-    onPress: () => void;
-}) {
+function ActionCard({ item, onPress }: { item: ActionItem; onPress: () => void }) {
     const scale = useRef(new Animated.Value(1)).current;
 
     const handlePressIn = () => {
-        Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start();
+        Animated.spring(scale, { toValue: 0.95, friction: 8, useNativeDriver: true }).start();
     };
 
     const handlePressOut = () => {
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+        Animated.spring(scale, { toValue: 1, friction: 8, useNativeDriver: true }).start();
     };
 
+    const isLarge = item.size === 'large';
+    const isMedium = item.size === 'medium';
+    const isSmall = item.size === 'small';
+
+    if (isLarge) {
+        return (
+            <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+                <Animated.View style={[styles.largeCard, { transform: [{ scale }] }]}>
+                    <LinearGradient
+                        colors={item.gradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.largeCardGradient}
+                    >
+                        <View style={styles.largeCardIcon}>
+                            <Ionicons name={item.icon as any} size={32} color="#FFF" />
+                        </View>
+                        <View style={styles.largeCardContent}>
+                            <Text style={styles.largeCardLabel}>{item.label}</Text>
+                            {item.description && (
+                                <Text style={styles.largeCardDescription}>{item.description}</Text>
+                            )}
+                        </View>
+                        <Ionicons name="chevron-forward" size={24} color="rgba(255,255,255,0.7)" />
+                    </LinearGradient>
+                </Animated.View>
+            </Pressable>
+        );
+    }
+
+    if (isMedium) {
+        return (
+            <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.mediumCardWrapper}>
+                <Animated.View style={[styles.mediumCard, { transform: [{ scale }] }]}>
+                    <LinearGradient
+                        colors={item.gradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.mediumCardIcon}
+                    >
+                        <Ionicons name={item.icon as any} size={26} color="#FFF" />
+                    </LinearGradient>
+                    <Text style={styles.mediumCardLabel}>{item.label}</Text>
+                    {item.description && (
+                        <Text style={styles.mediumCardDescription}>{item.description}</Text>
+                    )}
+                </Animated.View>
+            </Pressable>
+        );
+    }
+
+    // Small
     return (
-        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
-            <Animated.View style={[styles.featuredCard, { transform: [{ scale }] }]}>
+        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.smallCardWrapper}>
+            <Animated.View style={[styles.smallCard, { transform: [{ scale }] }]}>
                 <LinearGradient
-                    colors={action.gradient}
+                    colors={item.gradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={styles.featuredGradient}
+                    style={styles.smallCardIcon}
                 >
-                    <View style={styles.featuredIconWrap}>
-                        <Ionicons name={action.icon as any} size={32} color="#FFF" />
-                    </View>
-                    <View style={styles.featuredContent}>
-                        <Text style={styles.featuredLabel}>{action.label}</Text>
-                        {action.description && (
-                            <Text style={styles.featuredDescription}>{action.description}</Text>
-                        )}
-                    </View>
-                    <Ionicons name="chevron-forward" size={24} color="rgba(255,255,255,0.7)" />
+                    <Ionicons name={item.icon as any} size={20} color="#FFF" />
                 </LinearGradient>
-            </Animated.View>
-        </Pressable>
-    );
-}
-
-// ============================================
-// PRIMARY ACTION BUTTON
-// ============================================
-
-function PrimaryActionButton({
-    action,
-    onPress,
-}: {
-    action: ActionItem;
-    onPress: () => void;
-}) {
-    const scale = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = () => {
-        Animated.spring(scale, { toValue: 0.92, useNativeDriver: true }).start();
-    };
-
-    const handlePressOut = () => {
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-    };
-
-    return (
-        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
-            <Animated.View style={[styles.primaryButton, { transform: [{ scale }] }]}>
-                <LinearGradient
-                    colors={action.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.primaryGradient}
-                >
-                    <Ionicons name={action.icon as any} size={26} color="#FFF" />
-                </LinearGradient>
-                <Text style={styles.primaryLabel}>{action.label}</Text>
-                {action.description && (
-                    <Text style={styles.primaryDescription}>{action.description}</Text>
-                )}
-            </Animated.View>
-        </Pressable>
-    );
-}
-
-// ============================================
-// QUICK LINK CHIP
-// ============================================
-
-function QuickLinkChip({
-    item,
-    onPress,
-}: {
-    item: QuickLink;
-    onPress: () => void;
-}) {
-    const scale = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = () => {
-        Animated.spring(scale, { toValue: 0.93, useNativeDriver: true }).start();
-    };
-
-    const handlePressOut = () => {
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-    };
-
-    return (
-        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
-            <Animated.View style={[styles.quickChip, { transform: [{ scale }] }]}>
-                <View style={styles.quickChipIcon}>
-                    <Ionicons name={item.icon as any} size={18} color={COLORS.text.secondary} />
-                </View>
-                <Text style={styles.quickChipLabel}>{item.label}</Text>
+                <Text style={styles.smallCardLabel}>{item.label}</Text>
             </Animated.View>
         </Pressable>
     );
@@ -269,6 +322,7 @@ function SectionHeader({ title, emoji }: { title: string; emoji: string }) {
 // ============================================
 
 export function QuickActionsModal({ visible, onClose }: QuickActionsModalProps) {
+    const insets = useSafeAreaInsets();
     const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
     const backdropOpacity = useRef(new Animated.Value(0)).current;
 
@@ -277,8 +331,8 @@ export function QuickActionsModal({ visible, onClose }: QuickActionsModalProps) 
             Animated.parallel([
                 Animated.spring(translateY, {
                     toValue: 0,
-                    damping: 20,
-                    stiffness: 150,
+                    damping: 22,
+                    stiffness: 180,
                     useNativeDriver: true,
                 }),
                 Animated.timing(backdropOpacity, {
@@ -323,7 +377,7 @@ export function QuickActionsModal({ visible, onClose }: QuickActionsModalProps) 
                 }
             },
             onPanResponderRelease: (_, gs) => {
-                if (gs.dy > SHEET_HEIGHT * 0.25 || gs.vy > 0.5) {
+                if (gs.dy > SHEET_HEIGHT * 0.2 || gs.vy > 0.5) {
                     closeWithAnimation();
                 } else {
                     Animated.parallel([
@@ -346,58 +400,59 @@ export function QuickActionsModal({ visible, onClose }: QuickActionsModalProps) 
 
             {/* Bottom Sheet */}
             <View style={styles.sheetWrapper}>
-                <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+                <Animated.View style={[styles.sheet, { transform: [{ translateY }], paddingBottom: insets.bottom }]}>
                     {/* Drag Handle */}
                     <View {...panResponder.panHandlers} style={styles.handleArea}>
                         <View style={styles.handle} />
-                        <Text style={styles.sheetTitle}>Acesso Rápido</Text>
+                        <Text style={styles.sheetTitle}>Hub de Navegação</Text>
+                        <Text style={styles.sheetSubtitle}>Todas as funcionalidades da app</Text>
                     </View>
 
                     <ScrollView
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={styles.scrollContent}
                     >
-                        {/* Featured Section - Biggest */}
-                        <SectionHeader title="Essencial" emoji="⭐" />
-                        <View style={styles.featuredSection}>
-                            {FEATURED_ACTIONS.map((action) => (
-                                <FeaturedCard key={action.id} action={action} onPress={() => handleAction(action.route)} />
+                        {/* Main Actions (Large Cards) */}
+                        <SectionHeader title="Principal" emoji="⭐" />
+                        <View style={styles.largeSection}>
+                            {MAIN_ACTIONS.map((item) => (
+                                <ActionCard key={item.id} item={item} onPress={() => handleAction(item.route)} />
                             ))}
                         </View>
 
-                        {/* Primary Actions Grid */}
+                        {/* Productivity (Medium Grid) */}
                         <SectionHeader title="Produtividade" emoji="🚀" />
-                        <View style={styles.primaryGrid}>
-                            {PRIMARY_ACTIONS.map((action) => (
-                                <PrimaryActionButton key={action.id} action={action} onPress={() => handleAction(action.route)} />
+                        <View style={styles.mediumGrid}>
+                            {PRODUCTIVITY_ACTIONS.map((item) => (
+                                <ActionCard key={item.id} item={item} onPress={() => handleAction(item.route)} />
                             ))}
                         </View>
 
-                        {/* Social Links */}
+                        {/* Social (Medium Grid) */}
                         <SectionHeader title="Social" emoji="👥" />
-                        <View style={styles.chipsRow}>
-                            {SOCIAL_LINKS.map((item) => (
-                                <QuickLinkChip key={item.id} item={item} onPress={() => handleAction(item.route)} />
+                        <View style={styles.mediumGrid}>
+                            {SOCIAL_ACTIONS.map((item) => (
+                                <ActionCard key={item.id} item={item} onPress={() => handleAction(item.route)} />
                             ))}
                         </View>
 
-                        {/* Shop Links */}
-                        <SectionHeader title="Loja & Customização" emoji="💎" />
-                        <View style={styles.chipsRow}>
-                            {SHOP_LINKS.map((item) => (
-                                <QuickLinkChip key={item.id} item={item} onPress={() => handleAction(item.route)} />
+                        {/* Rewards (Small Grid) */}
+                        <SectionHeader title="Recompensas" emoji="💎" />
+                        <View style={styles.smallGrid}>
+                            {REWARDS_ACTIONS.map((item) => (
+                                <ActionCard key={item.id} item={item} onPress={() => handleAction(item.route)} />
                             ))}
                         </View>
 
-                        {/* Utility Links */}
+                        {/* Utility (Small Grid) */}
                         <SectionHeader title="Utilitários" emoji="⚙️" />
-                        <View style={styles.chipsRow}>
-                            {UTILITY_LINKS.map((item) => (
-                                <QuickLinkChip key={item.id} item={item} onPress={() => handleAction(item.route)} />
+                        <View style={styles.smallGrid}>
+                            {UTILITY_ACTIONS.map((item) => (
+                                <ActionCard key={item.id} item={item} onPress={() => handleAction(item.route)} />
                             ))}
                         </View>
 
-                        {/* Bottom Spacing */}
+                        {/* Bottom Padding */}
                         <View style={{ height: 40 }} />
                     </ScrollView>
                 </Animated.View>
@@ -410,10 +465,15 @@ export function QuickActionsModal({ visible, onClose }: QuickActionsModalProps) 
 // STYLES
 // ============================================
 
+const CARD_GAP = 12;
+const HORIZONTAL_PADDING = 20;
+const MEDIUM_CARD_WIDTH = (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - CARD_GAP) / 2;
+const SMALL_CARD_WIDTH = (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - CARD_GAP * 3) / 4;
+
 const styles = StyleSheet.create({
     backdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
     },
     sheetWrapper: {
         flex: 1,
@@ -421,154 +481,165 @@ const styles = StyleSheet.create({
     },
     sheet: {
         height: SHEET_HEIGHT,
-        backgroundColor: COLORS.background,
-        borderTopLeftRadius: 32,
-        borderTopRightRadius: 32,
+        backgroundColor: '#0C0C0E',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
     },
     scrollContent: {
-        paddingHorizontal: SPACING.lg,
+        paddingHorizontal: HORIZONTAL_PADDING,
         paddingBottom: 60,
     },
 
     // Handle
     handleArea: {
         alignItems: 'center',
-        paddingTop: SPACING.md,
-        paddingBottom: SPACING.lg,
+        paddingTop: 14,
+        paddingBottom: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.06)',
     },
     handle: {
-        width: 40,
+        width: 36,
         height: 4,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.25)',
         borderRadius: 2,
-        marginBottom: SPACING.md,
+        marginBottom: 14,
     },
     sheetTitle: {
-        fontSize: TYPOGRAPHY.size.lg,
-        fontWeight: TYPOGRAPHY.weight.bold,
-        color: COLORS.text.primary,
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#FFF',
+        letterSpacing: -0.5,
+    },
+    sheetSubtitle: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.5)',
+        marginTop: 4,
     },
 
     // Section Headers
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: SPACING.sm,
-        marginTop: SPACING.lg,
-        marginBottom: SPACING.md,
+        gap: 8,
+        marginTop: 24,
+        marginBottom: 14,
     },
     sectionEmoji: {
         fontSize: 18,
     },
     sectionTitle: {
-        fontSize: TYPOGRAPHY.size.sm,
-        fontWeight: TYPOGRAPHY.weight.semibold,
-        color: COLORS.text.secondary,
+        fontSize: 13,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.6)',
         textTransform: 'uppercase',
-        letterSpacing: 1,
+        letterSpacing: 1.2,
     },
 
-    // Featured Cards (Big, Horizontal)
-    featuredSection: {
-        gap: SPACING.md,
+    // Large Cards
+    largeSection: {
+        gap: CARD_GAP,
     },
-    featuredCard: {
-        borderRadius: RADIUS['2xl'],
+    largeCard: {
+        borderRadius: 20,
         overflow: 'hidden',
     },
-    featuredGradient: {
+    largeCardGradient: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: SPACING.lg,
-        gap: SPACING.md,
+        padding: 18,
+        gap: 14,
     },
-    featuredIconWrap: {
+    largeCardIcon: {
         width: 56,
         height: 56,
-        borderRadius: 18,
+        borderRadius: 16,
         backgroundColor: 'rgba(255,255,255,0.2)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    featuredContent: {
+    largeCardContent: {
         flex: 1,
     },
-    featuredLabel: {
-        fontSize: TYPOGRAPHY.size.lg,
-        fontWeight: TYPOGRAPHY.weight.bold,
+    largeCardLabel: {
+        fontSize: 18,
+        fontWeight: '700',
         color: '#FFF',
     },
-    featuredDescription: {
-        fontSize: TYPOGRAPHY.size.sm,
+    largeCardDescription: {
+        fontSize: 13,
         color: 'rgba(255,255,255,0.8)',
-        marginTop: 2,
+        marginTop: 3,
     },
 
-    // Primary Actions Grid (2x2)
-    primaryGrid: {
+    // Medium Cards (2 per row)
+    mediumGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: SPACING.md,
+        gap: CARD_GAP,
     },
-    primaryButton: {
-        width: (SCREEN_WIDTH - SPACING.lg * 2 - SPACING.md) / 2,
+    mediumCardWrapper: {
+        width: MEDIUM_CARD_WIDTH,
+    },
+    mediumCard: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 18,
+        padding: 16,
         alignItems: 'center',
-        backgroundColor: COLORS.surfaceElevated,
-        borderRadius: RADIUS.xl,
-        padding: SPACING.lg,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        borderColor: 'rgba(255,255,255,0.08)',
     },
-    primaryGradient: {
+    mediumCardIcon: {
         width: 52,
         height: 52,
         borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: SPACING.sm,
+        marginBottom: 10,
     },
-    primaryLabel: {
-        fontSize: TYPOGRAPHY.size.base,
-        fontWeight: TYPOGRAPHY.weight.semibold,
-        color: COLORS.text.primary,
+    mediumCardLabel: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#FFF',
         textAlign: 'center',
     },
-    primaryDescription: {
-        fontSize: TYPOGRAPHY.size.xs,
-        color: COLORS.text.tertiary,
+    mediumCardDescription: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.5)',
         textAlign: 'center',
-        marginTop: 2,
+        marginTop: 3,
     },
 
-    // Quick Links Chips
-    chipsRow: {
+    // Small Cards (4 per row)
+    smallGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: SPACING.sm,
+        gap: CARD_GAP,
     },
-    quickChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.surfaceElevated,
-        borderRadius: RADIUS.full,
-        paddingVertical: SPACING.sm,
-        paddingHorizontal: SPACING.md,
-        gap: SPACING.xs,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+    smallCardWrapper: {
+        width: SMALL_CARD_WIDTH,
     },
-    quickChipIcon: {
-        width: 28,
-        height: 28,
+    smallCard: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
         borderRadius: 14,
-        backgroundColor: COLORS.surfaceMuted,
+        padding: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    smallCardIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+        marginBottom: 8,
     },
-    quickChipLabel: {
-        fontSize: TYPOGRAPHY.size.sm,
-        fontWeight: TYPOGRAPHY.weight.medium,
-        color: COLORS.text.secondary,
+    smallCardLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.85)',
+        textAlign: 'center',
     },
 });
 

@@ -4,22 +4,24 @@
  * Diferenciado do Profile - sem analytics duplicados
  */
 
+import { Toast, ToastType } from '@/components/ui/Toast';
+import { PRIVACY_POLICY, TERMS_OF_SERVICE } from '@/constants/legal';
 import { supabase } from '@/lib/supabase';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Tier } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import * as Application from 'expo-application';
+import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Image,
-    Linking,
     Modal,
     Pressable,
     ScrollView,
@@ -28,8 +30,9 @@ import {
     Switch,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
+import LegalMarkdown from 'react-native-markdown-display';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 // ============================================
@@ -51,6 +54,76 @@ const STATUS_OPTIONS = [
     { value: 'dnd', label: 'Não Perturbar', color: '#EF4444' },
     { value: 'offline', label: 'Invisível', color: '#6B7280' },
 ] as const;
+
+interface SettingsInfoItem {
+    id: string;
+    question: string;
+    answer: string;
+    icon: string;
+    color: string;
+}
+
+const FAQ_DATA: SettingsInfoItem[] = [
+    {
+        id: 'xp',
+        question: 'Como ganho XP?',
+        answer: 'Ganhas XP ao completar tarefas, assistir a aulas, participar em salas de estudo e usar o Pomodoro. Quanto mais produtivo fores, mais XP ganhas para subir de nível!',
+        icon: 'star',
+        color: '#FFD700'
+    },
+    {
+        id: 'streak',
+        question: 'O que são as Streaks?',
+        answer: 'As Streaks representam os dias consecutivos em que estiveste ativo na app. Se falhares um dia sem usar um "Streak Freeze", a tua contagem volta a zero.',
+        icon: 'flame',
+        color: '#F59E0B'
+    },
+    {
+        id: 'powerups',
+        question: 'Como funcionam os Power-ups?',
+        answer: 'Os Power-ups podem ser comprados na Loja usando Moedas Escola+. Existem bónus de XP, proteção de streak e personalizações exclusivas.',
+        icon: 'bolt',
+        color: '#6366F1'
+    },
+    {
+        id: 'privacy',
+        question: 'Os meus dados estão seguros?',
+        answer: 'Sim! Utilizamos encriptação de ponta a ponta e o Supabase para garantir que as tuas informações pessoais e escolares estão sempre protegidas.',
+        icon: 'shield-checkmark',
+        color: '#10B981'
+    }
+];
+
+const PRIVACY_DATA: SettingsInfoItem[] = [
+    {
+        id: 'encryption',
+        question: 'Encriptação de Dados',
+        answer: 'Todos os teus dados são encriptados e armazenados de forma segura no Supabase. Nem os programadores têm acesso direto às tuas passwords.',
+        icon: 'lock-closed',
+        color: '#10B981'
+    },
+    {
+        id: 'usage',
+        question: 'Uso de Informação',
+        answer: 'Os teus dados escolares e de produtividade são usados exclusivamente para as funcionalidades da app (leaderboards, streaks, analytics).',
+        icon: 'analytics',
+        color: '#6366F1'
+    },
+    {
+        id: 'sharing',
+        question: 'Partilha com Terceiros',
+        answer: 'O Escola+ nunca vende ou partilha os teus dados com empresas de publicidade ou terceiros. A tua privacidade é a nossa prioridade.',
+        icon: 'share-social',
+        color: '#F59E0B'
+    },
+    {
+        id: 'deletion',
+        question: 'Direito ao Esquecimento',
+        answer: 'Podes eliminar a tua conta a qualquer momento nas definições. Ao fazê-lo, todos os teus dados são permanentemente apagados dos nossos servidores.',
+        icon: 'trash',
+        color: '#EF4444'
+    }
+];
 
 // ============================================
 // EDITABLE FIELD COMPONENT
@@ -127,6 +200,7 @@ function MenuItem({
 export default function SettingsScreen() {
     const { user, signOut } = useAuthContext();
     const { profile, refetchProfile } = useProfile();
+    const { showAlert } = useAlert();
 
     // Edit states
     const [editModalVisible, setEditModalVisible] = useState(false);
@@ -137,15 +211,33 @@ export default function SettingsScreen() {
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
     // Preferences
-    const [notifications, setNotifications] = useState(true);
     const [soundEffects, setSoundEffects] = useState(true);
+    const [faqModalVisible, setFaqModalVisible] = useState(false);
+    const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+    const [supportModalVisible, setSupportModalVisible] = useState(false);
+    const [legalModalVisible, setLegalModalVisible] = useState(false);
+    const [legalType, setLegalType] = useState<'terms' | 'privacy'>('terms');
+    const [supportSubject, setSupportSubject] = useState('Bug');
+    const [supportMessage, setSupportMessage] = useState('');
+    const [sendingSupport, setSendingSupport] = useState(false);
+
+    // Toast State
+    const [toastVisible, setToastVisible] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastType, setToastType] = useState<ToastType>('info');
+
+    const showToast = (type: ToastType, message: string) => {
+        setToastType(type);
+        setToastMessage(message);
+        setToastVisible(true);
+    };
 
     // Handlers
     const handlePickImage = async () => {
         try {
             const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
             if (!permission.granted) {
-                Alert.alert('Permissão Necessária', 'Precisamos de acesso às fotos.');
+                showAlert({ title: 'Permissão Necessária', message: 'Precisamos de acesso às fotos.' });
                 return;
             }
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -160,7 +252,7 @@ export default function SettingsScreen() {
             }
         } catch (error: any) {
             console.error('Erro ao selecionar imagem:', error);
-            Alert.alert('Erro', 'Não foi possível selecionar a imagem.');
+            showToast('error', 'Não foi possível selecionar a imagem.');
         }
     };
 
@@ -182,10 +274,10 @@ export default function SettingsScreen() {
             if (error) throw error;
 
             await refetchProfile();
-            Alert.alert('✅', 'Foto atualizada!');
+            showToast('success', 'Foto atualizada!');
         } catch (error: any) {
             console.error('Erro ao guardar avatar:', error);
-            Alert.alert('Erro', error.message || 'Não foi possível atualizar a foto.');
+            showToast('error', error.message || 'Não foi possível atualizar a foto.');
         } finally {
             setUploadingAvatar(false);
         }
@@ -208,15 +300,15 @@ export default function SettingsScreen() {
             } else if (editField === 'username') {
                 const { error } = await supabase.from('profiles').update({ username: editValue.trim().toLowerCase() }).eq('id', user.id);
                 if (error?.code === '23505') {
-                    Alert.alert('Erro', 'Username já em uso.');
+                    showToast('error', 'Username já em uso.');
                     return;
                 }
             }
             await refetchProfile();
             setEditModalVisible(false);
-            Alert.alert('✅', 'Guardado!');
+            showToast('success', `${getFieldLabel()} atualizado!`);
         } catch (error) {
-            Alert.alert('Erro', 'Não foi possível guardar.');
+            showToast('error', 'Não foi possível guardar.');
         } finally {
             setSaving(false);
         }
@@ -227,6 +319,37 @@ export default function SettingsScreen() {
         await supabase.from('profiles').update({ status }).eq('id', user.id);
         await refetchProfile();
         setStatusModalVisible(false);
+        showToast('success', 'Status atualizado!');
+    };
+
+    const handleSendSupportTicket = async () => {
+        if (!supportMessage.trim()) {
+            showToast('error', 'Por favor escreve uma mensagem.');
+            return;
+        }
+
+        try {
+            setSendingSupport(true);
+            const { data, error } = await supabase.functions.invoke('send-support-ticket', {
+                body: {
+                    user_email: user?.email,
+                    user_id: user?.id,
+                    subject: supportSubject,
+                    message: supportMessage.trim(),
+                },
+            });
+
+            if (error) throw error;
+
+            showToast('success', 'Ticket enviado! Responderemos em breve.');
+            setSupportModalVisible(false);
+            setSupportMessage('');
+        } catch (error: any) {
+            console.error('Erro ao enviar ticket:', error);
+            showToast('error', 'Erro ao enviar ticket. Tenta mais tarde.');
+        } finally {
+            setSendingSupport(false);
+        }
     };
 
     const handleShareProfile = async () => {
@@ -236,28 +359,36 @@ export default function SettingsScreen() {
     };
 
     const handleSignOut = useCallback(async () => {
-        Alert.alert('Terminar Sessão', 'Tens a certeza?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Sair', style: 'destructive', onPress: async () => { await signOut(); router.replace('/(auth)/login'); } },
-        ]);
-    }, [signOut]);
+        showAlert({
+            title: 'Terminar Sessão',
+            message: 'Tens a certeza?',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Sair', style: 'destructive', onPress: async () => { await signOut(); router.replace('/(auth)/login'); } },
+            ]
+        });
+    }, [signOut, showAlert]);
 
     const handleDeleteAccount = () => {
-        Alert.alert('⚠️ Eliminar Conta', 'Esta ação é PERMANENTE e irá apagar todos os teus dados.', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Eliminar',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        await supabase.rpc('delete_user');
-                        await signOut();
-                    } catch (e) {
-                        Alert.alert('Erro', 'Contacta suporte@escola.plus');
+        showAlert({
+            title: '⚠️ Eliminar Conta',
+            message: 'Esta ação é PERMANENTE e irá apagar todos os teus dados.',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await supabase.rpc('delete_user');
+                            await signOut();
+                        } catch (e) {
+                            showAlert({ title: 'Erro', message: 'Contacta suporte@escola.plus' });
+                        }
                     }
-                }
-            },
-        ]);
+                },
+            ]
+        });
     };
 
     // Data
@@ -276,6 +407,12 @@ export default function SettingsScreen() {
 
     return (
         <View style={styles.container}>
+            <Toast
+                visible={toastVisible}
+                message={toastMessage}
+                type={toastType}
+                onHide={() => setToastVisible(false)}
+            />
             <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
                 {/* ========== HEADER ========== */}
                 <View style={styles.header}>
@@ -371,23 +508,13 @@ export default function SettingsScreen() {
                 <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
                     <Text style={styles.sectionTitle}>⚙️ Preferências</Text>
                     <View style={styles.menuCard}>
-                        <View style={styles.switchItem}>
-                            <View style={styles.menuItemLeft}>
-                                <View style={[styles.menuIconContainer, { backgroundColor: '#6366F115' }]}>
-                                    <Ionicons name="notifications-outline" size={20} color="#6366F1" />
-                                </View>
-                                <View>
-                                    <Text style={styles.menuLabel}>Notificações Push</Text>
-                                    <Text style={styles.menuSubtitle}>Receber alertas de tarefas e mensagens</Text>
-                                </View>
-                            </View>
-                            <Switch
-                                value={notifications}
-                                onValueChange={setNotifications}
-                                trackColor={{ false: COLORS.surfaceMuted, true: '#6366F1' }}
-                                thumbColor="#FFF"
-                            />
-                        </View>
+                        <MenuItem
+                            icon="notifications-outline"
+                            label="Notificações Push"
+                            subtitle="Gerir alertas de tarefas, mensagens e mais"
+                            color="#6366F1"
+                            onPress={() => router.push('/notifications')}
+                        />
                         <View style={styles.menuDivider} />
                         <View style={styles.switchItem}>
                             <View style={styles.menuItemLeft}>
@@ -423,13 +550,25 @@ export default function SettingsScreen() {
 
                 {/* ========== SUPPORT SECTION ========== */}
                 <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
-                    <Text style={styles.sectionTitle}>💬 Suporte</Text>
+                    <Text style={styles.sectionTitle}>💬 Ajuda e Legal</Text>
                     <View style={styles.menuCard}>
-                        <MenuItem icon="mail-outline" label="Contactar Suporte" color="#6366F1" onPress={() => Linking.openURL('mailto:suporte@escola.plus')} />
+                        <MenuItem icon="mail-outline" label="Contactar Suporte" subtitle="Enviar ticket nativo" color="#6366F1" onPress={() => setSupportModalVisible(true)} />
                         <View style={styles.menuDivider} />
-                        <MenuItem icon="help-circle-outline" label="FAQ" color="#F59E0B" onPress={() => Linking.openURL('https://escola.plus/faq')} />
+                        <MenuItem icon="help-circle-outline" label="FAQ" color="#F59E0B" onPress={() => setFaqModalVisible(true)} />
                         <View style={styles.menuDivider} />
-                        <MenuItem icon="shield-checkmark-outline" label="Privacidade" color="#10B981" onPress={() => Linking.openURL('https://escola.plus/privacidade')} />
+                        <MenuItem
+                            icon="document-text-outline"
+                            label="Termos de Serviço"
+                            color="#8B5CF6"
+                            onPress={() => { setLegalType('terms'); setLegalModalVisible(true); }}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="shield-checkmark-outline"
+                            label="Privacidade"
+                            color="#10B981"
+                            onPress={() => { setLegalType('privacy'); setLegalModalVisible(true); }}
+                        />
                     </View>
                 </Animated.View>
 
@@ -506,6 +645,124 @@ export default function SettingsScreen() {
                         ))}
                     </View>
                 </Pressable>
+            </Modal>
+
+            {/* ========== FAQ MODAL ========== */}
+            <Modal visible={faqModalVisible} transparent animationType="slide" onRequestClose={() => setFaqModalVisible(false)}>
+                <View style={styles.faqModalOverlay}>
+                    <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+                    <View style={styles.faqModalContent}>
+                        <View style={styles.faqHandle} />
+                        <View style={styles.faqHeader}>
+                            <Text style={styles.faqTitle}>Perguntas Frequentes</Text>
+                            <Pressable onPress={() => setFaqModalVisible(false)} style={styles.faqCloseButton}>
+                                <Ionicons name="close" size={24} color={COLORS.text.primary} />
+                            </Pressable>
+                        </View>
+                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.faqList}>
+                            {FAQ_DATA.map((item) => (
+                                <View key={item.id} style={styles.faqItem}>
+                                    <View style={[styles.faqIconContainer, { backgroundColor: `${item.color}20` }]}>
+                                        <Ionicons name={item.icon as any} size={22} color={item.color} />
+                                    </View>
+                                    <View style={styles.faqTextContent}>
+                                        <Text style={styles.faqQuestion}>{item.question}</Text>
+                                        <Text style={styles.faqAnswer}>{item.answer}</Text>
+                                    </View>
+                                </View>
+                            ))}
+                            <View style={styles.faqSupportCard}>
+                                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.faqSupportGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                                    <Ionicons name="chatbubbles" size={32} color="#FFF" />
+                                    <View style={styles.faqSupportText}>
+                                        <Text style={styles.faqSupportTitle}>Ainda tens dúvidas?</Text>
+                                        <Text style={styles.faqSupportSubtitle}>A nossa equipa de suporte está pronta para ajudar.</Text>
+                                    </View>
+                                    <Pressable style={styles.faqContactButton} onPress={() => { setFaqModalVisible(false); setSupportModalVisible(true); }}>
+                                        <Text style={styles.faqContactText}>Contactar</Text>
+                                    </Pressable>
+                                </LinearGradient>
+                            </View>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* ========== SUPPORT FORM MODAL ========== */}
+            <Modal visible={supportModalVisible} transparent animationType="slide" onRequestClose={() => setSupportModalVisible(false)}>
+                <View style={styles.faqModalOverlay}>
+                    <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+                    <View style={styles.faqModalContent}>
+                        <View style={styles.faqHandle} />
+                        <View style={styles.faqHeader}>
+                            <Text style={styles.faqTitle}>Suporte</Text>
+                            <Pressable onPress={() => setSupportModalVisible(false)} style={styles.faqCloseButton}>
+                                <Ionicons name="close" size={24} color={COLORS.text.primary} />
+                            </Pressable>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.faqList}>
+                            <Text style={styles.modalLabel}>Assunto</Text>
+                            <View style={styles.subjectContainer}>
+                                {['Bug', 'Sugestão', 'Conta', 'Outro'].map((sub) => (
+                                    <Pressable
+                                        key={sub}
+                                        style={[styles.subjectChip, supportSubject === sub && styles.subjectChipActive]}
+                                        onPress={() => setSupportSubject(sub)}
+                                    >
+                                        <Text style={[styles.subjectChipText, supportSubject === sub && styles.subjectChipTextActive]}>{sub}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+
+                            <Text style={[styles.modalLabel, { marginTop: SPACING.xl }]}>Mensagem</Text>
+                            <TextInput
+                                style={[styles.modalInput, { height: 150, textAlignVertical: 'top' }]}
+                                value={supportMessage}
+                                onChangeText={setSupportMessage}
+                                multiline
+                                placeholder="Descreve o teu problema ou ideia..."
+                                placeholderTextColor={COLORS.text.tertiary}
+                            />
+
+                            <Pressable
+                                style={[styles.photoButton, { width: '100%', marginTop: SPACING.xl, height: 50, justifyContent: 'center' }]}
+                                onPress={handleSendSupportTicket}
+                                disabled={sendingSupport}
+                            >
+                                {sendingSupport ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="send" size={18} color="#FFF" style={{ marginRight: 8 }} />
+                                        <Text style={styles.photoButtonText}>Enviar Mensagem</Text>
+                                    </View>
+                                )}
+                            </Pressable>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* ========== LEGAL MODAL (Terms/Privacy) ========== */}
+            <Modal visible={legalModalVisible} transparent animationType="slide" onRequestClose={() => setLegalModalVisible(false)}>
+                <View style={styles.faqModalOverlay}>
+                    <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+                    <View style={styles.faqModalContent}>
+                        <View style={styles.faqHandle} />
+                        <View style={styles.faqHeader}>
+                            <Text style={styles.faqTitle}>{legalType === 'terms' ? 'Termos' : 'Privacidade'}</Text>
+                            <Pressable onPress={() => setLegalModalVisible(false)} style={styles.faqCloseButton}>
+                                <Ionicons name="close" size={24} color={COLORS.text.primary} />
+                            </Pressable>
+                        </View>
+                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.faqList}>
+                            <LegalMarkdown style={markdownStyles}>
+                                {legalType === 'terms' ? TERMS_OF_SERVICE : PRIVACY_POLICY}
+                            </LegalMarkdown>
+                        </ScrollView>
+                    </View>
+                </View>
             </Modal>
         </View>
     );
@@ -791,6 +1048,125 @@ const styles = StyleSheet.create({
         marginTop: SPACING.xs,
     },
 
+    // FAQ Modal Styles
+    faqModalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    faqModalContent: {
+        backgroundColor: '#0C0C0E',
+        borderTopLeftRadius: RADIUS['3xl'],
+        borderTopRightRadius: RADIUS['3xl'],
+        height: '80%',
+        paddingTop: SPACING.md,
+    },
+    faqHandle: {
+        width: 40,
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: SPACING.lg,
+    },
+    faqHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: SPACING.xl,
+        marginBottom: SPACING.xl,
+    },
+    faqTitle: {
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+    faqCloseButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    faqList: {
+        paddingHorizontal: SPACING.xl,
+        paddingBottom: 40,
+    },
+    faqItem: {
+        flexDirection: 'row',
+        gap: SPACING.lg,
+        marginBottom: SPACING['2xl'],
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        padding: SPACING.lg,
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    faqIconContainer: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    faqTextContent: {
+        flex: 1,
+    },
+    faqQuestion: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+        marginBottom: 6,
+    },
+    faqAnswer: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        lineHeight: 20,
+    },
+    faqSupportCard: {
+        marginTop: SPACING.sm,
+        borderRadius: RADIUS['2xl'],
+        overflow: 'hidden',
+    },
+    faqSupportGradient: {
+        padding: SPACING.xl,
+        alignItems: 'center',
+    },
+    faqSupportText: {
+        alignItems: 'center',
+        marginVertical: SPACING.lg,
+    },
+    faqSupportTitle: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+        marginBottom: 4,
+    },
+    faqSupportSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: 'rgba(255,255,255,0.8)',
+        textAlign: 'center',
+    },
+    faqContactButton: {
+        backgroundColor: '#FFF',
+        paddingHorizontal: SPACING['2xl'],
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.full,
+    },
+    faqContactText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#6366F1',
+    },
+    privacyIntro: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+        lineHeight: 20,
+        marginBottom: SPACING.xl,
+        textAlign: 'center',
+        paddingHorizontal: SPACING.md,
+    },
+
     // Edit Modal
     modalContainer: {
         flex: 1,
@@ -885,4 +1261,79 @@ const styles = StyleSheet.create({
         color: COLORS.text.primary,
         flex: 1,
     },
+
+    // Support Form Styles
+    subjectContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: SPACING.sm,
+        marginBottom: SPACING.md,
+    },
+    subjectChip: {
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.full,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    subjectChipActive: {
+        backgroundColor: '#6366F1',
+        borderColor: '#6366F1',
+    },
+    subjectChipText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    subjectChipTextActive: {
+        color: '#FFF',
+    },
 });
+
+const markdownStyles = {
+    body: {
+        color: COLORS.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+        lineHeight: 24,
+    },
+    heading1: {
+        color: '#FFF',
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontWeight: TYPOGRAPHY.weight.bold,
+        marginTop: SPACING.xl,
+        marginBottom: SPACING.lg,
+        paddingBottom: SPACING.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(99, 102, 241, 0.3)', // #6366F1
+    },
+    heading2: {
+        color: '#E0E7FF',
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        marginTop: SPACING.lg,
+        marginBottom: SPACING.sm,
+    },
+    paragraph: {
+        color: COLORS.text.secondary,
+        lineHeight: 24,
+        marginBottom: SPACING.md,
+    },
+    strong: {
+        color: '#6366F1',
+        fontWeight: TYPOGRAPHY.weight.bold,
+    },
+    hr: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginVertical: SPACING.xl,
+        height: 1,
+    },
+    list_item: {
+        marginVertical: SPACING.xs,
+    },
+    bullet_list_icon: {
+        color: '#6366F1',
+        fontSize: 20,
+        marginRight: SPACING.sm,
+    },
+};

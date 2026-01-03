@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,14 +14,13 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     FlatList,
     Pressable,
     RefreshControl,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -52,6 +52,7 @@ interface FrameItem {
 export default function FramesScreen() {
     const { user } = useAuthContext();
     const { profile, refetchProfile } = useProfile();
+    const { showAlert } = useAlert();
 
     const [frames, setFrames] = useState<FrameItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -130,13 +131,13 @@ export default function FramesScreen() {
             if (error) throw error;
 
             if (data?.success) {
-                Alert.alert('✅ Moldura Equipada!', data.message);
+                showAlert({ title: '✅ Moldura Equipada!', message: data.message });
                 refetchProfile();
             } else {
-                Alert.alert('Erro', data?.error || 'Não foi possível equipar.');
+                showAlert({ title: 'Erro', message: data?.error || 'Não foi possível equipar.' });
             }
         } catch (err: any) {
-            Alert.alert('Erro', err.message);
+            showAlert({ title: 'Erro', message: err.message });
         } finally {
             setEquipping(null);
         }
@@ -153,11 +154,11 @@ export default function FramesScreen() {
             if (error) throw error;
 
             if (data?.success) {
-                Alert.alert('✅ Moldura Removida', data.message);
+                showAlert({ title: '✅ Moldura Removida', message: data.message });
                 refetchProfile();
             }
         } catch (err: any) {
-            Alert.alert('Erro', err.message);
+            showAlert({ title: 'Erro', message: err.message });
         }
     };
 

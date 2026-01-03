@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
 import { uploadImage } from '@/lib/upload';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,7 +9,6 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Image,
     KeyboardAvoidingView,
     Platform,
@@ -17,14 +17,15 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Step = 'welcome' | 'username' | 'photo' | 'done';
 
 export default function OnboardingScreen() {
-    const { user } = useAuthContext();
+    const { user, refreshSession } = useAuthContext();
+    const { showAlert } = useAlert();
     const [step, setStep] = useState<Step>('welcome');
     const [username, setUsername] = useState('');
     const [fullName, setFullName] = useState('');
@@ -74,6 +75,7 @@ export default function OnboardingScreen() {
             }
         } catch (err) {
             console.error('Erro ao escolher imagem:', err);
+            showAlert({ title: 'Erro', message: 'Não foi possível selecionar imagem' });
             setLoading(false);
         }
     };
@@ -119,14 +121,15 @@ export default function OnboardingScreen() {
             if (updateError) throw updateError;
 
             setStep('done');
+            await refreshSession(); // Refresh session to trigger AuthProvider redirect check
 
             // Ir para setup educacional
             setTimeout(() => {
                 router.replace('/(auth)/education-setup' as any);
             }, 1500);
-        } catch (err: any) {
-            console.error('Erro ao guardar perfil:', err);
-            Alert.alert('Erro', 'Não foi possível guardar o perfil.');
+        } catch (error: any) {
+            console.error('Onboarding error:', error);
+            showAlert({ title: 'Erro', message: error.message });
         } finally {
             setLoading(false);
         }

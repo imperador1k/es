@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import {
     getTask,
@@ -24,7 +25,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     KeyboardAvoidingView,
     Linking,
@@ -36,7 +36,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -47,6 +47,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function TaskDetailScreen() {
     const { id: teamId, taskId } = useLocalSearchParams<{ id: string; taskId: string }>();
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     const [task, setTask] = useState<Task | null>(null);
     const [submission, setSubmission] = useState<TaskSubmission | null>(null);
@@ -145,7 +146,7 @@ export default function TaskDetailScreen() {
             setSelectedFile({ uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' });
         } catch (err) {
             console.error('Error picking file:', err);
-            Alert.alert('Erro', 'Não foi possível selecionar o ficheiro.');
+            showAlert({ title: 'Erro', message: 'Não foi possível selecionar o ficheiro.' });
         }
     };
 
@@ -153,7 +154,7 @@ export default function TaskDetailScreen() {
         if (!task || !user?.id || !teamId) return;
 
         if (task.config?.requires_file_upload && !selectedFile && !submission?.file_url) {
-            Alert.alert('Erro', 'É obrigatório anexar um ficheiro.');
+            showAlert({ title: 'Erro', message: 'É obrigatório anexar um ficheiro.' });
             return;
         }
 
@@ -185,13 +186,13 @@ export default function TaskDetailScreen() {
             if (result) {
                 setSubmission(result);
                 setSelectedFile(null);
-                Alert.alert('✅ Entregue!', 'A tua entrega foi submetida com sucesso.');
+                showAlert({ title: '✅ Entregue!', message: 'A tua entrega foi submetida com sucesso.' });
             } else {
-                Alert.alert('Erro', 'Não foi possível submeter a entrega.');
+                showAlert({ title: 'Erro', message: 'Não foi possível submeter a entrega.' });
             }
         } catch (err) {
             console.error('Error submitting:', err);
-            Alert.alert('Erro', 'Ocorreu um erro ao submeter.');
+            showAlert({ title: 'Erro', message: 'Ocorreu um erro ao submeter.' });
         } finally {
             setSubmitting(false);
         }
@@ -209,7 +210,7 @@ export default function TaskDetailScreen() {
 
         const score = parseInt(gradeScore);
         if (isNaN(score) || score < 0 || score > (task?.config?.max_score || 20)) {
-            Alert.alert('Erro', `A nota deve estar entre 0 e ${task?.config?.max_score || 20}.`);
+            showAlert({ title: 'Erro', message: `A nota deve estar entre 0 e ${task?.config?.max_score || 20}.` });
             return;
         }
 
@@ -217,15 +218,15 @@ export default function TaskDetailScreen() {
         try {
             const success = await gradeSubmission(gradingSubmission.id, user.id, score, gradeFeedback);
             if (success) {
-                Alert.alert('✅', 'Nota atribuída com sucesso!');
+                showAlert({ title: '✅', message: 'Nota atribuída com sucesso!' });
                 setGradingModalVisible(false);
                 onRefresh();
             } else {
-                Alert.alert('Erro', 'Não foi possível atribuir a nota.');
+                showAlert({ title: 'Erro', message: 'Não foi possível atribuir a nota.' });
             }
         } catch (err) {
             console.error('Error grading:', err);
-            Alert.alert('Erro', 'Ocorreu um erro.');
+            showAlert({ title: 'Erro', message: 'Ocorreu um erro.' });
         } finally {
             setGrading(false);
         }

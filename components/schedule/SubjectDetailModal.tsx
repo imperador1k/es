@@ -5,17 +5,12 @@
 
 import { SUBJECT_COLORS, useSchedule, useSubjects } from '@/hooks/useSubjects';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
-import {
-    CLASS_TYPE_NAMES,
-    ClassType,
-    DayOfWeek,
-    Subject
-} from '@/types/database.types';
+import { useAlert } from '@/providers/AlertProvider';
+import { CLASS_TYPE_NAMES, ClassType, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -24,7 +19,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInRight, FadeOut } from 'react-native-reanimated';
 
@@ -237,6 +232,7 @@ export function SubjectDetailModal({
 }: SubjectDetailModalProps) {
     const { addSubject, updateSubject, deleteSubject } = useSubjects();
     const { schedule, addClassSession, updateClassSession, deleteClassSession, fetchSchedule } = useSchedule();
+    const { showAlert } = useAlert();
 
     const isEditing = !!subject;
 
@@ -307,10 +303,10 @@ export function SubjectDetailModal({
     };
 
     const handleDeleteSlot = (slot: ScheduleSlot) => {
-        Alert.alert(
-            'Eliminar Aula',
-            `Eliminar a aula de ${DAY_SHORT[slot.day_of_week]} às ${slot.start_time}?`,
-            [
+        showAlert({
+            title: 'Eliminar Aula',
+            message: `Eliminar a aula de ${DAY_SHORT[slot.day_of_week]} às ${slot.start_time}?`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Eliminar',
@@ -324,15 +320,15 @@ export function SubjectDetailModal({
                     },
                 },
             ]
-        );
+        });
     };
 
     const handleDeleteSubject = () => {
         if (!subject) return;
-        Alert.alert(
-            'Eliminar Disciplina',
-            `Eliminar "${subject.name}" e todas as aulas associadas?\n\nEsta ação é permanente.`,
-            [
+        showAlert({
+            title: 'Eliminar Disciplina',
+            message: `Eliminar "${subject.name}" e todas as aulas associadas?\n\nEsta ação é permanente.`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Eliminar',
@@ -344,17 +340,17 @@ export function SubjectDetailModal({
                             onSuccess?.();
                         } catch (err) {
                             console.error('Erro ao eliminar:', err);
-                            Alert.alert('Erro', 'Não foi possível eliminar a disciplina');
+                            showAlert({ title: 'Erro', message: 'Não foi possível eliminar a disciplina' });
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     const handleSave = async () => {
         if (!name.trim()) {
-            Alert.alert('Erro', 'O nome da disciplina é obrigatório');
+            showAlert({ title: 'Erro', message: 'O nome da disciplina é obrigatório' });
             return;
         }
 
@@ -420,7 +416,7 @@ export function SubjectDetailModal({
             onSuccess?.();
         } catch (err) {
             console.error('Erro ao guardar:', err);
-            Alert.alert('Erro', 'Não foi possível guardar a disciplina');
+            showAlert({ title: 'Erro', message: 'Não foi possível guardar a disciplina' });
         } finally {
             setSaving(false);
         }

@@ -7,6 +7,7 @@
 import { ChatInputBar } from '@/components/ChatInputBar';
 import { LiveKitRoom } from '@/components/StudyRoom/LiveKitRoom';
 import { useCall } from '@/context/CallContext';
+import { useDMMessages } from '@/hooks/useDMs';
 import { useUserStatus } from '@/hooks/usePresence';
 import { useTyping } from '@/hooks/useTyping';
 import { supabase } from '@/lib/supabase';
@@ -366,10 +367,29 @@ export default function DMChatScreen() {
     const flatListRef = useRef<FlatList>(null);
     const headerAnim = useRef(new Animated.Value(0)).current;
 
-    const [messages, setMessages] = useState<DMMessage[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [sending, setSending] = useState(false);
     const [otherUser, setOtherUser] = useState<Profile | null>(null);
+    const [loadingUser, setLoadingUser] = useState(true);
+
+    // Use the offline-first hook for messages with infinite scroll
+    const {
+        messages: hookMessages,
+        loading: messagesLoading,
+        sending,
+        sendMessage,
+        loadMore,
+        hasMore,
+        loadingMore,
+    } = useDMMessages(id || null);
+
+    // Map hook messages to local type
+    const messages: DMMessage[] = hookMessages.map(m => ({
+        ...m,
+        attachment_url: m.file_url,
+        attachment_type: m.file_url ? 'image' : null,
+        sender: m.sender ? { username: m.sender.username || '', avatar_url: m.sender.avatar_url } : undefined,
+    })) as DMMessage[];
+
+    const loading = loadingUser || messagesLoading;
 
     const { typingText, sendTyping, sendStopTyping } = useTyping(id || null);
     const { status: otherUserStatus, formatLastSeen } = useUserStatus(otherUser?.id || null);
@@ -436,9 +456,9 @@ export default function DMChatScreen() {
     // ============================================
 
     useEffect(() => {
-        async function load() {
+        async function loadOtherUser() {
             if (!id || !user?.id) return;
-            setLoading(true);
+            setLoadingUser(true);
 
             const { data: conv } = await supabase
                 .from('dm_conversations')
@@ -451,70 +471,32 @@ export default function DMChatScreen() {
                 const { data: profile } = await supabase.from('profiles').select('*').eq('id', otherId).single();
                 if (profile) setOtherUser(profile as Profile);
             }
-
-            const { data: msgs } = await supabase
-                .from('dm_messages')
-                .select(`id, content, created_at, sender_id, status, attachment_url, attachment_type, attachment_name, sender:profiles!dm_messages_sender_id_fkey(username, avatar_url)`)
-                .eq('conversation_id', id)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            if (msgs) {
-                const mapped = msgs.map(m => ({ ...m, sender: Array.isArray(m.sender) ? m.sender[0] : m.sender })) as DMMessage[];
-                setMessages(mapped);
-
-                await supabase.from('dm_messages').update({ status: 'read', is_read: true }).eq('conversation_id', id).neq('sender_id', user.id).eq('is_read', false);
-            }
-            setLoading(false);
+            setLoadingUser(false);
         }
-        load();
+        loadOtherUser();
     }, [id, user?.id]);
+
+    // Realtime is handled by useDMMessages hook
 
     // ============================================
     // REALTIME
     // ============================================
 
-    useEffect(() => {
-        if (!id || !user?.id) return;
 
-        const channel = supabase
-            .channel(`dm-${id}`)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${id}` }, async (payload) => {
-                const newMsg = payload.new as DMMessage;
-                const { data: sender } = await supabase.from('profiles').select('username, avatar_url').eq('id', newMsg.sender_id).single();
-                setMessages(prev => [{ ...newMsg, sender: sender || undefined }, ...prev]);
-                if (newMsg.sender_id !== user.id && newMsg.status === 'sent') {
-                    await supabase.from('dm_messages').update({ status: 'delivered' }).eq('id', newMsg.id);
-                }
-            })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${id}` }, (payload) => {
-                const updated = payload.new as DMMessage;
-                setMessages(prev => prev.map(m => m.id === updated.id ? { ...m, status: updated.status, is_read: updated.is_read } : m));
-            })
-            .subscribe();
-
-        return () => { supabase.removeChannel(channel); };
-    }, [id, user?.id]);
 
     // ============================================
     // SEND MESSAGE
     // ============================================
 
     const handleSend = useCallback(async (content: string, attachment?: { url: string; type: 'image' | 'video' | 'file' | 'gif'; name?: string }) => {
-        if (!id || sending || !otherUser) return;
-        setSending(true);
+        if (!id || !otherUser) return;
         sendStopTyping();
 
         try {
-            const { error } = await supabase.rpc('send_dm_message', {
-                p_conversation_id: id,
-                p_content: content.trim() || (attachment ? '📎' : ''),
-                p_attachment_url: attachment?.url || null,
-                p_attachment_type: attachment?.type || null,
-                p_attachment_name: attachment?.name || null,
-            });
+            // Use the hook's sendMessage for optimistic updates
+            const success = await sendMessage(content.trim() || (attachment ? '📎' : ''), attachment?.url);
 
-            if (!error) {
+            if (success) {
                 const { data: senderProfile } = await supabase.from('profiles').select('username, full_name').eq('id', user?.id).single();
                 const senderName = senderProfile?.full_name || senderProfile?.username || 'Alguém';
 
@@ -530,10 +512,8 @@ export default function DMChatScreen() {
             }
         } catch (err) {
             console.error('Send error:', err);
-        } finally {
-            setSending(false);
         }
-    }, [id, sending, sendStopTyping, otherUser, user]);
+    }, [id, sendStopTyping, sendMessage, otherUser, user]);
 
     // ============================================
     // RENDER
@@ -611,7 +591,7 @@ export default function DMChatScreen() {
                     </View>
                 </Animated.View>
 
-                {/* Messages */}
+                {/* Messages with Infinite Scroll */}
                 <FlatList
                     ref={flatListRef}
                     data={messages}
@@ -625,8 +605,18 @@ export default function DMChatScreen() {
                     contentContainerStyle={styles.messagesList}
                     ListEmptyComponent={<EmptyMessages name={displayName} />}
                     ListHeaderComponent={typingText ? <TypingIndicator name={displayName} /> : null}
+                    ListFooterComponent={
+                        loadingMore ? (
+                            <View style={{ padding: 16, alignItems: 'center' }}>
+                                <ActivityIndicator size="small" color="#6366F1" />
+                                <Text style={{ fontSize: 12, color: COLORS.text.tertiary, marginTop: 4 }}>A carregar mais...</Text>
+                            </View>
+                        ) : null
+                    }
                     inverted
                     showsVerticalScrollIndicator={false}
+                    onEndReached={loadMore}
+                    onEndReachedThreshold={0.3}
                 />
 
                 {/* Input */}

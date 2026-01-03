@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Profile, TeamRole } from '@/types/database.types';
 import {
@@ -22,7 +23,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActionSheetIOS,
     ActivityIndicator,
-    Alert,
     Animated,
     Image,
     Platform,
@@ -64,6 +64,7 @@ const ROLE_ICONS: Record<TeamRole, string> = {
 export default function TeamMembersScreen() {
     const { id: teamId } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     const [members, setMembers] = useState<TeamMemberWithProfile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -117,7 +118,7 @@ export default function TeamMembersScreen() {
             if (teamData) setTeamName(teamData.name);
         } catch (err) {
             console.error('Error loading members:', err);
-            Alert.alert('Erro', 'Não foi possível carregar os membros.');
+            showAlert({ title: 'Erro', message: 'Não foi possível carregar os membros.' });
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -136,7 +137,7 @@ export default function TeamMembersScreen() {
     // Change role
     const handleChangeRole = async (member: TeamMemberWithProfile, newRole: TeamRole) => {
         if (!canModifyRole(userRole, member.role)) {
-            Alert.alert('Sem Permissão', 'Não podes modificar este membro.');
+            showAlert({ title: 'Sem Permissão', message: 'Não podes modificar este membro.' });
             return;
         }
 
@@ -152,24 +153,24 @@ export default function TeamMembersScreen() {
                 prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m))
             );
 
-            Alert.alert('✅ Sucesso', `${member.profile.full_name || member.profile.username} é agora ${ROLE_LABELS[newRole]}.`);
+            showAlert({ title: '✅ Sucesso', message: `${member.profile.full_name || member.profile.username} é agora ${ROLE_LABELS[newRole]}.` });
         } catch (err) {
             console.error('Error changing role:', err);
-            Alert.alert('Erro', 'Não foi possível alterar o cargo.');
+            showAlert({ title: 'Erro', message: 'Não foi possível alterar o cargo.' });
         }
     };
 
     // Remove member
     const handleRemoveMember = async (member: TeamMemberWithProfile) => {
         if (!canUser(userRole, 'KICK_MEMBERS') || !canModifyRole(userRole, member.role)) {
-            Alert.alert('Sem Permissão', 'Não podes remover este membro.');
+            showAlert({ title: 'Sem Permissão', message: 'Não podes remover este membro.' });
             return;
         }
 
-        Alert.alert(
-            'Remover Membro',
-            `Remover ${member.profile.full_name || member.profile.username}?`,
-            [
+        showAlert({
+            title: 'Remover Membro',
+            message: `Remover ${member.profile.full_name || member.profile.username}?`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Remover',
@@ -179,15 +180,15 @@ export default function TeamMembersScreen() {
                             const { error } = await supabase.from('team_members').delete().eq('id', member.id);
                             if (error) throw error;
                             setMembers((prev) => prev.filter((m) => m.id !== member.id));
-                            Alert.alert('✅ Removido', 'Membro removido da equipa.');
+                            showAlert({ title: '✅ Removido', message: 'Membro removido da equipa.' });
                         } catch (err) {
                             console.error('Error removing member:', err);
-                            Alert.alert('Erro', 'Não foi possível remover o membro.');
+                            showAlert({ title: 'Erro', message: 'Não foi possível remover o membro.' });
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     // Show member actions
@@ -230,17 +231,17 @@ export default function TeamMembersScreen() {
                 }
             );
         } else {
-            Alert.alert(
-                member.profile.full_name || member.profile.username || 'Membro',
-                'Escolhe uma ação:',
-                options.map((opt, i) => ({
+            showAlert({
+                title: member.profile.full_name || member.profile.username || 'Membro',
+                message: 'Escolhe uma ação:',
+                buttons: options.map((opt, i) => ({
                     text: opt,
                     style: opt.includes('Remover') ? 'destructive' : opt === 'Cancelar' ? 'cancel' : 'default',
                     onPress: () => {
                         if (i < actions.length) actions[i]();
                     },
                 }))
-            );
+            });
         }
     };
 

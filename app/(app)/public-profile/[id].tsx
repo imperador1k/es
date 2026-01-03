@@ -6,6 +6,7 @@
 import { useStartConversation } from '@/hooks/useDMs';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,14 +14,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Image,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -109,6 +109,7 @@ export default function PublicProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuthContext();
     const { startOrGetConversation } = useStartConversation();
+    const { showAlert } = useAlert();
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -204,7 +205,7 @@ export default function PublicProfileScreen() {
             if (error) throw error;
             setFriendshipStatus('pending_sent');
         } catch {
-            Alert.alert('Erro', 'Não foi possível enviar o pedido de amizade');
+            showAlert({ title: 'Erro', message: 'Não foi possível enviar o pedido de amizade' });
         } finally {
             setActionLoading(false);
         }
@@ -218,7 +219,7 @@ export default function PublicProfileScreen() {
             if (error) throw error;
             setFriendshipStatus('friends');
         } catch {
-            Alert.alert('Erro', 'Não foi possível aceitar o pedido');
+            showAlert({ title: 'Erro', message: 'Não foi possível aceitar o pedido' });
         } finally {
             setActionLoading(false);
         }
@@ -232,7 +233,7 @@ export default function PublicProfileScreen() {
             setFriendshipStatus('none');
             setFriendship(null);
         } catch {
-            Alert.alert('Erro', 'Não foi possível recusar o pedido');
+            showAlert({ title: 'Erro', message: 'Não foi possível recusar o pedido' });
         } finally {
             setActionLoading(false);
         }
@@ -240,23 +241,27 @@ export default function PublicProfileScreen() {
 
     const handleRemoveFriend = async () => {
         if (!friendship?.id) return;
-        Alert.alert('Remover Amigo', 'Tens a certeza?', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Remover',
-                style: 'destructive',
-                onPress: async () => {
-                    setActionLoading(true);
-                    try {
-                        await supabase.from('friendships').delete().eq('id', friendship.id);
-                        setFriendshipStatus('none');
-                        setFriendship(null);
-                    } finally {
-                        setActionLoading(false);
-                    }
+        showAlert({
+            title: 'Remover Amigo',
+            message: 'Tens a certeza?',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Remover',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setActionLoading(true);
+                        try {
+                            await supabase.from('friendships').delete().eq('id', friendship.id);
+                            setFriendshipStatus('none');
+                            setFriendship(null);
+                        } finally {
+                            setActionLoading(false);
+                        }
+                    },
                 },
-            },
-        ]);
+            ]
+        });
     };
 
     // Loading state

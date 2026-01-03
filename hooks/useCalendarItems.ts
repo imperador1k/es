@@ -1,11 +1,13 @@
 /**
- * Hook para Calendário Unificado
+ * Hook para Calendário Unificado - VERSÃO OFFLINE-FIRST
+ * Usa TanStack Query para cache e persistência automática
  * Combina: RPC get_calendar_items + Projeção do Horário Escolar (class_schedule)
  */
 
 import { supabase } from '@/lib/supabase';
 import { useAuthContext } from '@/providers/AuthProvider';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
 // ============================================
 // TYPES
@@ -71,24 +73,56 @@ const ITEM_COLORS = {
 };
 
 // ============================================
-// HOOK
+// FETCH FUNCTIONS
+// ============================================
+
+async function fetchCalendarItems(userId: string, startDate: string, endDate: string): Promise<CalendarItem[]> {
+    const { data, error } = await supabase.rpc('get_calendar_items', {
+        p_start_date: startDate,
+        p_end_date: endDate,
+    });
+
+    if (error) {
+        console.error('❌ RPC error:', error);
+        return [];
+    }
+
+    return (data as CalendarItem[]) || [];
+}
+
+async function fetchClassSchedule(userId: string): Promise<ClassSchedule[]> {
+    const { data, error } = await supabase
+        .from('class_schedule')
+        .select(`
+            id, day_of_week, start_time, end_time, room, type,
+            subject:user_subjects(name, color)
+        `)
+        .eq('user_id', userId);
+
+    if (error) {
+        console.error('❌ Schedule error:', error);
+        return [];
+    }
+
+    return (data || []).map((s: any) => ({
+        ...s,
+        subject: Array.isArray(s.subject) ? s.subject[0] : s.subject,
+    }));
+}
+
+// ============================================
+// HOOK - OFFLINE-FIRST VERSION
 // ============================================
 
 export function useCalendarItems(focusedDate: Date) {
     const { user } = useAuthContext();
-    const [rpcItems, setRpcItems] = useState<CalendarItem[]>([]);
-    const [classSchedule, setClassSchedule] = useState<ClassSchedule[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
     // Calculate start and end of the focused month
     const { startDate, endDate, year, month } = useMemo(() => {
         const y = focusedDate.getFullYear();
         const m = focusedDate.getMonth();
 
-        // First day of the month
         const start = new Date(y, m, 1);
-        // Last day of the month
         const end = new Date(y, m + 1, 0);
 
         return {
@@ -100,67 +134,43 @@ export function useCalendarItems(focusedDate: Date) {
     }, [focusedDate]);
 
     // ============================================
-    // FETCH DATA
+    // QUERY 1: Calendar Items (RPC) - OFFLINE-FIRST
     // ============================================
-
-    const fetchData = useCallback(async () => {
-        if (!user?.id) {
-            setLoading(false);
-            return;
-        }
-
-        try {
-            setLoading(true);
-            setError(null);
-
-            // Passo A: Fetch da RPC get_calendar_items
-            const { data: rpcData, error: rpcError } = await supabase.rpc('get_calendar_items', {
-                p_start_date: startDate,
-                p_end_date: endDate,
-            });
-
-            if (rpcError) {
-                console.error('❌ RPC error:', rpcError);
-                // Continue with empty array
-            }
-
-            setRpcItems((rpcData as CalendarItem[]) || []);
-
-            // Passo B: Fetch do class_schedule
-            const { data: scheduleData, error: scheduleError } = await supabase
-                .from('class_schedule')
-                .select(`
-                    id, day_of_week, start_time, end_time, room, type,
-                    subject:user_subjects(name, color)
-                `)
-                .eq('user_id', user.id);
-
-            if (scheduleError) {
-                console.error('❌ Schedule error:', scheduleError);
-            }
-
-            // Map schedule data
-            const mappedSchedule: ClassSchedule[] = (scheduleData || []).map((s: any) => ({
-                ...s,
-                subject: Array.isArray(s.subject) ? s.subject[0] : s.subject,
-            }));
-
-            setClassSchedule(mappedSchedule);
-
-        } catch (err) {
-            console.error('❌ Unexpected error:', err);
-            setError('Erro ao carregar calendário');
-        } finally {
-            setLoading(false);
-        }
-    }, [user?.id, startDate, endDate]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    const {
+        data: rpcItems = [],
+        isLoading: rpcLoading,
+        isRefetching: rpcRefetching,
+        error: rpcError,
+        refetch: refetchRpc,
+    } = useQuery<CalendarItem[]>({
+        queryKey: ['calendar', 'items', user?.id, startDate, endDate],
+        queryFn: () => fetchCalendarItems(user!.id, startDate, endDate),
+        enabled: !!user?.id,
+        staleTime: 1000 * 60 * 5, // 5 minutos
+        gcTime: 1000 * 60 * 60 * 24, // 24 horas
+        placeholderData: (previousData) => previousData, // Mostra cache enquanto recarrega
+    });
 
     // ============================================
-    // PASSO C: Projetar Horário Escolar em Datas Específicas
+    // QUERY 2: Class Schedule - OFFLINE-FIRST
+    // ============================================
+    const {
+        data: classSchedule = [],
+        isLoading: scheduleLoading,
+        isRefetching: scheduleRefetching,
+        error: scheduleError,
+        refetch: refetchSchedule,
+    } = useQuery<ClassSchedule[]>({
+        queryKey: ['calendar', 'schedule', user?.id],
+        queryFn: () => fetchClassSchedule(user!.id),
+        enabled: !!user?.id,
+        staleTime: 1000 * 60 * 30, // 30 minutos (muda menos frequentemente)
+        gcTime: 1000 * 60 * 60 * 24, // 24 horas
+        placeholderData: (previousData) => previousData,
+    });
+
+    // ============================================
+    // PROJECT CLASSES TO SPECIFIC DATES
     // ============================================
 
     const projectedClasses = useMemo(() => {
@@ -168,18 +178,15 @@ export function useCalendarItems(focusedDate: Date) {
 
         if (classSchedule.length === 0) return items;
 
-        // Loop por todos os dias do mês
         const daysInMonth = new Date(year, month + 1, 0).getDate();
 
         for (let day = 1; day <= daysInMonth; day++) {
             const currentDate = new Date(year, month, day);
-            const dayOfWeek = currentDate.getDay(); // 0=Domingo, 1=Segunda, etc.
-            const dateString = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD
+            const dayOfWeek = currentDate.getDay();
+            const dateString = currentDate.toISOString().split('T')[0];
 
-            // Encontrar aulas para este dia da semana
             const classesForDay = classSchedule.filter(c => c.day_of_week === dayOfWeek);
 
-            // Criar "Evento Virtual" para cada aula
             classesForDay.forEach(cls => {
                 const startDateTime = `${dateString}T${cls.start_time}`;
                 const endDateTime = `${dateString}T${cls.end_time}`;
@@ -203,7 +210,7 @@ export function useCalendarItems(focusedDate: Date) {
     }, [classSchedule, year, month]);
 
     // ============================================
-    // PASSO D: Merge RPC Items + Projected Classes
+    // MERGE ALL ITEMS
     // ============================================
 
     const allItems = useMemo(() => {
@@ -211,20 +218,18 @@ export function useCalendarItems(focusedDate: Date) {
     }, [rpcItems, projectedClasses]);
 
     // ============================================
-    // PASSO E: Format for Agenda Component
+    // FORMAT FOR AGENDA COMPONENT
     // ============================================
 
     const agendaItems: AgendaItemsMap = useMemo(() => {
         const grouped: AgendaItemsMap = {};
 
-        // Initialize all days of the month (even empty ones)
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         for (let day = 1; day <= daysInMonth; day++) {
             const dateString = new Date(year, month, day).toISOString().split('T')[0];
             grouped[dateString] = [];
         }
 
-        // Group items by date
         allItems.forEach((item) => {
             const dateKey = item.start_at.split('T')[0];
 
@@ -239,7 +244,6 @@ export function useCalendarItems(focusedDate: Date) {
             });
         });
 
-        // Sort items within each day by start time
         Object.keys(grouped).forEach((date) => {
             grouped[date].sort((a, b) =>
                 new Date(a.start_at).getTime() - new Date(b.start_at).getTime()
@@ -263,12 +267,10 @@ export function useCalendarItems(focusedDate: Date) {
                 };
             }
 
-            // Add dot for each item type (limit to 3)
             if (marks[dateKey].dots && marks[dateKey].dots!.length < 3) {
                 const color = item.color || getItemColor(item.item_type, item.category);
                 const key = `${item.item_type}-${dateKey}`;
 
-                // Avoid duplicate dots
                 if (!marks[dateKey].dots!.find(d => d.key === key)) {
                     marks[dateKey].dots!.push({ color, key });
                 }
@@ -278,13 +280,32 @@ export function useCalendarItems(focusedDate: Date) {
         return marks;
     }, [allItems]);
 
+    // ============================================
+    // REFETCH FUNCTION
+    // ============================================
+
+    const refetch = async () => {
+        await Promise.all([refetchRpc(), refetchSchedule()]);
+    };
+
+    // ============================================
+    // COMBINED LOADING STATE
+    // ============================================
+
+    const loading = rpcLoading || scheduleLoading;
+    const isRefetching = rpcRefetching || scheduleRefetching;
+    const error = rpcError || scheduleError
+        ? (rpcError?.message || scheduleError?.message || 'Erro ao carregar calendário')
+        : null;
+
     return {
         items: allItems,
         agendaItems,
         markedDates,
         loading,
+        isRefetching, // NEW: Indica se está a atualizar em background
         error,
-        refetch: fetchData,
+        refetch,
     };
 }
 

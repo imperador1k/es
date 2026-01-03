@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Profile, TeamRole } from '@/types/database.types';
 import {
@@ -22,7 +23,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActionSheetIOS,
     ActivityIndicator,
-    Alert,
     Animated,
     Image,
     Platform,
@@ -32,7 +32,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -62,8 +62,10 @@ const ROLE_ICONS: Record<TeamRole, string> = {
 // ============================================
 
 export default function TeamMembersScreen() {
+
     const { teamId } = useLocalSearchParams<{ teamId: string }>();
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     const [members, setMembers] = useState<TeamMemberWithProfile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -117,7 +119,7 @@ export default function TeamMembersScreen() {
             if (teamData) setTeamName(teamData.name);
         } catch (err) {
             console.error('Error loading members:', err);
-            Alert.alert('Erro', 'Não foi possível carregar os membros.');
+            showAlert({ title: 'Erro', message: 'Não foi possível carregar os membros.' });
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -136,7 +138,7 @@ export default function TeamMembersScreen() {
     // Change role
     const handleChangeRole = async (member: TeamMemberWithProfile, newRole: TeamRole) => {
         if (!canModifyRole(userRole, member.role)) {
-            Alert.alert('Sem Permissão', 'Não podes modificar este membro.');
+            showAlert({ title: 'Sem Permissão', message: 'Não podes modificar este membro.' });
             return;
         }
 
@@ -152,24 +154,24 @@ export default function TeamMembersScreen() {
                 prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m))
             );
 
-            Alert.alert('✅ Sucesso', `${member.profile.full_name || member.profile.username} é agora ${ROLE_LABELS[newRole]}.`);
+            showAlert({ title: '✅ Sucesso', message: `${member.profile.full_name || member.profile.username} é agora ${ROLE_LABELS[newRole]}.` });
         } catch (err) {
             console.error('Error changing role:', err);
-            Alert.alert('Erro', 'Não foi possível alterar o cargo.');
+            showAlert({ title: 'Erro', message: 'Não foi possível alterar o cargo.' });
         }
     };
 
     // Remove member
     const handleRemoveMember = async (member: TeamMemberWithProfile) => {
         if (!canUser(userRole, 'KICK_MEMBERS') || !canModifyRole(userRole, member.role)) {
-            Alert.alert('Sem Permissão', 'Não podes remover este membro.');
+            showAlert({ title: 'Sem Permissão', message: 'Não podes remover este membro.' });
             return;
         }
 
-        Alert.alert(
-            'Remover Membro',
-            `Remover ${member.profile.full_name || member.profile.username}?`,
-            [
+        showAlert({
+            title: 'Remover Membro',
+            message: `Remover ${member.profile.full_name || member.profile.username}?`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Remover',
@@ -179,15 +181,15 @@ export default function TeamMembersScreen() {
                             const { error } = await supabase.from('team_members').delete().eq('id', member.id);
                             if (error) throw error;
                             setMembers((prev) => prev.filter((m) => m.id !== member.id));
-                            Alert.alert('✅ Removido', 'Membro removido da equipa.');
+                            showAlert({ title: '✅ Removido', message: 'Membro removido da equipa.' });
                         } catch (err) {
                             console.error('Error removing member:', err);
-                            Alert.alert('Erro', 'Não foi possível remover o membro.');
+                            showAlert({ title: 'Erro', message: 'Não foi possível remover o membro.' });
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     // Show member actions
@@ -230,19 +232,24 @@ export default function TeamMembersScreen() {
                 }
             );
         } else {
-            Alert.alert(
-                member.profile.full_name || member.profile.username || 'Membro',
-                'Escolhe uma ação:',
-                options.map((opt, i) => ({
-                    text: opt,
-                    style: opt.includes('Remover') ? 'destructive' : opt === 'Cancelar' ? 'cancel' : 'default',
-                    onPress: () => {
-                        if (i < actions.length) actions[i]();
-                    },
-                }))
-            );
+
+            // Android ActionSheet alternative using showAlert
+            const buttons = options.map((opt, i) => ({
+                text: opt,
+                style: (opt.includes('Remover') ? 'destructive' : opt === 'Cancelar' ? 'cancel' : 'default') as any,
+                onPress: () => {
+                    if (i < actions.length) actions[i]();
+                },
+            }));
+
+            showAlert({
+                title: member.profile.full_name || member.profile.username || 'Membro',
+                message: 'Escolhe uma ação:',
+                buttons: buttons
+            });
         }
-    };
+    }
+
 
     // Filter members
     const filteredMembers = members
@@ -443,181 +450,45 @@ function MemberCard({
     );
 }
 
-// ============================================
-// STYLES
-// ============================================
-
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    scrollContent: {
-        paddingHorizontal: SPACING.lg,
-        paddingBottom: 100,
-    },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
     // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: SPACING.lg,
-        paddingVertical: SPACING.md,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: COLORS.surfaceElevated,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    headerContent: {
-        flex: 1,
-        marginLeft: SPACING.md,
-    },
-    headerTitle: {
-        fontSize: TYPOGRAPHY.size.xl,
-        fontWeight: TYPOGRAPHY.weight.bold,
-        color: COLORS.text.primary,
-    },
-    headerSubtitle: {
-        fontSize: TYPOGRAPHY.size.sm,
-        color: COLORS.text.tertiary,
-    },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.surfaceElevated },
+    backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.full, backgroundColor: COLORS.surface },
+    headerContent: { marginLeft: SPACING.md, flex: 1 },
+    headerTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    headerSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.secondary },
 
     // Search
-    searchContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.surfaceElevated,
-        marginHorizontal: SPACING.lg,
-        marginBottom: SPACING.lg,
-        borderRadius: RADIUS.xl,
-        paddingHorizontal: SPACING.md,
-        paddingVertical: SPACING.sm,
-        gap: SPACING.sm,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
-    },
-    searchInput: {
-        flex: 1,
-        fontSize: TYPOGRAPHY.size.base,
-        color: COLORS.text.primary,
-    },
+    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceElevated, margin: SPACING.md, paddingHorizontal: SPACING.md, borderRadius: RADIUS.lg, height: 44 },
+    searchInput: { flex: 1, marginLeft: SPACING.sm, fontSize: TYPOGRAPHY.size.base, color: COLORS.text.primary },
 
-    // Section
-    sectionTitle: {
-        fontSize: TYPOGRAPHY.size.sm,
-        fontWeight: TYPOGRAPHY.weight.semibold,
-        color: COLORS.text.tertiary,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
-        marginTop: SPACING.lg,
-        marginBottom: SPACING.md,
-    },
-
-    // Member Card
-    memberCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.surfaceElevated,
-        borderRadius: RADIUS.xl,
-        paddingVertical: SPACING.md,
-        paddingLeft: SPACING.md,
-        paddingRight: SPACING.xs,
-        marginBottom: SPACING.sm,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
-    },
-    memberMainArea: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    memberCardHighlight: {
-        borderColor: '#6366F1',
-        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-    },
-    avatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-    },
-    avatarPlaceholder: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    avatarText: {
-        fontSize: TYPOGRAPHY.size.lg,
-        fontWeight: TYPOGRAPHY.weight.bold,
-        color: '#FFF',
-    },
-    memberInfo: {
-        flex: 1,
-        marginLeft: SPACING.md,
-    },
-    nameRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SPACING.xs,
-    },
-    memberName: {
-        fontSize: TYPOGRAPHY.size.base,
-        fontWeight: TYPOGRAPHY.weight.medium,
-        color: COLORS.text.primary,
-    },
-    youBadge: {
-        fontSize: TYPOGRAPHY.size.xs,
-        fontWeight: TYPOGRAPHY.weight.medium,
-        color: '#6366F1',
-        backgroundColor: 'rgba(99, 102, 241, 0.2)',
-        paddingHorizontal: SPACING.xs,
-        paddingVertical: 2,
-        borderRadius: RADIUS.sm,
-    },
-    memberUsername: {
-        fontSize: TYPOGRAPHY.size.sm,
-        color: COLORS.text.tertiary,
-        marginTop: 2,
-    },
-    roleBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: SPACING.sm,
-        paddingVertical: SPACING.xs,
-        borderRadius: RADIUS.full,
-        gap: 4,
-    },
-    roleIcon: {
-        fontSize: 12,
-    },
-    roleText: {
-        fontSize: TYPOGRAPHY.size.xs,
-        fontWeight: TYPOGRAPHY.weight.semibold,
-    },
-    editButton: {
-        marginLeft: SPACING.sm,
-        padding: SPACING.xs,
-        borderRadius: RADIUS.md,
-    },
+    // List
+    scrollContent: { paddingBottom: 100 },
+    sectionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.tertiary, marginLeft: SPACING.md, marginTop: SPACING.lg, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: 0.5 },
 
     // Empty
-    emptyContainer: {
-        alignItems: 'center',
-        paddingVertical: 60,
-    },
-    emptyText: {
-        fontSize: TYPOGRAPHY.size.base,
-        color: COLORS.text.tertiary,
-        marginTop: SPACING.md,
-    },
+    emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: SPACING['4xl'], gap: SPACING.sm },
+    emptyText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.tertiary },
+
+    // Member Card
+    memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, marginHorizontal: SPACING.md, marginBottom: SPACING.sm, borderRadius: RADIUS.lg, overflow: 'hidden' },
+    memberCardHighlight: { borderWidth: 1, borderColor: '#6366F1' },
+    memberMainArea: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: SPACING.md },
+    avatar: { width: 40, height: 40, borderRadius: 20 },
+    avatarPlaceholder: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    avatarText: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    memberInfo: { flex: 1, marginLeft: SPACING.md },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+    memberName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
+    youBadge: { fontSize: 10, fontWeight: 'bold', color: '#6366F1', backgroundColor: 'rgba(99, 102, 241, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden' },
+    memberUsername: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
+    roleBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.full, gap: 4 },
+    roleIcon: { fontSize: 12 },
+    roleText: { fontSize: 10, fontWeight: 'bold' },
+    editButton: { padding: SPACING.md, paddingLeft: SPACING.sm },
 });
+
+

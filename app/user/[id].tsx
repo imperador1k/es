@@ -8,6 +8,7 @@ import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { getUserBadges, UserBadge } from '@/services/badgeService';
 import { Profile, Tier } from '@/types/database.types';
@@ -17,7 +18,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Image,
     Pressable,
     ScrollView,
@@ -47,8 +47,10 @@ const TIER_CONFIG: Record<Tier, { emoji: string; gradient: [string, string]; tex
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user: currentUser } = useAuthContext();
+
     const { friends, sendFriendRequest, pendingRequests } = useFriends();
     const { startOrGetConversation } = useStartConversation();
+    const { showAlert } = useAlert();
 
     // State
     const [profile, setProfile] = useState<Profile | null>(null);
@@ -97,7 +99,7 @@ export default function UserProfileScreen() {
         const success = await sendFriendRequest(id);
         setSending(false);
         if (success) {
-            Alert.alert('✅ Pedido Enviado!', 'O teu pedido de amizade foi enviado.');
+            showAlert({ title: '✅ Pedido Enviado!', message: 'O teu pedido de amizade foi enviado.' });
         }
     };
 

@@ -6,6 +6,7 @@
 
 import { Message, useAI } from '@/hooks/useAI';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -15,7 +16,6 @@ import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     FlatList,
@@ -27,7 +27,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -245,6 +245,7 @@ function WelcomeScreen({ onQuickPrompt }: { onQuickPrompt: (prompt: string) => v
 export default function AITutorScreen() {
     const { messages, isLoading, sendMessage, clearChat } = useAI();
     const { profile } = useProfile();
+    const { showAlert } = useAlert();
     const [inputText, setInputText] = useState('');
     const [selectedImage, setSelectedImage] = useState<{ base64: string; uri: string } | null>(null);
     const flatListRef = useRef<FlatList>(null);
@@ -266,7 +267,7 @@ export default function AITutorScreen() {
                 : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
             if (!permission.granted) {
-                Alert.alert('Permissão necessária', 'Precisamos de acesso à câmara/galeria');
+                showAlert({ title: 'Permissão necessária', message: 'Precisamos de acesso à câmara/galeria' });
                 return;
             }
 
@@ -278,16 +279,20 @@ export default function AITutorScreen() {
                 setSelectedImage({ base64: result.assets[0].base64, uri: result.assets[0].uri });
             }
         } catch {
-            Alert.alert('Erro', 'Não foi possível selecionar imagem');
+            showAlert({ title: 'Erro', message: 'Não foi possível selecionar imagem' });
         }
     }, []);
 
     const showImageOptions = useCallback(() => {
-        Alert.alert('📸 Adicionar Imagem', 'Escolhe uma opção:', [
-            { text: '📷 Câmara', onPress: () => pickImage(true) },
-            { text: '🖼️ Galeria', onPress: () => pickImage(false) },
-            { text: 'Cancelar', style: 'cancel' },
-        ]);
+        showAlert({
+            title: '📸 Adicionar Imagem',
+            message: 'Escolhe uma opção:',
+            buttons: [
+                { text: '📷 Câmara', onPress: () => pickImage(true) },
+                { text: '🖼️ Galeria', onPress: () => pickImage(false) },
+                { text: 'Cancelar', style: 'cancel' },
+            ]
+        });
     }, [pickImage]);
 
     // ============================================
@@ -316,10 +321,14 @@ export default function AITutorScreen() {
     };
 
     const handleClearChat = () => {
-        Alert.alert('🗑️ Limpar Conversa', 'Tens a certeza que queres apagar toda a conversa?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Limpar', style: 'destructive', onPress: clearChat },
-        ]);
+        showAlert({
+            title: '🗑️ Limpar Conversa',
+            message: 'Tens a certeza que queres apagar toda a conversa?',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Limpar', style: 'destructive', onPress: clearChat },
+            ]
+        });
     };
 
     // ============================================

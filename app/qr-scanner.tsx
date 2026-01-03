@@ -1,12 +1,12 @@
 import { useFriends } from '@/hooks/useFriends';
 import { COLORS, RADIUS as borderRadius, SPACING as spacing, TYPOGRAPHY as typography } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-    Alert,
     Pressable,
     StyleSheet,
     Text,
@@ -23,7 +23,9 @@ const colors = {
 export default function QRScannerScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const { sendFriendRequest } = useFriends();
+
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
     const [scanned, setScanned] = useState(false);
     const [showMyQR, setShowMyQR] = useState(false);
 
@@ -38,7 +40,7 @@ export default function QRScannerScreen() {
             const userId = match[1];
 
             if (userId === user?.id) {
-                Alert.alert('Oops!', 'Não podes adicionar a ti próprio 😅');
+                showAlert({ title: 'Oops!', message: 'Não podes adicionar a ti próprio 😅' });
                 setScanned(false);
                 return;
             }
@@ -46,17 +48,17 @@ export default function QRScannerScreen() {
             const success = await sendFriendRequest(userId);
 
             if (success) {
-                Alert.alert(
-                    '🎉 Pedido Enviado!',
-                    'O teu pedido de amizade foi enviado.',
-                    [{ text: 'OK', onPress: () => router.back() }]
-                );
+                showAlert({
+                    title: '🎉 Pedido Enviado!',
+                    message: 'O teu pedido de amizade foi enviado.',
+                    buttons: [{ text: 'OK', onPress: () => router.back() }]
+                });
             } else {
-                Alert.alert('Aviso', 'Já existe um pedido ou amizade com este utilizador.');
+                showAlert({ title: 'Aviso', message: 'Já existe um pedido ou amizade com este utilizador.' });
                 setScanned(false);
             }
         } else {
-            Alert.alert('QR Inválido', 'Este QR code não é válido.');
+            showAlert({ title: 'QR Inválido', message: 'Este QR code não é válido.' });
             setScanned(false);
         }
     };

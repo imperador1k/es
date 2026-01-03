@@ -6,6 +6,7 @@
 import { GiphyPicker } from '@/components/GiphyPicker';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider'; // Added
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
@@ -16,7 +17,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Modal,
     Pressable,
     StyleSheet,
@@ -41,6 +41,7 @@ export function ChatInputBar({
     disabled = false
 }: ChatInputBarProps) {
     const { user } = useAuthContext();
+    const { showAlert } = useAlert(); // Added
     const [text, setText] = useState('');
     const [showMenu, setShowMenu] = useState(false);
     const [showGiphy, setShowGiphy] = useState(false);
@@ -72,7 +73,7 @@ export function ChatInputBar({
         setShowMenu(false);
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-            Alert.alert('Permissão necessária', 'Precisamos de acesso à câmara');
+            showAlert({ title: 'Permissão necessária', message: 'Precisamos de acesso à câmara' });
             return;
         }
         const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true });
@@ -83,7 +84,7 @@ export function ChatInputBar({
             const url = await uploadToStorage(asset.uri, fileName, 'image/jpeg');
             setUploading(false);
             if (url) onSend('📷', { url, type: 'image', name: fileName });
-            else Alert.alert('Erro', 'Não foi possível enviar a imagem');
+            else showAlert({ title: 'Erro', message: 'Não foi possível enviar a imagem' });
         }
     };
 
@@ -91,7 +92,7 @@ export function ChatInputBar({
         setShowMenu(false);
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-            Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria');
+            showAlert({ title: 'Permissão necessária', message: 'Precisamos de acesso à galeria' });
             return;
         }
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsMultipleSelection: false });
@@ -103,7 +104,7 @@ export function ChatInputBar({
             const url = await uploadToStorage(asset.uri, fileName, mimeType);
             setUploading(false);
             if (url) onSend('📷', { url, type: 'image', name: fileName });
-            else Alert.alert('Erro', 'Não foi possível enviar a imagem');
+            else showAlert({ title: 'Erro', message: 'Não foi possível enviar a imagem' });
         }
     };
 
@@ -120,7 +121,7 @@ export function ChatInputBar({
                 const url = await uploadToStorage(asset.uri, asset.name, asset.mimeType || 'application/pdf');
                 setUploading(false);
                 if (url) onSend('📎', { url, type: 'file', name: asset.name });
-                else Alert.alert('Erro', 'Não foi possível enviar o ficheiro');
+                else showAlert({ title: 'Erro', message: 'Não foi possível enviar o ficheiro' });
             }
         } catch (err) {
             console.error('Document picker error:', err);

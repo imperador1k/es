@@ -3,12 +3,12 @@
  * Ecrã para gerir canais da equipa (CRUD)
  */
 
+import { useAlert } from '@/providers/AlertProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Modal,
     Pressable,
@@ -56,6 +56,7 @@ export default function TeamChannelsScreen() {
     const { id: teamId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     // Estados
     const [channels, setChannels] = useState<Channel[]>([]);
@@ -116,8 +117,9 @@ export default function TeamChannelsScreen() {
                 if (teamData) setTeamName(teamData.name);
             }
         } catch (err) {
+
             console.error('Erro ao carregar canais:', err);
-            Alert.alert('Erro', 'Não foi possível carregar os canais.');
+            showAlert({ title: 'Erro', message: 'Não foi possível carregar os canais.' });
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -154,7 +156,7 @@ export default function TeamChannelsScreen() {
     const handleSaveChannel = async () => {
         const name = channelName.trim().toLowerCase().replace(/\s+/g, '-');
         if (!name) {
-            Alert.alert('Erro', 'O nome do canal é obrigatório.');
+            showAlert({ title: 'Erro', message: 'O nome do canal é obrigatório.' });
             return;
         }
 
@@ -173,7 +175,7 @@ export default function TeamChannelsScreen() {
                 setChannels(prev =>
                     prev.map(c => (c.id === editingChannel.id ? { ...c, name, type: channelType } : c))
                 );
-                Alert.alert('✅ Atualizado', `Canal #${name} foi atualizado.`);
+                showAlert({ title: '✅ Atualizado', message: `Canal #${name} foi atualizado.` });
             } else {
                 // Criar
                 const { data, error } = await supabase
@@ -189,13 +191,13 @@ export default function TeamChannelsScreen() {
                 if (error) throw error;
 
                 setChannels(prev => [...prev, data]);
-                Alert.alert('✅ Criado', `Canal #${name} foi criado.`);
+                showAlert({ title: '✅ Criado', message: `Canal #${name} foi criado.` });
             }
 
             setModalVisible(false);
         } catch (err: any) {
             console.error('Erro ao guardar canal:', err);
-            Alert.alert('Erro', err.message || 'Não foi possível guardar o canal.');
+            showAlert({ title: 'Erro', message: err.message || 'Não foi possível guardar o canal.' });
         } finally {
             setSaving(false);
         }
@@ -207,14 +209,14 @@ export default function TeamChannelsScreen() {
 
     const handleDeleteChannel = (channel: Channel) => {
         if (channels.length <= 1) {
-            Alert.alert('Erro', 'A equipa precisa de ter pelo menos um canal.');
+            showAlert({ title: 'Erro', message: 'A equipa precisa de ter pelo menos um canal.' });
             return;
         }
 
-        Alert.alert(
-            'Apagar Canal?',
-            `Tens a certeza que queres apagar #${channel.name}? Todas as mensagens serão perdidas.`,
-            [
+        showAlert({
+            title: 'Apagar Canal?',
+            message: `Tens a certeza que queres apagar #${channel.name}? Todas as mensagens serão perdidas.`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Apagar',
@@ -229,15 +231,15 @@ export default function TeamChannelsScreen() {
                             if (error) throw error;
 
                             setChannels(prev => prev.filter(c => c.id !== channel.id));
-                            Alert.alert('🗑️ Apagado', `Canal #${channel.name} foi removido.`);
+                            showAlert({ title: '🗑️ Apagado', message: `Canal #${channel.name} foi removido.` });
                         } catch (err) {
                             console.error('Erro ao apagar:', err);
-                            Alert.alert('Erro', 'Não foi possível apagar o canal.');
+                            showAlert({ title: 'Erro', message: 'Não foi possível apagar o canal.' });
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     // ============================================
@@ -261,11 +263,15 @@ export default function TeamChannelsScreen() {
         const showOptions = () => {
             if (!canManageChannels) return;
 
-            Alert.alert(`#${item.name}`, '', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Editar', onPress: () => openEditModal(item) },
-                { text: 'Apagar', style: 'destructive', onPress: () => handleDeleteChannel(item) },
-            ]);
+            showAlert({
+                title: `#${item.name}`,
+                message: '',
+                buttons: [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Editar', onPress: () => openEditModal(item) },
+                    { text: 'Apagar', style: 'destructive', onPress: () => handleDeleteChannel(item) },
+                ]
+            });
         };
 
         return (

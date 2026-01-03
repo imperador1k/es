@@ -1,21 +1,20 @@
 import { Autocomplete } from '@/components/ui/Autocomplete';
 import { EducationLevel, saveUserEducation, useEducationData } from '@/hooks/useEducation';
 import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import {
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -41,7 +40,9 @@ const EDUCATION_LEVELS = [
 ];
 
 export default function EducationSetupScreen() {
-    const { user } = useAuthContext();
+    const { user, refreshSession } = useAuthContext();
+    const { showAlert } = useAlert();
+    const [loading, setLoading] = useState(false);
     const {
         searchSchools,
         searchUniversities,
@@ -182,9 +183,10 @@ export default function EducationSetupScreen() {
         setSaving(false);
 
         if (result.success) {
-            router.replace('/(tabs)');
+            await refreshSession(); // Trigger redirect check
+            // router.replace('/(tabs)'); // AuthProvider should handle this
         } else {
-            Alert.alert('Erro', result.error || 'Não foi possível guardar.');
+            showAlert({ title: 'Erro', message: result.error || 'Não foi possível guardar.' });
             setStep('details');
         }
     };

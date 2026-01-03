@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { TeamWithRole, useTeams } from '@/providers/TeamsProvider';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +14,6 @@ import { router } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     FlatList,
@@ -42,6 +42,7 @@ const SQUAD_COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F43F5E', '#F97316', '#E
 export default function TeamsScreen() {
     const { user } = useAuthContext();
     const { teams, loading, refreshTeams } = useTeams();
+    const { showAlert } = useAlert();
     const [refreshing, setRefreshing] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [creating, setCreating] = useState(false);
@@ -67,12 +68,12 @@ export default function TeamsScreen() {
 
     const handleCreateTeam = async () => {
         if (!user?.id || !newName.trim()) {
-            Alert.alert('Erro', 'Nome é obrigatório');
+            showAlert({ title: 'Erro', message: 'Nome é obrigatório' });
             return;
         }
 
         if (customCode.trim() && customCode.trim().length < 4) {
-            Alert.alert('Erro', 'Código deve ter pelo menos 4 caracteres');
+            showAlert({ title: 'Erro', message: 'Código deve ter pelo menos 4 caracteres' });
             return;
         }
 
@@ -99,7 +100,7 @@ export default function TeamsScreen() {
 
             if (teamError) {
                 if (teamError.code === '23505') {
-                    Alert.alert('Erro', 'Este código já existe. Escolhe outro.');
+                    showAlert({ title: 'Erro', message: 'Este código já existe. Escolhe outro.' });
                     return;
                 }
                 throw teamError;
@@ -120,10 +121,10 @@ export default function TeamsScreen() {
             await refreshTeams();
             setModalVisible(false);
             resetForm();
-            Alert.alert('🎉 Squad Criada!', `"${teamData.name}" está pronta!\n\nCódigo: ${teamData.invite_code}`);
+            showAlert({ title: '🎉 Squad Criada!', message: `"${teamData.name}" está pronta!\n\nCódigo: ${teamData.invite_code}` });
         } catch (err) {
             console.error('Erro ao criar squad:', err);
-            Alert.alert('Erro', 'Não foi possível criar');
+            showAlert({ title: 'Erro', message: 'Não foi possível criar' });
         } finally {
             setCreating(false);
         }

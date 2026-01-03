@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { TeamRole } from '@/types/database.types';
 import { canUser } from '@/utils/permissions';
@@ -20,7 +21,6 @@ import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     Image,
@@ -125,7 +125,9 @@ function isImageFile(fileType: string): boolean {
 
 export default function TeamFilesScreen() {
     const { id: teamId } = useLocalSearchParams<{ id: string }>();
+
     const { user } = useAuthContext();
+    const { showAlert } = useAlert();
 
     const [files, setFiles] = useState<TeamFile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -238,7 +240,7 @@ export default function TeamFilesScreen() {
 
     const handleCreateFolder = async () => {
         if (!newFolderName.trim()) {
-            Alert.alert('Erro', 'Introduz um nome para a pasta.');
+            showAlert({ title: 'Erro', message: 'Introduz um nome para a pasta.' });
             return;
         }
 
@@ -260,8 +262,9 @@ export default function TeamFilesScreen() {
             setNewFolderName('');
             loadFiles();
         } catch (err) {
+
             console.error('Error creating folder:', err);
-            Alert.alert('Erro', 'Não foi possível criar a pasta.');
+            showAlert({ title: 'Erro', message: 'Não foi possível criar a pasta.' });
         } finally {
             setCreatingFolder(false);
         }
@@ -273,7 +276,7 @@ export default function TeamFilesScreen() {
 
     const handleUpload = async () => {
         if (!canUser(userRole, 'UPLOAD_FILES')) {
-            Alert.alert('Sem Permissão', 'Não tens permissão para fazer upload.');
+            showAlert({ title: 'Sem Permissão', message: 'Não tens permissão para fazer upload.' });
             return;
         }
 
@@ -307,11 +310,11 @@ export default function TeamFilesScreen() {
             });
 
             if (dbError) throw dbError;
-            Alert.alert('✅ Sucesso', 'Ficheiro carregado!');
+            showAlert({ title: '✅ Sucesso', message: 'Ficheiro carregado!' });
             loadFiles();
         } catch (err) {
             console.error('Error uploading:', err);
-            Alert.alert('Erro', 'Não foi possível carregar o ficheiro.');
+            showAlert({ title: 'Erro', message: 'Não foi possível carregar o ficheiro.' });
         } finally {
             setUploading(false);
         }
@@ -347,8 +350,9 @@ export default function TeamFilesScreen() {
                 if (canShare) await Sharing.shareAsync(localUri);
             }
         } catch (err) {
+
             console.error('Error opening file:', err);
-            Alert.alert('Erro', 'Não foi possível abrir o ficheiro.');
+            showAlert({ title: 'Erro', message: 'Não foi possível abrir o ficheiro.' });
         } finally {
             setDownloadingId(null);
         }
@@ -363,14 +367,14 @@ export default function TeamFilesScreen() {
         const isOwnFile = file.uploader_id === user?.id;
 
         if (!canDeleteAny && !isOwnFile) {
-            Alert.alert('Sem Permissão', 'Não podes apagar este item.');
+            showAlert({ title: 'Sem Permissão', message: 'Não podes apagar este item.' });
             return;
         }
 
-        Alert.alert(
-            `Apagar ${file.is_folder ? 'Pasta' : 'Ficheiro'}`,
-            `Tens a certeza que queres apagar "${file.name}"?`,
-            [
+        showAlert({
+            title: `Apagar ${file.is_folder ? 'Pasta' : 'Ficheiro'}`,
+            message: `Tens a certeza que queres apagar "${file.name}"?`,
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
                     text: 'Apagar',
@@ -385,12 +389,12 @@ export default function TeamFilesScreen() {
                             setFiles((prev) => prev.filter((f) => f.id !== file.id));
                         } catch (err) {
                             console.error('Error deleting:', err);
-                            Alert.alert('Erro', 'Não foi possível apagar.');
+                            showAlert({ title: 'Erro', message: 'Não foi possível apagar.' });
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     // ============================================
@@ -638,13 +642,18 @@ function FileCard({
     const scale = useRef(new Animated.Value(1)).current;
     const config = getFileConfig(file);
     const isImage = isImageFile(file.file_type) && !file.is_folder && imageUrl;
+    const { showAlert } = useAlert();
 
     const showMenu = () => {
         if (!canModify) return;
-        Alert.alert(file.name, file.is_folder ? 'Pasta' : formatFileSize(file.size_bytes), [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Apagar', style: 'destructive', onPress: onDelete },
-        ]);
+        showAlert({
+            title: file.name,
+            message: file.is_folder ? 'Pasta' : formatFileSize(file.size_bytes),
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Apagar', style: 'destructive', onPress: onDelete },
+            ]
+        });
     };
 
     if (viewMode === 'grid') {

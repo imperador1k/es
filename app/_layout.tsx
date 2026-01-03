@@ -21,10 +21,13 @@ if (Platform.OS !== 'web') {
   require('@livekit/react-native').registerGlobals();
 }
 
+import { DataSyncProvider } from '@/components/DataSyncProvider';
 import { MiniPlayer } from '@/components/MiniPlayer';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { useColorScheme } from '@/components/useColorScheme';
 import { CallProvider } from '@/context/CallContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { AlertProvider } from '@/providers/AlertProvider';
 import { AudioPlayerProvider } from '@/providers/AudioPlayerProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ProfileProvider } from '@/providers/ProfileProvider';
@@ -97,24 +100,29 @@ function RootLayoutNav() {
     <QueryProvider>
       <AuthProvider>
         <ProfileProvider>
-          <CallProvider>
-            <TeamsProvider>
-              <AudioPlayerProvider>
-                <PushNotificationsInitializer>
-                  <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                    <View style={{ flex: 1 }}>
-                      <Stack screenOptions={{ headerShown: false }}>
-                        <Stack.Screen name="(auth)" />
-                        <Stack.Screen name="(tabs)" />
-                        <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-                      </Stack>
-                      <MiniPlayer />
-                    </View>
-                  </ThemeProvider>
-                </PushNotificationsInitializer>
-              </AudioPlayerProvider>
-            </TeamsProvider>
-          </CallProvider>
+          <DataSyncProvider>
+            <AlertProvider>
+              <CallProvider>
+                <TeamsProvider>
+                  <AudioPlayerProvider>
+                    <PushNotificationsInitializer>
+                      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                        <View style={{ flex: 1 }}>
+                          <OfflineBanner />
+                          <Stack screenOptions={{ headerShown: false }}>
+                            <Stack.Screen name="(auth)" />
+                            <Stack.Screen name="(tabs)" />
+                            <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                          </Stack>
+                          <MiniPlayer />
+                        </View>
+                      </ThemeProvider>
+                    </PushNotificationsInitializer>
+                  </AudioPlayerProvider>
+                </TeamsProvider>
+              </CallProvider>
+            </AlertProvider>
+          </DataSyncProvider>
         </ProfileProvider>
       </AuthProvider>
     </QueryProvider>

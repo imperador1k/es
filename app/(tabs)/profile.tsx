@@ -6,6 +6,7 @@
 import { getUserEducation } from '@/hooks/useEducation';
 import { supabase } from '@/lib/supabase';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Tier } from '@/types/database.types';
@@ -16,7 +17,6 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Dimensions,
     Image,
     Pressable,
@@ -150,6 +150,7 @@ function MenuItem({
 export default function ProfileScreen() {
     const { user, signOut, isLoading: authLoading } = useAuthContext();
     const { profile, loading, refetchProfile } = useProfile();
+    const { showAlert } = useAlert();
     const [deleting, setDeleting] = useState(false);
     const [frameConfig, setFrameConfig] = useState<{
         border_color: string;
@@ -221,21 +222,25 @@ export default function ProfileScreen() {
 
     // Handlers
     const handleSignOut = () => {
-        Alert.alert('Terminar Sessão', 'Tens a certeza que queres sair?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Sair', style: 'destructive', onPress: signOut },
-        ]);
+        showAlert({
+            title: 'Terminar Sessão',
+            message: 'Tens a certeza que queres sair?',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Sair', style: 'destructive', onPress: signOut },
+            ]
+        });
     };
 
     const handleDeleteAccount = () => {
-        Alert.alert(
-            '⚠️ Eliminar Conta',
-            'Esta ação é PERMANENTE.\n\nIrá apagar todos os teus dados.',
-            [
+        showAlert({
+            title: '⚠️ Eliminar Conta',
+            message: 'Esta ação é PERMANENTE.\n\nIrá apagar todos os teus dados.',
+            buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 { text: 'Eliminar', style: 'destructive', onPress: confirmDelete },
             ]
-        );
+        });
     };
 
     const confirmDelete = async () => {
@@ -246,7 +251,7 @@ export default function ProfileScreen() {
             if (error) throw error;
             await signOut();
         } catch (err) {
-            Alert.alert('Erro', 'Não foi possível eliminar a conta.');
+            showAlert({ title: 'Erro', message: 'Não foi possível eliminar a conta.' });
         } finally {
             setDeleting(false);
         }
@@ -599,7 +604,7 @@ export default function ProfileScreen() {
                         <MenuItem
                             icon="notifications-outline"
                             label="Notificações"
-                            onPress={() => router.push('/settings')}
+                            onPress={() => router.push('/notifications')}
                         />
                         <View style={styles.menuDivider} />
                         <MenuItem
