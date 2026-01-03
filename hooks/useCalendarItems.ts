@@ -41,6 +41,16 @@ export interface ClassSchedule {
     };
 }
 
+export interface PersonalTodo {
+    id: string;
+    title: string;
+    description?: string;
+    due_date: string | null;
+    is_completed: boolean;
+    priority: 'low' | 'medium' | 'high';
+    tags?: string[];
+}
+
 export interface AgendaItem extends CalendarItem {
     name: string;
     height: number;
@@ -87,7 +97,18 @@ async function fetchCalendarItems(userId: string, startDate: string, endDate: st
         return [];
     }
 
-    return (data as CalendarItem[]) || [];
+    // Normalize categories: todos default to 'tarefa' unless explicitly 'lembrete'
+    return ((data as CalendarItem[]) || []).map(item => {
+        if (item.item_type === 'todo') {
+            const isReminder = item.category === 'lembrete';
+            return {
+                ...item,
+                category: isReminder ? 'lembrete' : 'tarefa',
+                color: isReminder ? ITEM_COLORS.todo : '#F59E0B',
+            };
+        }
+        return item;
+    });
 }
 
 async function fetchClassSchedule(userId: string): Promise<ClassSchedule[]> {
@@ -108,6 +129,22 @@ async function fetchClassSchedule(userId: string): Promise<ClassSchedule[]> {
         ...s,
         subject: Array.isArray(s.subject) ? s.subject[0] : s.subject,
     }));
+}
+
+async function fetchPersonalTodos(userId: string, startDate: string, endDate: string): Promise<PersonalTodo[]> {
+    const { data, error } = await supabase
+        .from('personal_todos')
+        .select('id, title, description, due_date, is_completed, priority, tags')
+        .eq('user_id', userId)
+        .gte('due_date', startDate)
+        .lte('due_date', endDate + 'T23:59:59');
+
+    if (error) {
+        console.error('❌ Personal todos error:', error);
+        return [];
+    }
+
+    return (data || []) as PersonalTodo[];
 }
 
 // ============================================
@@ -170,6 +207,24 @@ export function useCalendarItems(focusedDate: Date) {
     });
 
     // ============================================
+    // QUERY 3: Personal Todos - OFFLINE-FIRST
+    // ============================================
+    const {
+        data: personalTodos = [],
+        isLoading: todosLoading,
+        isRefetching: todosRefetching,
+        error: todosError,
+        refetch: refetchTodos,
+    } = useQuery<PersonalTodo[]>({
+        queryKey: ['calendar', 'personal_todos', user?.id, startDate, endDate],
+        queryFn: () => fetchPersonalTodos(user!.id, startDate, endDate),
+        enabled: !!user?.id,
+        staleTime: 1000 * 60 * 5, // 5 minutos
+        gcTime: 1000 * 60 * 60 * 24, // 24 horas
+        placeholderData: (previousData) => previousData,
+    });
+
+    // ============================================
     // PROJECT CLASSES TO SPECIFIC DATES
     // ============================================
 
@@ -213,9 +268,35 @@ export function useCalendarItems(focusedDate: Date) {
     // MERGE ALL ITEMS
     // ============================================
 
+    // Map personal todos to CalendarItem format
+    const personalTodosItems: CalendarItem[] = useMemo(() => {
+        return personalTodos.map(todo => {
+            // Default to 'tarefa'. Only 'lembrete' if explicitly tagged as such
+            const isReminder = todo.tags?.includes('lembrete') && !todo.tags?.includes('tarefa');
+            return {
+                id: todo.id,
+                title: todo.title,
+                description: todo.description,
+                start_at: todo.due_date || new Date().toISOString(),
+                end_at: todo.due_date || undefined,
+                item_type: 'todo' as const,
+                category: isReminder ? 'lembrete' : 'tarefa',
+                color: isReminder ? ITEM_COLORS.todo : '#F59E0B', // Orange for tasks, green for reminders
+                is_completed: todo.is_completed,
+            };
+        });
+    }, [personalTodos]);
+
     const allItems = useMemo(() => {
-        return [...rpcItems, ...projectedClasses];
-    }, [rpcItems, projectedClasses]);
+        const combined = [...rpcItems, ...projectedClasses, ...personalTodosItems];
+        // Deduplicate by ID to prevent React key errors
+        const seen = new Set<string>();
+        return combined.filter(item => {
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+        });
+    }, [rpcItems, projectedClasses, personalTodosItems]);
 
     // ============================================
     // FORMAT FOR AGENDA COMPONENT
@@ -285,17 +366,17 @@ export function useCalendarItems(focusedDate: Date) {
     // ============================================
 
     const refetch = async () => {
-        await Promise.all([refetchRpc(), refetchSchedule()]);
+        await Promise.all([refetchRpc(), refetchSchedule(), refetchTodos()]);
     };
 
     // ============================================
     // COMBINED LOADING STATE
     // ============================================
 
-    const loading = rpcLoading || scheduleLoading;
-    const isRefetching = rpcRefetching || scheduleRefetching;
-    const error = rpcError || scheduleError
-        ? (rpcError?.message || scheduleError?.message || 'Erro ao carregar calendário')
+    const loading = rpcLoading || scheduleLoading || todosLoading;
+    const isRefetching = rpcRefetching || scheduleRefetching || todosRefetching;
+    const error = rpcError || scheduleError || todosError
+        ? (rpcError?.message || scheduleError?.message || todosError?.message || 'Erro ao carregar calendário')
         : null;
 
     return {

@@ -13,6 +13,7 @@ import { useState } from 'react';
 import {
     Keyboard,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -250,51 +251,76 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                         <View style={{ height: 100 }} />
                     </ScrollView>
 
-                    {/* Date Picker Modal */}
+                    {/* Date Picker Modal - Platform Specific */}
                     {showDatePicker && (
-                        <Modal transparent animationType="fade">
-                            <View style={styles.pickerOverlay}>
-                                <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
-                                    <View style={styles.pickerHeader}>
-                                        <Text style={styles.pickerTitle}>Escolher Data</Text>
-                                        <Pressable onPress={() => setShowDatePicker(false)}>
-                                            <Ionicons name="checkmark-circle" size={28} color="#10B981" />
-                                        </Pressable>
-                                    </View>
-                                    <DateTimePicker
-                                        value={dueDate || new Date()}
-                                        mode="date"
-                                        display="spinner"
-                                        onChange={(e, date) => { if (date) setDueDate(date); }}
-                                        minimumDate={new Date()}
-                                        textColor="#FFF"
-                                    />
-                                </BlurView>
-                            </View>
-                        </Modal>
+                        Platform.OS === 'ios' ? (
+                            <Modal transparent animationType="fade">
+                                <View style={styles.pickerOverlay}>
+                                    <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
+                                        <View style={styles.pickerHeader}>
+                                            <Text style={styles.pickerTitle}>Escolher Data</Text>
+                                            <Pressable onPress={() => setShowDatePicker(false)}>
+                                                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+                                            </Pressable>
+                                        </View>
+                                        <DateTimePicker
+                                            value={dueDate || new Date()}
+                                            mode="date"
+                                            display="spinner"
+                                            onChange={(e, date) => { if (date) setDueDate(date); }}
+                                            minimumDate={new Date()}
+                                            textColor="#FFF"
+                                        />
+                                    </BlurView>
+                                </View>
+                            </Modal>
+                        ) : (
+                            <DateTimePicker
+                                value={dueDate || new Date()}
+                                mode="date"
+                                display="default"
+                                onChange={(e, date) => {
+                                    setShowDatePicker(false);
+                                    if (e.type === 'set' && date) setDueDate(date);
+                                }}
+                                minimumDate={new Date()}
+                            />
+                        )
                     )}
 
-                    {/* Time Picker Modal */}
+                    {/* Time Picker Modal - Platform Specific */}
                     {showTimePicker && dueDate && (
-                        <Modal transparent animationType="fade">
-                            <View style={styles.pickerOverlay}>
-                                <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
-                                    <View style={styles.pickerHeader}>
-                                        <Text style={styles.pickerTitle}>Escolher Hora</Text>
-                                        <Pressable onPress={() => setShowTimePicker(false)}>
-                                            <Ionicons name="checkmark-circle" size={28} color="#10B981" />
-                                        </Pressable>
-                                    </View>
-                                    <DateTimePicker
-                                        value={dueDate}
-                                        mode="time"
-                                        display="spinner"
-                                        onChange={(e, date) => { if (date) setDueDate(date); }}
-                                        textColor="#FFF"
-                                    />
-                                </BlurView>
-                            </View>
-                        </Modal>
+                        Platform.OS === 'ios' ? (
+                            <Modal transparent animationType="fade">
+                                <View style={styles.pickerOverlay}>
+                                    <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
+                                        <View style={styles.pickerHeader}>
+                                            <Text style={styles.pickerTitle}>Escolher Hora</Text>
+                                            <Pressable onPress={() => setShowTimePicker(false)}>
+                                                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+                                            </Pressable>
+                                        </View>
+                                        <DateTimePicker
+                                            value={dueDate}
+                                            mode="time"
+                                            display="spinner"
+                                            onChange={(e, date) => { if (date) setDueDate(date); }}
+                                            textColor="#FFF"
+                                        />
+                                    </BlurView>
+                                </View>
+                            </Modal>
+                        ) : (
+                            <DateTimePicker
+                                value={dueDate}
+                                mode="time"
+                                display="default"
+                                onChange={(e, date) => {
+                                    setShowTimePicker(false);
+                                    if (e.type === 'set' && date) setDueDate(date);
+                                }}
+                            />
+                        )
                     )}
                 </View>
             </TouchableWithoutFeedback>

@@ -4,6 +4,7 @@
  */
 
 import CreateEventModal from '@/components/CreateEventModal';
+import { CreateTodoModal } from '@/components/CreateTodoModal';
 import ItemDetailsModal from '@/components/ItemDetailsModal';
 import {
     AgendaItem,
@@ -12,6 +13,7 @@ import {
     getItemTypeIcon,
     useCalendarItems,
 } from '@/hooks/useCalendarItems';
+import { usePersonalTodos } from '@/hooks/usePersonalTodos';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
@@ -78,6 +80,11 @@ export default function CalendarScreen() {
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState<AgendaItem | null>(null);
     const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+    const [todoModalVisible, setTodoModalVisible] = useState(false);
+    const [showAddOptions, setShowAddOptions] = useState(false);
+
+    // Personal todos hook
+    const { createTodo } = usePersonalTodos();
 
     // Focused month for data fetching
     const focusedMonth = useMemo(() => new Date(selectedDate), [selectedDate]);
@@ -177,7 +184,7 @@ export default function CalendarScreen() {
                         {/* Type Badge */}
                         <View style={[styles.itemBadge, { backgroundColor: `${itemColor}15` }]}>
                             <Text style={[styles.itemBadgeText, { color: itemColor }]}>
-                                {getItemTypeLabel(item.item_type)}
+                                {getItemTypeLabel(item.item_type, item.category)}
                             </Text>
                         </View>
 
@@ -358,8 +365,38 @@ export default function CalendarScreen() {
                 <View style={{ height: 150 }} />
             </ScrollView>
 
-            {/* ========== FAB ========== */}
-            <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
+            {/* ========== FAB with Options ========== */}
+            {showAddOptions && (
+                <Pressable style={styles.fabOverlay} onPress={() => setShowAddOptions(false)}>
+                    <View style={styles.fabOptions}>
+                        <Pressable
+                            style={styles.fabOption}
+                            onPress={() => {
+                                setShowAddOptions(false);
+                                setTodoModalVisible(true);
+                            }}
+                        >
+                            <LinearGradient colors={['#10B981', '#059669']} style={styles.fabOptionIcon}>
+                                <Ionicons name="checkbox" size={20} color="#FFF" />
+                            </LinearGradient>
+                            <Text style={styles.fabOptionText}>Nova Tarefa</Text>
+                        </Pressable>
+                        <Pressable
+                            style={styles.fabOption}
+                            onPress={() => {
+                                setShowAddOptions(false);
+                                setModalVisible(true);
+                            }}
+                        >
+                            <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.fabOptionIcon}>
+                                <Ionicons name="calendar" size={20} color="#FFF" />
+                            </LinearGradient>
+                            <Text style={styles.fabOptionText}>Novo Evento</Text>
+                        </Pressable>
+                    </View>
+                </Pressable>
+            )}
+            <Pressable style={styles.fab} onPress={() => setShowAddOptions(true)}>
                 <LinearGradient
                     colors={['#6366F1', '#8B5CF6']}
                     start={{ x: 0, y: 0 }}
@@ -387,6 +424,15 @@ export default function CalendarScreen() {
                 }}
                 onUpdate={() => refetch()}
             />
+
+            <CreateTodoModal
+                visible={todoModalVisible}
+                onClose={() => setTodoModalVisible(false)}
+                onSubmit={async (input) => {
+                    await createTodo(input);
+                    await refetch();
+                }}
+            />
         </View>
     );
 }
@@ -395,12 +441,14 @@ export default function CalendarScreen() {
 // HELPERS
 // ============================================
 
-function getItemTypeLabel(itemType: string): string {
+function getItemTypeLabel(itemType: string, category?: string): string {
     switch (itemType) {
         case 'class': return 'Aula';
         case 'event': return 'Evento';
         case 'task': return 'Tarefa';
-        case 'todo': return 'Lembrete';
+        case 'todo':
+            // Check category to distinguish task from reminder
+            return category === 'tarefa' ? 'Tarefa' : 'Lembrete';
         default: return 'Item';
     }
 }
@@ -662,5 +710,43 @@ const styles = StyleSheet.create({
         borderRadius: 28,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    fabOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+        alignItems: 'flex-end',
+        paddingBottom: 190,
+        paddingRight: LAYOUT.screenPadding,
+    },
+    fabOptions: {
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.sm,
+        gap: SPACING.xs,
+        ...SHADOWS.lg,
+    },
+    fabOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
+        paddingVertical: SPACING.sm,
+        paddingHorizontal: SPACING.md,
+    },
+    fabOptionIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    fabOptionText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
 });

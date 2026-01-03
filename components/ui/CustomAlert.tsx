@@ -131,33 +131,36 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         padding: 16,
         paddingTop: 0,
-        gap: 12, // Space between buttons
+        justifyContent: 'space-between', // Push apart
     },
     actionsVertical: {
         flexDirection: 'column',
     },
     button: {
         flex: 1,
-        height: 46,
+        height: 48, // Slightly taller
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.08)', // Subtle nice button bg
+        borderRadius: 12, // More rounded
+        backgroundColor: 'rgba(255,255,255,0.1)', // More visible
+        marginHorizontal: 6, // Better than gap for compatibility
     },
     buttonVertical: {
         height: 48,
         width: '100%',
+        marginHorizontal: 0,
+        marginBottom: 10,
     },
     buttonPressed: {
-        backgroundColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(255,255,255,0.2)',
     },
     buttonDestructive: {
-        backgroundColor: 'rgba(255,69,58,0.15)', // Subtle Red bg
+        backgroundColor: 'rgba(255,69,58,0.2)', // More visible red
     },
     buttonCancel: {
         backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     buttonText: {
         fontSize: 16,
@@ -166,10 +169,10 @@ const styles = StyleSheet.create({
     },
     textDestructive: {
         color: '#FF453A',
-        fontWeight: '600',
+        fontWeight: '700',
     },
     textCancel: {
-        color: 'rgba(255,255,255,0.6)',
-        fontWeight: '500',
+        color: 'rgba(255,255,255,0.7)',
+        fontWeight: '600',
     },
 });

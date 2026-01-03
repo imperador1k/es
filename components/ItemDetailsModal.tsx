@@ -75,7 +75,18 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
         try {
             const isPersonalTodo = item.item_type === 'todo';
             const table = isPersonalTodo ? 'personal_todos' : 'tasks';
-            const realId = item.id.includes('-') ? item.id.split('-').pop() : item.id;
+
+            // For projected classes, ID is like "class-{uuid}-{date}", extract the uuid
+            // For todos and tasks, use the ID directly (it's already a valid UUID)
+            let realId = item.id;
+            if (item.item_type === 'class' && item.id.startsWith('class-')) {
+                // Extract UUID from "class-{uuid}-{date}" format
+                const parts = item.id.split('-');
+                // UUID is parts 1-5 (indices 1 through 5)
+                if (parts.length >= 6) {
+                    realId = parts.slice(1, 6).join('-');
+                }
+            }
 
             const { error } = await supabase.from(table).update({ is_completed: !item.is_completed }).eq('id', realId);
             if (error) throw error;
@@ -86,9 +97,9 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
             });
             onUpdate();
             onClose();
-        } catch (err) {
+        } catch (err: any) {
             console.error('❌ Error:', err);
-            showAlert({ title: 'Erro', message: 'Não foi possível atualizar.' });
+            showAlert({ title: 'Erro', message: `Não foi possível atualizar. ${err?.code || ''} ${err?.message || ''}` });
         } finally {
             setLoading(false);
         }
@@ -265,12 +276,14 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
 // HELPERS
 // ============================================
 
-function getItemTypeLabel(itemType: string): string {
+function getItemTypeLabel(itemType: string, category?: string): string {
     switch (itemType) {
         case 'class': return 'Aula';
         case 'event': return 'Evento';
         case 'task': return 'Tarefa';
-        case 'todo': return 'Lembrete';
+        case 'todo':
+            // Default to Tarefa, only Lembrete if explicitly tagged
+            return category === 'lembrete' ? 'Lembrete' : 'Tarefa';
         default: return 'Item';
     }
 }
