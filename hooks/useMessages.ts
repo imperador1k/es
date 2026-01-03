@@ -133,33 +133,100 @@ export function useSendMessage(channelId: string, channelName?: string, teamId?:
 
       if (error) throw error;
 
-      // 🔔 Detetar menção @all e criar notificações
-      if (content?.toLowerCase().includes('@all') && teamId) {
-        try {
-          // Buscar membros da equipa (exceto o remetente)
-          const { data: members } = await supabase
-            .from('team_members')
-            .select('user_id')
-            .eq('team_id', teamId)
-            .neq('user_id', user!.id);
+      // 🔔 Detetar menções e enviar notificações
+      if (teamId && content) {
+        const senderName = profile?.full_name || profile?.username || 'Alguém';
+        
+        // 1. @all - Notificar todos da equipa
+        if (content.toLowerCase().includes('@all')) {
+          try {
+            // Buscar membros da equipa (exceto o remetente)
+            const { data: members } = await supabase
+              .from('team_members')
+              .select('user_id')
+              .eq('team_id', teamId)
+              .neq('user_id', user!.id);
 
-          if (members && members.length > 0) {
-            const senderName = profile?.full_name || profile?.username || 'Alguém';
-            const notifications = members.map(m => ({
-              user_id: m.user_id,
-              actor_id: user!.id,
-              type: 'mention' as const,
-              title: `Menção em ${channelName || 'Canal'}`,
-              content: `${senderName}: ${content.slice(0, 100)}${content.length > 100 ? '...' : ''}`,
-              resource_id: channelId,
-              resource_type: 'channel' as const,
-            }));
+            if (members && members.length > 0) {
+              // DB Notifications
+              const notifications = members.map(m => ({
+                user_id: m.user_id,
+                actor_id: user!.id,
+                type: 'mention' as const,
+                title: `📢 ${channelName || 'Canal'} (@all)`,
+                content: `${senderName}: ${content.slice(0, 100)}`,
+                resource_id: channelId,
+                resource_type: 'channel' as const,
+              }));
 
-            await supabase.from('notifications').insert(notifications);
-            console.log(`🔔 Criadas ${notifications.length} notificações de @all`);
+              await supabase.from('notifications').insert(notifications);
+              console.log(`🔔 DB Notifications criadas para ${notifications.length} membros (@all)`);
+
+              // Push Notifications (Async)
+              const { notifyUser } = await import('@/services/teamNotifications');
+              members.forEach(m => {
+                notifyUser({
+                    userId: m.user_id,
+                    title: `📢 Equipa • ${channelName}`,
+                    body: `${senderName}: ${content}`,
+                    data: { type: 'mention', channelId, teamId },
+                    type: 'mention'
+                });
+              });
+            }
+          } catch (err) {
+            console.error('Erro ao processar @all:', err);
           }
-        } catch (err) {
-          console.error('Erro ao criar notificações @all:', err);
+        } 
+        // 2. @username - Notificar utilizadores específicos
+        else {
+            const mentionRegex = /@([a-zA-Z0-9_.-]+)/g;
+            const mentions = [...content.matchAll(mentionRegex)].map(m => m[1]); // Extract usernames
+
+            if (mentions.length > 0) {
+                try {
+                    // Buscar user IDs pelos usernames
+                    const { data: mentionedUsers } = await supabase
+                        .from('profiles')
+                        .select('id, username')
+                        .in('username', mentions);
+
+                    if (mentionedUsers && mentionedUsers.length > 0) {
+                        // Filtrar o próprio utilizador
+                        const validUsers = mentionedUsers.filter(u => u.id !== user!.id);
+                        
+                        if (validUsers.length > 0) {
+                            // DB Notifications
+                            const notifications = validUsers.map(u => ({
+                                user_id: u.id,
+                                actor_id: user!.id,
+                                type: 'mention' as const,
+                                title: `💬 Foste mencionado em ${channelName}`,
+                                content: `${senderName}: ${content.slice(0, 100)}`,
+                                resource_id: channelId,
+                                resource_type: 'channel' as const,
+                            }));
+
+                            await supabase.from('notifications').insert(notifications);
+                            
+                            // Push Notifications
+                            const { notifyUser } = await import('@/services/teamNotifications');
+                            validUsers.forEach(u => {
+                                notifyUser({
+                                    userId: u.id,
+                                    title: `💬 Mention • ${channelName}`,
+                                    body: `${senderName}: ${content}`,
+                                    data: { type: 'mention', channelId, teamId },
+                                    type: 'mention'
+                                });
+                            });
+                            console.log(`🔔 Notificações enviadas para ${validUsers.length} utilizadores mencionados`);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Erro ao processar menções @username:', err);
+                }
+            }
         }
       }
 

@@ -380,10 +380,12 @@ export default function SettingsScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            await supabase.rpc('delete_user');
+                            await supabase.rpc('delete_user_account');
                             await signOut();
+                            router.replace('/(auth)/login');
                         } catch (e) {
-                            showAlert({ title: 'Erro', message: 'Contacta suporte@escola.plus' });
+                            console.error('Erro ao eliminar conta:', e);
+                            showAlert({ title: 'Erro', message: 'Não foi possível eliminar a conta. Contacta o suporte.' });
                         }
                     }
                 },

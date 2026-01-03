@@ -5,6 +5,7 @@
 
 import { useAlert } from '@/providers/AlertProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -33,7 +34,7 @@ const colors = { ...COLORS, divider: COLORS.surfaceElevated, surfaceSubtle: COLO
 // TYPES
 // ============================================
 
-type TabType = 'code' | 'explore';
+type TabType = 'code' | 'qr' | 'explore';
 
 interface PublicTeam {
     id: string;
@@ -67,6 +68,10 @@ export default function JoinTeamScreen() {
     const [loadingTeams, setLoadingTeams] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [joiningTeamId, setJoiningTeamId] = useState<string | null>(null);
+
+    // Tab: QR Code
+    const [scanned, setScanned] = useState(false);
+    const [permission, requestPermission] = useCameraPermissions();
 
     // ============================================
     // LOAD PUBLIC TEAMS
@@ -182,6 +187,74 @@ export default function JoinTeamScreen() {
             showAlert({ title: 'Erro', message: err.message || 'Não foi possível entrar na equipa.' });
         } finally {
             setJoining(false);
+        }
+    };
+
+    // ============================================
+    // JOIN VIA QR CODE
+    // ============================================
+
+    const handleQRCodeScanned = async ({ data }: { data: string }) => {
+        if (scanned || joining) return;
+        setScanned(true);
+
+        // Format: escola+://team/{invite_code}
+        const match = data.match(/escola\+:\/\/team\/(.+)/);
+
+        if (match && match[1]) {
+            const code = match[1].toUpperCase();
+            setInviteCode(code);
+            setActiveTab('code');
+
+            // Auto-join via code
+            if (!user?.id) {
+                showAlert({ title: 'Erro', message: 'Tens que estar autenticado.' });
+                setScanned(false);
+                return;
+            }
+
+            setJoining(true);
+            try {
+                const { data: teamId, error } = await supabase.rpc('join_team_via_code', {
+                    code_input: code,
+                    user_id_input: user.id,
+                });
+
+                if (error) throw error;
+
+                if (teamId) {
+                    const { data: teamData } = await supabase
+                        .from('teams')
+                        .select('name')
+                        .eq('id', teamId)
+                        .single();
+
+                    notifyMemberJoined({
+                        teamId: teamId,
+                        teamName: teamData?.name || 'Equipa',
+                        memberName: profile?.full_name || profile?.username || 'Alguém',
+                        memberId: user.id,
+                    });
+
+                    showAlert({
+                        title: '✅ Sucesso!',
+                        message: 'Entraste na equipa via QR Code!',
+                        buttons: [{ text: 'Ver Equipa', onPress: () => router.replace(`/team/${teamId}` as any) }]
+                    });
+                } else {
+                    showAlert({ title: 'Erro', message: 'Código inválido ou já és membro.' });
+                    setScanned(false);
+                }
+            } catch (err: any) {
+                console.error('Erro QR:', err);
+                showAlert({ title: 'Erro', message: err.message || 'Não foi possível entrar.' });
+                setScanned(false);
+            } finally {
+                setJoining(false);
+            }
+        } else {
+            showAlert({ title: 'QR Inválido', message: 'Este QR code não é válido para equipas.' });
+            setScanned(false);
         }
     };
 
@@ -334,7 +407,20 @@ export default function JoinTeamScreen() {
                         color={activeTab === 'code' ? colors.accent.primary : colors.text.tertiary}
                     />
                     <Text style={[styles.tabText, activeTab === 'code' && styles.tabTextActive]}>
-                        Via Código
+                        Código
+                    </Text>
+                </Pressable>
+                <Pressable
+                    style={[styles.tab, activeTab === 'qr' && styles.tabActive]}
+                    onPress={() => { setActiveTab('qr'); setScanned(false); }}
+                >
+                    <Ionicons
+                        name="qr-code-outline"
+                        size={18}
+                        color={activeTab === 'qr' ? colors.accent.primary : colors.text.tertiary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'qr' && styles.tabTextActive]}>
+                        QR Code
                     </Text>
                 </Pressable>
                 <Pressable
@@ -395,6 +481,43 @@ export default function JoinTeamScreen() {
                         )}
                     </Pressable>
                 </View>
+            ) : activeTab === 'qr' ? (
+                <View style={styles.qrContainer}>
+                    {!permission?.granted ? (
+                        <View style={styles.permissionContainer}>
+                            <View style={styles.permissionIcon}>
+                                <Ionicons name="camera-outline" size={48} color={colors.accent.primary} />
+                            </View>
+                            <Text style={styles.permissionTitle}>Câmara Necessária</Text>
+                            <Text style={styles.permissionText}>
+                                Precisamos de acesso à câmara para scanear QR codes de equipas
+                            </Text>
+                            <Pressable style={styles.permissionButton} onPress={requestPermission}>
+                                <Text style={styles.permissionButtonText}>Permitir Acesso</Text>
+                            </Pressable>
+                        </View>
+                    ) : (
+                        <>
+                            <CameraView
+                                style={styles.camera}
+                                facing="back"
+                                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                                onBarcodeScanned={scanned ? undefined : handleQRCodeScanned}
+                            />
+                            <View style={styles.qrOverlay}>
+                                <View style={styles.qrScanArea}>
+                                    <View style={[styles.qrCorner, styles.qrCornerTL]} />
+                                    <View style={[styles.qrCorner, styles.qrCornerTR]} />
+                                    <View style={[styles.qrCorner, styles.qrCornerBL]} />
+                                    <View style={[styles.qrCorner, styles.qrCornerBR]} />
+                                </View>
+                                <Text style={styles.qrHint}>
+                                    {scanned ? 'A processar...' : 'Aponta para o QR Code da equipa'}
+                                </Text>
+                            </View>
+                        </>
+                    )}
+                </View>
             ) : (
                 <FlatList
                     data={publicTeams}
@@ -436,7 +559,7 @@ export default function JoinTeamScreen() {
             {/* Footer - Criar Equipa */}
             <View style={styles.footer}>
                 <Text style={styles.footerText}>Queres criar a tua própria equipa?</Text>
-                <Pressable onPress={() => router.push('/team/create' as any)}>
+                <Pressable onPress={() => router.push('/(tabs)/teams?action=create' as any)}>
                     <Text style={styles.footerLink}>Criar Equipa →</Text>
                 </Pressable>
             </View>
@@ -721,5 +844,105 @@ const styles = StyleSheet.create({
         fontSize: typography.size.sm,
         fontWeight: typography.weight.semibold,
         color: colors.accent.primary,
+    },
+
+    // QR Scanner
+    qrContainer: {
+        flex: 1,
+        backgroundColor: '#000',
+    },
+    camera: {
+        flex: 1,
+    },
+    qrOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    qrScanArea: {
+        width: 250,
+        height: 250,
+        position: 'relative',
+    },
+    qrCorner: {
+        position: 'absolute',
+        width: 30,
+        height: 30,
+        borderColor: colors.accent.primary,
+    },
+    qrCornerTL: {
+        top: 0,
+        left: 0,
+        borderTopWidth: 4,
+        borderLeftWidth: 4,
+        borderTopLeftRadius: 8,
+    },
+    qrCornerTR: {
+        top: 0,
+        right: 0,
+        borderTopWidth: 4,
+        borderRightWidth: 4,
+        borderTopRightRadius: 8,
+    },
+    qrCornerBL: {
+        bottom: 0,
+        left: 0,
+        borderBottomWidth: 4,
+        borderLeftWidth: 4,
+        borderBottomLeftRadius: 8,
+    },
+    qrCornerBR: {
+        bottom: 0,
+        right: 0,
+        borderBottomWidth: 4,
+        borderRightWidth: 4,
+        borderBottomRightRadius: 8,
+    },
+    qrHint: {
+        marginTop: spacing.xl,
+        fontSize: typography.size.sm,
+        color: 'rgba(255,255,255,0.8)',
+        textAlign: 'center',
+    },
+
+    // Permission
+    permissionContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: spacing.xl,
+        backgroundColor: colors.background,
+    },
+    permissionIcon: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: colors.accent.light,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: spacing.lg,
+    },
+    permissionTitle: {
+        fontSize: typography.size.lg,
+        fontWeight: typography.weight.semibold,
+        color: colors.text.primary,
+        marginBottom: spacing.sm,
+    },
+    permissionText: {
+        fontSize: typography.size.sm,
+        color: colors.text.secondary,
+        textAlign: 'center',
+        marginBottom: spacing.xl,
+    },
+    permissionButton: {
+        backgroundColor: colors.accent.primary,
+        paddingHorizontal: spacing.xl,
+        paddingVertical: spacing.md,
+        borderRadius: borderRadius.lg,
+    },
+    permissionButtonText: {
+        fontSize: typography.size.base,
+        fontWeight: typography.weight.semibold,
+        color: colors.text.inverse,
     },
 });

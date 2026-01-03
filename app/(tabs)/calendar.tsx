@@ -6,6 +6,7 @@
 import CreateEventModal from '@/components/CreateEventModal';
 import { CreateTodoModal } from '@/components/CreateTodoModal';
 import ItemDetailsModal from '@/components/ItemDetailsModal';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
     AgendaItem,
     formatTimeRange,
@@ -219,17 +220,14 @@ export default function CalendarScreen() {
 
     const renderEmpty = useCallback(() => {
         return (
-            <View style={styles.emptyState}>
-                <View style={styles.emptyIconContainer}>
-                    <Ionicons name="sunny-outline" size={48} color={COLORS.text.tertiary} />
-                </View>
-                <Text style={styles.emptyTitle}>Dia livre!</Text>
-                <Text style={styles.emptySubtitle}>Aproveita para descansar ou estudar</Text>
-                <Pressable style={styles.emptyButton} onPress={() => setModalVisible(true)}>
-                    <Ionicons name="add" size={20} color="#FFF" />
-                    <Text style={styles.emptyButtonText}>Adicionar Evento</Text>
-                </Pressable>
-            </View>
+            <EmptyState
+                icon="sunny-outline"
+                title="Dia livre! 🎉"
+                message="Aproveita para descansar ou estudar. Não tens eventos agendados."
+                actionLabel="Adicionar Evento"
+                onAction={() => setModalVisible(true)}
+                centered={false}
+            />
         );
     }, []);
 

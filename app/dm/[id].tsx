@@ -509,6 +509,15 @@ export default function DMChatScreen() {
                     resource_id: id,
                     resource_type: 'message',
                 });
+
+                // Send Push Notification
+                const { notifyNewDM } = await import('@/services/teamNotifications');
+                notifyNewDM({
+                    recipientId: otherUser.id,
+                    senderName: senderName,
+                    messagePreview: content || (attachment ? '📎 Anexo' : ''),
+                    conversationId: id
+                });
             }
         } catch (err) {
             console.error('Send error:', err);
@@ -622,7 +631,18 @@ export default function DMChatScreen() {
                 {/* Input */}
                 <Animated.View style={Platform.OS === 'android' ? { marginBottom: keyboardHeight } : undefined}>
                     <BlurView intensity={80} tint="dark" style={[styles.inputBlur, { paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 8) }]}>
-                        <ChatInputBar onSend={handleSend} placeholder="Mensagem..." disabled={sending} />
+                        <ChatInputBar
+                            onSend={handleSend}
+                            placeholder="Mensagem..."
+                            disabled={sending}
+                            dmRecipient={otherUser ? {
+                                id: otherUser.id,
+                                username: otherUser.username,
+                                full_name: otherUser.full_name,
+                                avatar_url: otherUser.avatar_url
+                            } : undefined}
+                            showAllMention={false}
+                        />
                     </BlurView>
                 </Animated.View>
 

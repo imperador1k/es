@@ -1,3 +1,4 @@
+import { supabase } from '@/lib/supabase';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -8,7 +9,7 @@ import {
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
@@ -24,6 +25,7 @@ if (Platform.OS !== 'web') {
 import { DataSyncProvider } from '@/components/DataSyncProvider';
 import { MiniPlayer } from '@/components/MiniPlayer';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { ToastProvider } from '@/components/ui/Toast';
 import { useColorScheme } from '@/components/useColorScheme';
 import { CallProvider } from '@/context/CallContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -72,6 +74,61 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
+  // Handle Deep Linking (Password Reset)
+  useEffect(() => {
+    const handleDeepLink = async (url: string | null) => {
+      if (!url) return;
+
+      // Check for password reset URL
+      if (url.includes('reset-password')) {
+        try {
+          // Extract tokens from hash
+          // URL format: escolaa://reset-password#access_token=...&refresh_token=...&type=recovery
+          const hashIndex = url.indexOf('#');
+          if (hashIndex !== -1) {
+            const fragment = url.substring(hashIndex + 1);
+            // Simple parser to avoid URLSearchParams issues in some environments/versions if not fully polyfilled
+            const params: Record<string, string> = {};
+            fragment.split('&').forEach(part => {
+              const [key, value] = part.split('=');
+              if (key && value) params[key] = decodeURIComponent(value);
+            });
+
+            const accessToken = params['access_token'];
+            const refreshToken = params['refresh_token'];
+            const type = params['type'];
+
+            if (accessToken && refreshToken && type === 'recovery') {
+              console.log('🔗 Recuperação de password detetada. A iniciar sessão...');
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+
+              if (!error) {
+                // Navigate to reset password screen
+                setTimeout(() => {
+                  router.replace('/(auth)/reset-password');
+                }, 500);
+              } else {
+                console.error('Erro ao definir sessão:', error);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Erro ao processar Deep Link:', err);
+        }
+      }
+    };
+
+    // Check initial URL
+    import('expo-linking').then((Linking) => {
+      Linking.getInitialURL().then(handleDeepLink);
+      const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
+      return () => sub.remove();
+    });
+  }, []);
+
   if (!loaded) {
     return null;
   }
@@ -102,25 +159,27 @@ function RootLayoutNav() {
         <ProfileProvider>
           <DataSyncProvider>
             <AlertProvider>
-              <CallProvider>
-                <TeamsProvider>
-                  <AudioPlayerProvider>
-                    <PushNotificationsInitializer>
-                      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                        <View style={{ flex: 1 }}>
-                          <OfflineBanner />
-                          <Stack screenOptions={{ headerShown: false }}>
-                            <Stack.Screen name="(auth)" />
-                            <Stack.Screen name="(tabs)" />
-                            <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-                          </Stack>
-                          <MiniPlayer />
-                        </View>
-                      </ThemeProvider>
-                    </PushNotificationsInitializer>
-                  </AudioPlayerProvider>
-                </TeamsProvider>
-              </CallProvider>
+              <ToastProvider>
+                <CallProvider>
+                  <TeamsProvider>
+                    <AudioPlayerProvider>
+                      <PushNotificationsInitializer>
+                        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                          <View style={{ flex: 1 }}>
+                            <OfflineBanner />
+                            <Stack screenOptions={{ headerShown: false }}>
+                              <Stack.Screen name="(auth)" />
+                              <Stack.Screen name="(tabs)" />
+                              <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                            </Stack>
+                            <MiniPlayer />
+                          </View>
+                        </ThemeProvider>
+                      </PushNotificationsInitializer>
+                    </AudioPlayerProvider>
+                  </TeamsProvider>
+                </CallProvider>
+              </ToastProvider>
             </AlertProvider>
           </DataSyncProvider>
         </ProfileProvider>

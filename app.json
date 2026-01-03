@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "A app precisa da câmara para ler QR Codes de amigos e enviar fotos.",
+        "NSCameraUsageDescription": "Precisamos da câmara para tirares fotos aos trabalhos ou fazeres videochamadas.",
+        "NSPhotoLibraryUsageDescription": "Precisamos de acesso às tuas fotos para poderes escolher o teu avatar ou enviar trabalhos.",
+        "NSMicrophoneUsageDescription": "Precisamos do microfone para as salas de estudo e videochamadas.",
         "NSCalendarsUsageDescription": "A Escolaa precisa de aceder ao teu calendário para sincronizar as tuas aulas e eventos pessoais.",
         "NSRemindersUsageDescription": "A Escolaa precisa de acesso para criar lembretes de estudo.",
         "UIBackgroundModes": [
@@ -60,8 +62,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "A app precisa da câmara para ler QR Codes de amigos e enviar fotos.",
-          "microphonePermission": "A app precisa do microfone para gravar vídeos e chamadas."
+          "cameraPermission": "Precisamos da câmara para tirares fotos aos trabalhos ou fazeres videochamadas.",
+          "microphonePermission": "Precisamos do microfone para as salas de estudo e videochamadas."
         }
       ],
       [
@@ -86,7 +88,7 @@
       [
         "expo-av",
         {
-          "microphonePermission": "A app precisa do microfone para chamadas de voz nas Study Rooms."
+          "microphonePermission": "Precisamos do microfone para as salas de estudo e videochamadas."
         }
       ],
       "@config-plugins/react-native-callkeep"

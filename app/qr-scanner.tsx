@@ -12,6 +12,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Compatibility layer
@@ -94,7 +95,7 @@ export default function QRScannerScreen() {
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
-            {/* Header */}
+            {/* Header with Close Button */}
             <View style={styles.header}>
                 <Pressable style={styles.backButton} onPress={() => router.back()}>
                     <Ionicons name="arrow-back" size={22} color={colors.text.inverse} />
@@ -102,19 +103,25 @@ export default function QRScannerScreen() {
                 <Text style={styles.headerTitle}>
                     {showMyQR ? 'O Meu QR' : 'Scanear QR'}
                 </Text>
-                <View style={{ width: 40 }} />
+                <Pressable style={styles.closeButton} onPress={() => router.back()}>
+                    <Ionicons name="close" size={24} color={colors.text.inverse} />
+                </Pressable>
             </View>
 
             {showMyQR ? (
                 // Mostrar o meu QR Code
                 <View style={styles.myQRContainer}>
                     <View style={styles.qrCard}>
-                        <View style={styles.qrPlaceholder}>
-                            <Ionicons name="qr-code" size={120} color={colors.text.primary} />
+                        <View style={styles.qrCodeWrapper}>
+                            {user?.id && (
+                                <QRCode
+                                    value={`escola+://user/${user.id}`}
+                                    size={200}
+                                    color="#000"
+                                    backgroundColor="#FFF"
+                                />
+                            )}
                         </View>
-                        <Text style={styles.qrHint}>
-                            escola+://user/{user?.id}
-                        </Text>
                         <Text style={styles.qrInstruction}>
                             Mostra este código a um amigo para ele te adicionar
                         </Text>
@@ -199,6 +206,14 @@ const styles = StyleSheet.create({
         fontSize: typography.size.lg,
         fontWeight: typography.weight.semibold,
         color: colors.text.inverse,
+    },
+    closeButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
     // Permission
@@ -321,20 +336,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         width: '100%',
     },
-    qrPlaceholder: {
-        width: 200,
-        height: 200,
-        backgroundColor: colors.surfaceSubtle,
+    qrCodeWrapper: {
+        padding: spacing.lg,
+        backgroundColor: '#FFF',
         borderRadius: borderRadius.lg,
-        alignItems: 'center',
-        justifyContent: 'center',
         marginBottom: spacing.lg,
-    },
-    qrHint: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
-        fontFamily: 'monospace',
-        marginBottom: spacing.sm,
     },
     qrInstruction: {
         fontSize: typography.size.sm,

@@ -1,7 +1,7 @@
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import React, { useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
@@ -35,6 +35,67 @@ const TOAST_CONFIG = {
         border: 'rgba(99, 102, 241, 0.2)',
     },
 };
+
+// ============================================
+// CONTEXT & PROVIDER
+// ============================================
+
+type ToastContextType = {
+    toast: {
+        success: (msg: string) => void;
+        error: (msg: string) => void;
+        info: (msg: string) => void;
+    }
+};
+
+const ToastContext = createContext<ToastContextType | undefined>(undefined);
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+    const [config, setConfig] = useState<{ visible: boolean; message: string; type: ToastType }>({
+        visible: false,
+        message: '',
+        type: 'info'
+    });
+
+    const hide = useCallback(() => {
+        setConfig(prev => ({ ...prev, visible: false }));
+    }, []);
+
+    const show = useCallback((message: string, type: ToastType) => {
+        setConfig({ visible: true, message, type });
+        // Auto hide handled by Toast component or here? 
+        // Toast component handles timeout via useEffect, but logic is split.
+        // It's safer to handle timeout here if we want queueing, but simple replacement is fine.
+    }, []);
+
+    const toastFuncs = {
+        success: (msg: string) => show(msg, 'success'),
+        error: (msg: string) => show(msg, 'error'),
+        info: (msg: string) => show(msg, 'info')
+    };
+
+    return (
+        <ToastContext.Provider value={{ toast: toastFuncs }}>
+            {children}
+            <Toast
+                visible={config.visible}
+                message={config.message}
+                type={config.type}
+                onHide={hide}
+            />
+        </ToastContext.Provider>
+    );
+}
+
+export function useToast() {
+    const context = useContext(ToastContext);
+    if (!context) throw new Error('useToast must be used within ToastProvider');
+    return context;
+}
+
+// ============================================
+// UI COMPONENT
+// ============================================
 
 export function Toast({ visible, message, type = 'info', onHide, duration = 3000 }: ToastProps) {
     useEffect(() => {

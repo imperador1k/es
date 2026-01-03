@@ -3,6 +3,7 @@
  * Design inspirado em iMessage/WhatsApp/Telegram
  */
 
+import { EmptyState } from '@/components/ui/EmptyState';
 import { ConversationWithUser, useConversations } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
@@ -206,13 +207,11 @@ function FriendRequests() {
 
     if (pendingRequests.length === 0) {
         return (
-            <View style={styles.emptyContainer}>
-                <View style={styles.emptyIconContainer}>
-                    <Ionicons name="people-outline" size={48} color={COLORS.text.tertiary} />
-                </View>
-                <Text style={styles.emptyTitle}>Sem pedidos</Text>
-                <Text style={styles.emptySubtitle}>Não tens pedidos de amizade pendentes</Text>
-            </View>
+            <EmptyState
+                icon="people-outline"
+                title="Sem pedidos"
+                message="Não tens pedidos de amizade pendentes."
+            />
         );
     }
 
@@ -241,19 +240,13 @@ function FriendRequests() {
 
 function EmptyConversations() {
     return (
-        <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconContainer}>
-                <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.emptyIconGradient}>
-                    <Ionicons name="chatbubbles" size={40} color="#FFF" />
-                </LinearGradient>
-            </View>
-            <Text style={styles.emptyTitle}>Sem conversas</Text>
-            <Text style={styles.emptySubtitle}>Procura amigos para começar a conversar!</Text>
-            <Pressable style={styles.emptyButton} onPress={() => router.push('/friends/search')}>
-                <Ionicons name="search" size={18} color="#FFF" />
-                <Text style={styles.emptyButtonText}>Procurar Amigos</Text>
-            </Pressable>
-        </View>
+        <EmptyState
+            icon="chatbubbles-outline"
+            title="O silêncio é de ouro..."
+            message="Mas podes iniciar uma conversa com novos amigos!"
+            actionLabel="Procurar Amigos"
+            onAction={() => router.push('/friends/search')}
+        />
     );
 }
 

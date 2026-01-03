@@ -422,15 +422,99 @@ export default function ChannelChatScreen() {
                 p_attachment_name: attachment?.name || null,
             });
             if (!error) {
-                notifyNewMessage({
-                    channelId,
-                    channelName: channelName || 'Canal',
-                    teamId,
-                    teamName: team?.name || 'Equipa',
-                    senderName: profile?.full_name || profile?.username || 'Alguém',
-                    messagePreview: content.trim() || '📎 Anexo',
-                    senderId: user.id,
-                });
+                // HANDLE NOTIFICATIONS
+                const isAll = content.toLowerCase().includes('@all');
+                const senderName = profile?.full_name || profile?.username || 'Alguém';
+
+                if (isAll) {
+                    // 1. @all - Notify All Members
+                    const { data: members } = await supabase
+                        .from('team_members')
+                        .select('user_id')
+                        .eq('team_id', teamId)
+                        .neq('user_id', user.id);
+
+                    if (members && members.length > 0) {
+                        try {
+                            const { notifyUser } = await import('@/services/teamNotifications');
+
+                            // Send Push to all
+                            members.forEach(m => {
+                                notifyUser({
+                                    userId: m.user_id,
+                                    title: `📢 Equipa • ${channelName || 'Canal'}`,
+                                    body: `${senderName}: ${content}`,
+                                    data: { type: 'mention', channelId, teamId },
+                                    type: 'mention'
+                                });
+                            });
+
+                            // Create DB Notifications
+                            const notifications = members.map(m => ({
+                                user_id: m.user_id,
+                                actor_id: user.id,
+                                type: 'mention',
+                                title: `📢 ${channelName || 'Canal'} (@all)`,
+                                content: `${senderName}: ${content}`,
+                                resource_id: channelId,
+                                resource_type: 'channel'
+                            }));
+                            await supabase.from('notifications').insert(notifications);
+                        } catch (err) {
+                            console.error('Error sending @all notifications:', err);
+                        }
+                    }
+                } else {
+                    // 2. Mentions & Standard Notification
+                    const mentionRegex = /@([a-zA-Z0-9_.-]+)/g;
+                    const matches = [...content.matchAll(mentionRegex)].map(m => m[1]);
+
+                    if (matches.length > 0) {
+                        try {
+                            const { data: mentionedUsers } = await supabase.from('profiles').select('id, username').in('username', matches);
+                            if (mentionedUsers && mentionedUsers.length > 0) {
+                                const { notifyUser } = await import('@/services/teamNotifications');
+                                const validUsers = mentionedUsers.filter(u => u.id !== user.id);
+
+                                // Send Push to mentioned
+                                validUsers.forEach(u => {
+                                    notifyUser({
+                                        userId: u.id,
+                                        title: `💬 Menção • ${channelName}`,
+                                        body: `${senderName}: ${content}`,
+                                        data: { type: 'mention', channelId, teamId },
+                                        type: 'mention'
+                                    });
+                                });
+
+                                // Create DB Notifications
+                                const notifications = validUsers.map(u => ({
+                                    user_id: u.id,
+                                    actor_id: user.id,
+                                    type: 'mention',
+                                    title: `💬 Foste mencionado em ${channelName}`,
+                                    content: `${senderName}: ${content}`,
+                                    resource_id: channelId,
+                                    resource_type: 'channel'
+                                }));
+                                await supabase.from('notifications').insert(notifications);
+                            }
+                        } catch (err) {
+                            console.error('Error handling mentions:', err);
+                        }
+                    }
+
+                    // Standard notification (for everyone else)
+                    notifyNewMessage({
+                        channelId,
+                        channelName: channelName || 'Canal',
+                        teamId,
+                        teamName: team?.name || 'Equipa',
+                        senderName: senderName,
+                        messagePreview: content.trim() || '📎 Anexo',
+                        senderId: user.id,
+                    });
+                }
             }
         } catch (err) {
             console.error('Erro ao enviar:', err);
@@ -509,7 +593,13 @@ export default function ChannelChatScreen() {
                 {/* Input */}
                 <Animated.View style={Platform.OS === 'android' ? { marginBottom: keyboardHeight } : undefined}>
                     <BlurView intensity={80} tint="dark" style={[styles.inputBlur, { paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 8) }]}>
-                        <ChatInputBar onSend={handleSend} placeholder="Mensagem..." disabled={sending} />
+                        <ChatInputBar
+                            onSend={handleSend}
+                            placeholder="Mensagem..."
+                            disabled={sending}
+                            teamId={teamId}
+                            showAllMention={true}
+                        />
                     </BlurView>
                 </Animated.View>
             </SafeAreaView>

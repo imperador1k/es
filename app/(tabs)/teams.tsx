@@ -10,8 +10,8 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { TeamWithRole, useTeams } from '@/providers/TeamsProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Animated,
@@ -54,6 +54,15 @@ export default function TeamsScreen() {
     const [selectedColor, setSelectedColor] = useState(SQUAD_COLORS[0]);
     const [isPublic, setIsPublic] = useState(false);
     const [customCode, setCustomCode] = useState('');
+
+    // Handle query params (e.g., action=create from join screen)
+    const { action } = useLocalSearchParams<{ action?: string }>();
+
+    useEffect(() => {
+        if (action === 'create') {
+            setModalVisible(true);
+        }
+    }, [action]);
 
     // Filter teams
     const filteredTeams = teams.filter((team) =>

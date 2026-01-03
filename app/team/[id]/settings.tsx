@@ -18,6 +18,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
@@ -563,6 +564,21 @@ export default function TeamSettingsScreen() {
                             </Pressable>
                         </View>
 
+                        {/* QR Code da Equipa */}
+                        <View style={styles.qrSection}>
+                            <View style={styles.qrCodeWrapper}>
+                                <QRCode
+                                    value={`escola+://team/${team.invite_code}`}
+                                    size={160}
+                                    color="#000"
+                                    backgroundColor="#FFF"
+                                />
+                            </View>
+                            <Text style={styles.qrHint}>
+                                Partilha este QR Code para outros entrarem na equipa
+                            </Text>
+                        </View>
+
                         {/* Toggle Visibilidade */}
                         <View style={styles.toggleRow}>
                             <View style={styles.toggleInfo}>
@@ -917,6 +933,26 @@ const styles = StyleSheet.create({
     dangerButtonDestructive: {
         backgroundColor: colors.danger.primary,
         borderColor: colors.danger.primary,
+    },
+
+    // QR Code
+    qrSection: {
+        alignItems: 'center',
+        paddingVertical: spacing.lg,
+        marginTop: spacing.md,
+        backgroundColor: colors.surfaceSubtle,
+        borderRadius: borderRadius.lg,
+    },
+    qrCodeWrapper: {
+        padding: spacing.md,
+        backgroundColor: '#FFF',
+        borderRadius: borderRadius.lg,
+        marginBottom: spacing.md,
+    },
+    qrHint: {
+        fontSize: typography.size.sm,
+        color: colors.text.secondary,
+        textAlign: 'center',
     },
 
     bottomSpacer: {
