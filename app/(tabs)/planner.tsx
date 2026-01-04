@@ -22,6 +22,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import { CopilotStep, walkthroughable } from 'react-native-copilot';
 import Animated, {
     FadeInDown,
     FadeInRight,
@@ -30,6 +31,7 @@ import Animated, {
     withSpring,
 } from 'react-native-reanimated';
 
+const WalkthroughableView = walkthroughable(View);
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
@@ -344,7 +346,11 @@ export default function PlannerScreen() {
             >
                 {/* ========== HEADER ========== */}
                 <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Planner</Text>
+                    <CopilotStep text="Gere todas as tuas tarefas pessoais e de equipa num só lugar! 📝" order={6} name="planner_view">
+                        <WalkthroughableView>
+                            <Text style={styles.headerTitle}>Planner</Text>
+                        </WalkthroughableView>
+                    </CopilotStep>
                     <Pressable style={styles.addButton} onPress={() => setShowCreateModal(true)}>
                         <Ionicons name="add" size={24} color="#FFF" />
                     </Pressable>

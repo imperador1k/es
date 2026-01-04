@@ -25,6 +25,7 @@ export interface UserBadge {
     id: string;
     badge_id: string;
     unlocked_at: string;
+    is_equipped: boolean;
     badge: Badge;
 }
 
@@ -116,6 +117,7 @@ export async function getUserBadges(userId: string): Promise<UserBadge[]> {
                 badge:badges (*)
             `)
             .eq('user_id', userId)
+            .order('is_equipped', { ascending: false }) // Equipped first
             .order('unlocked_at', { ascending: false });
 
         if (error) throw error;
@@ -145,5 +147,26 @@ export async function countUserBadges(userId: string): Promise<number> {
     } catch (err) {
         console.error('Erro ao contar badges:', err);
         return 0;
+    }
+}
+
+/**
+ * Alternar estado de equipamento de um badge
+ */
+export async function toggleBadgeEquip(badgeId: string): Promise<{ success: boolean; is_equipped?: boolean; error?: string }> {
+    try {
+        const { data, error } = await supabase.rpc('toggle_badge_equip', {
+            badge_id_param: badgeId,
+        });
+
+        if (error) {
+            // Extract custom error message if possible
+            return { success: false, error: error.message };
+        }
+
+        return { success: true, is_equipped: data as boolean };
+    } catch (err: any) {
+        console.error('Erro ao equipar badge:', err);
+        return { success: false, error: err.message || 'Erro desconhecido' };
     }
 }

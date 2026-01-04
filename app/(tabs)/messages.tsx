@@ -6,12 +6,13 @@
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConversationWithUser, useConversations } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
+import { supabase } from '@/lib/supabase';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -189,8 +190,8 @@ function FriendRequestCard({
 // FRIEND REQUESTS LIST
 // ============================================
 
-function FriendRequests() {
-    const { pendingRequests, acceptFriendRequest, rejectFriendRequest } = useFriends();
+function FriendRequests({ requests }: { requests: any[] }) {
+    const { acceptFriendRequest, rejectFriendRequest } = useFriends();
     const [processing, setProcessing] = useState<string | null>(null);
 
     const handleAccept = async (id: string) => {
@@ -205,7 +206,7 @@ function FriendRequests() {
         setProcessing(null);
     };
 
-    if (pendingRequests.length === 0) {
+    if (requests.length === 0) {
         return (
             <EmptyState
                 icon="people-outline"
@@ -217,7 +218,7 @@ function FriendRequests() {
 
     return (
         <FlatList
-            data={pendingRequests}
+            data={requests}
             keyExtractor={(item) => item.friendship_id}
             renderItem={({ item, index }) => (
                 <FriendRequestCard
@@ -260,6 +261,34 @@ export default function MessagesScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<'messages' | 'requests'>('messages');
 
+    // Blocked Users Filter
+    const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        const fetchBlocked = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data } = await supabase
+                .from('user_blocks')
+                .select('*')
+                .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+
+            if (data) {
+                const ids = new Set<string>();
+                data.forEach(b => {
+                    ids.add(b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+                });
+                setBlockedIds(ids);
+            }
+        };
+        fetchBlocked();
+    }, []);
+
+    const filteredConversations = conversations.filter(c => !blockedIds.has(c.other_user.id));
+    // Filter requests too just in case
+    const filteredRequests = pendingRequests.filter(r => !blockedIds.has(r.profile?.id));
+
     useFocusEffect(
         useCallback(() => {
             refetch();
@@ -293,9 +322,9 @@ export default function MessagesScreen() {
                     </Pressable>
                     <Pressable style={styles.headerButton} onPress={() => router.push('/friends')}>
                         <Ionicons name="people" size={20} color={COLORS.text.primary} />
-                        {pendingRequests.length > 0 && (
+                        {filteredRequests.length > 0 && (
                             <View style={styles.headerBadge}>
-                                <Text style={styles.headerBadgeText}>{pendingRequests.length}</Text>
+                                <Text style={styles.headerBadgeText}>{filteredRequests.length}</Text>
                             </View>
                         )}
                     </Pressable>
@@ -329,9 +358,9 @@ export default function MessagesScreen() {
                     <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
                         Pedidos
                     </Text>
-                    {pendingRequests.length > 0 && (
+                    {filteredRequests.length > 0 && (
                         <View style={[styles.tabBadge, activeTab === 'requests' && styles.tabBadgeActive]}>
-                            <Text style={styles.tabBadgeText}>{pendingRequests.length}</Text>
+                            <Text style={styles.tabBadgeText}>{filteredRequests.length}</Text>
                         </View>
                     )}
                 </Pressable>
@@ -340,7 +369,7 @@ export default function MessagesScreen() {
             {/* ========== CONTENT ========== */}
             {activeTab === 'messages' ? (
                 <FlatList
-                    data={conversations}
+                    data={filteredConversations}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item, index }) => <ConversationCard conversation={item} index={index} />}
                     contentContainerStyle={styles.listContent}
@@ -355,7 +384,7 @@ export default function MessagesScreen() {
                     showsVerticalScrollIndicator={false}
                 />
             ) : (
-                <FriendRequests />
+                <FriendRequests requests={filteredRequests} />
             )}
         </View>
     );

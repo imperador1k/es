@@ -30,10 +30,12 @@ import {
     View
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
+import { CopilotStep, walkthroughable } from 'react-native-copilot';
 import Animated, {
     FadeInDown
 } from 'react-native-reanimated';
 
+const WalkthroughableView = walkthroughable(View);
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ============================================
@@ -260,7 +262,11 @@ export default function CalendarScreen() {
                 {/* ========== HEADER ========== */}
                 <View style={styles.header}>
                     <View style={styles.headerTop}>
-                        <Text style={styles.headerTitle}>Calendário</Text>
+                        <CopilotStep text="O teu calendário! Vê aulas, eventos e tarefas organizados por dia 📅" order={5} name="calendar_view">
+                            <WalkthroughableView>
+                                <Text style={styles.headerTitle}>Calendário</Text>
+                            </WalkthroughableView>
+                        </CopilotStep>
                         <Pressable style={styles.headerButton} onPress={handleRefresh}>
                             <Ionicons name="refresh" size={20} color={COLORS.text.secondary} />
                         </Pressable>

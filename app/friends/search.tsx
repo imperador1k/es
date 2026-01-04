@@ -218,6 +218,33 @@ export default function SearchFriendsScreen() {
     const [searchingUnis, setSearchingUnis] = useState(false);
     const [searchingDegrees, setSearchingDegrees] = useState(false);
 
+    // Blocked Users Filter
+    const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        const fetchBlocked = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data } = await supabase
+                .from('user_blocks')
+                .select('*')
+                .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+
+            if (data) {
+                const ids = new Set<string>();
+                data.forEach(b => {
+                    ids.add(b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+                });
+                setBlockedIds(ids);
+            }
+        };
+        fetchBlocked();
+    }, []);
+
+    // Filter results to exclude blocked
+    const filteredResults = results.filter(u => !blockedIds.has(u.id));
+
     const headerAnim = useRef(new Animated.Value(0)).current;
     const searchAnim = useRef(new Animated.Value(0)).current;
 
@@ -448,7 +475,7 @@ export default function SearchFriendsScreen() {
                     </View>
                 ) : (
                     <FlatList
-                        data={results}
+                        data={filteredResults}
                         keyExtractor={(item) => item.id}
                         renderItem={({ item, index }) => (
                             <UserCard

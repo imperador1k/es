@@ -22,6 +22,9 @@ import {
   Text,
   View
 } from 'react-native';
+import { CopilotStep, walkthroughable } from 'react-native-copilot';
+
+const WalkthroughableView = walkthroughable(View);
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -31,6 +34,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const QUICK_ACTIONS = [
   { id: 'calendar', icon: 'calendar-outline', label: 'Calendário', route: '/(tabs)/calendar' },
+  { id: 'schedule', icon: 'time-outline', label: 'Horário', route: '/(tabs)/schedule' as any },
   { id: 'rooms', icon: 'people-outline', label: 'Salas', route: '/(app)/study-room' },
   { id: 'ai', icon: 'sparkles', label: 'AI Tutor', route: '/(app)/ai-tutor' },
   { id: 'focus', icon: 'timer-outline', label: 'Foco', route: '/pomodoro' },
@@ -209,12 +213,15 @@ export default function HomeScreen() {
           />
         }
       >
+
         {/* ========== HEADER ========== */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>{getGreeting()},</Text>
-            <Text style={styles.userName}>{firstName}</Text>
-          </View>
+          <CopilotStep text="Bem-vindo ao teu QG de estudo! 🚀" order={1} name="home_welcome">
+            <WalkthroughableView style={styles.headerLeft}>
+              <Text style={styles.greeting}>{getGreeting()},</Text>
+              <Text style={styles.userName}>{firstName}</Text>
+            </WalkthroughableView>
+          </CopilotStep>
           <Pressable
             style={styles.avatarContainer}
             onPress={() => router.push('/(tabs)/profile')}
@@ -264,7 +271,7 @@ export default function HomeScreen() {
               <Text style={styles.emptyHeroText}>Sem aulas agendadas para hoje!</Text>
               <Pressable
                 style={styles.emptyHeroButton}
-                onPress={() => router.push('/(tabs)/subjects')}
+                onPress={() => router.push('/(tabs)/schedule' as any)}
               >
                 <Text style={styles.emptyHeroButtonText}>Ver Horário</Text>
               </Pressable>

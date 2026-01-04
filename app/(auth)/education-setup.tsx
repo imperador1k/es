@@ -1,9 +1,10 @@
 import { Autocomplete } from '@/components/ui/Autocomplete';
 import { EducationLevel, saveUserEducation, useEducationData } from '@/hooks/useEducation';
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import {
@@ -14,8 +15,10 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    View
+    View,
+    useWindowDimensions
 } from 'react-native';
+import Animated, { FadeInDown, FadeOutLeft } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Tipos do formulário
@@ -42,7 +45,8 @@ const EDUCATION_LEVELS = [
 export default function EducationSetupScreen() {
     const { user, refreshSession } = useAuthContext();
     const { showAlert } = useAlert();
-    const [loading, setLoading] = useState(false);
+    const { width } = useWindowDimensions();
+
     const {
         searchSchools,
         searchUniversities,
@@ -215,624 +219,784 @@ export default function EducationSetupScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Progress Bar */}
-            <View style={styles.progressContainer}>
-                <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${getProgress() * 100}%` }]} />
+        <View style={styles.container}>
+            <LinearGradient
+                colors={['#0F1115', '#161922', '#0A0B0E']}
+                style={StyleSheet.absoluteFill}
+            />
+
+            <SafeAreaView style={{ flex: 1 }}>
+                {/* Header with Progress */}
+                <View style={styles.headerContainer}>
+                    <View style={styles.progressTrack}>
+                        <LinearGradient
+                            colors={COLORS.brand.gradient as [string, string]}
+                            style={[styles.progressFill, { width: `${getProgress() * 100}%` }]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                        />
+                    </View>
                 </View>
-            </View>
 
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.keyboardView}
-            >
-                <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={{ flex: 1 }}
                 >
-                    {/* Step: Select Level */}
-                    {step === 'level' && (
-                        <View style={styles.stepContainer}>
-                            <View style={styles.iconContainer}>
-                                <Ionicons name="school" size={48} color={colors.accent.primary} />
-                            </View>
-                            <Text style={styles.title}>Onde estudas?</Text>
-                            <Text style={styles.subtitle}>
-                                Escolhe o teu nível de ensino atual.
-                            </Text>
+                    <ScrollView
+                        contentContainerStyle={styles.scrollContent}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        {/* Step: Select Level */}
+                        {step === 'level' && (
+                            <Animated.View
+                                entering={FadeInDown.duration(500)}
+                                exiting={FadeOutLeft.duration(300)}
+                                style={styles.stepContainer}
+                            >
+                                <View style={styles.iconRing}>
+                                    <View style={styles.iconContainer}>
+                                        <Ionicons name="school" size={40} color={COLORS.text.inverse} />
+                                    </View>
+                                </View>
+                                <Text style={styles.title}>Onde estudas?</Text>
+                                <Text style={styles.subtitle}>
+                                    Seleciona o teu nível de ensino atual para personalizarmos a tua experiência.
+                                </Text>
 
-                            <View style={styles.levelGrid}>
-                                {EDUCATION_LEVELS.map((level) => (
-                                    <Pressable
-                                        key={level.id}
-                                        style={styles.levelCard}
-                                        onPress={() => handleLevelSelect(level.id)}
-                                    >
-                                        <View style={styles.levelIconWrapper}>
-                                            <Ionicons name={level.icon as any} size={28} color={colors.accent.primary} />
-                                        </View>
-                                        <Text style={styles.levelLabel}>{level.label}</Text>
-                                        <Text style={styles.levelDescription}>{level.description}</Text>
+                                <View style={styles.levelGrid}>
+                                    {EDUCATION_LEVELS.map((level, index) => (
+                                        <Animated.View
+                                            key={level.id}
+                                            entering={FadeInDown.delay(index * 100).springify()}
+                                            style={styles.levelCardWrapper}
+                                        >
+                                            <Pressable
+                                                style={({ pressed }) => [
+                                                    styles.levelCard,
+                                                    pressed && styles.levelCardPressed
+                                                ]}
+                                                onPress={() => handleLevelSelect(level.id)}
+                                            >
+                                                <LinearGradient
+                                                    colors={[COLORS.surface, COLORS.surfaceElevated]}
+                                                    style={StyleSheet.absoluteFill}
+                                                />
+                                                <View style={styles.levelCardIcon}>
+                                                    <Ionicons name={level.icon as any} size={24} color={COLORS.accent.primary} />
+                                                </View>
+                                                <Text style={styles.levelLabel}>{level.label}</Text>
+                                                <Text style={styles.levelDescription}>{level.description}</Text>
+
+                                                <View style={styles.cardArrow}>
+                                                    <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
+                                                </View>
+                                            </Pressable>
+                                        </Animated.View>
+                                    ))}
+                                </View>
+                            </Animated.View>
+                        )}
+
+                        {/* Step: Details based on level */}
+                        {step === 'details' && selectedLevel && (
+                            <Animated.View
+                                entering={FadeInDown.duration(500)}
+                                style={styles.stepContainer}
+                            >
+                                <View style={styles.navHeader}>
+                                    <Pressable style={styles.backButton} onPress={handleBack}>
+                                        <Ionicons name="arrow-back" size={20} color={COLORS.text.primary} />
                                     </Pressable>
-                                ))}
-                            </View>
-                        </View>
-                    )}
+                                    <Text style={styles.stepTitle}>
+                                        {selectedLevel === 'university' ? 'Ensino Superior' : 'Ensino Básico/Secundário'}
+                                    </Text>
+                                    <View style={{ width: 40 }} />
+                                </View>
 
-                    {/* Step: Details based on level */}
-                    {step === 'details' && selectedLevel && (
-                        <View style={styles.stepContainer}>
-                            <Pressable style={styles.backButton} onPress={handleBack}>
-                                <Ionicons name="arrow-back" size={20} color={colors.text.primary} />
-                                <Text style={styles.backButtonText}>Voltar</Text>
-                            </Pressable>
+                                <Text style={styles.sectionTitle}>
+                                    Agora os detalhes... 📝
+                                </Text>
+                                <Text style={styles.sectionSubtitle}>
+                                    Precisamos de saber a tua escola e ano para te ligar aos teus colegas.
+                                </Text>
 
-                            <Text style={styles.title}>
-                                {selectedLevel === 'university' ? 'Dados Universitários' : 'Dados Escolares'}
-                            </Text>
-                            <Text style={styles.subtitle}>
-                                Preenche os detalhes do teu percurso.
-                            </Text>
+                                <View style={styles.formContainer}>
+                                    {/* Básico ou Secundário: Escola + Ano */}
+                                    {(selectedLevel === 'basic_2' || selectedLevel === 'basic_3' || selectedLevel === 'secondary') && (
+                                        <>
+                                            {/* Filtros de Localização */}
+                                            <Pressable
+                                                style={styles.filterToggle}
+                                                onPress={() => setShowFilters(!showFilters)}
+                                            >
+                                                <View style={styles.filterToggleIcon}>
+                                                    <Ionicons name="filter" size={14} color={COLORS.accent.primary} />
+                                                </View>
+                                                <Text style={styles.filterToggleText}>
+                                                    {showFilters ? 'Esconder filtros de localização' : 'Filtrar escolas por zona'}
+                                                </Text>
+                                                <Ionicons
+                                                    name={showFilters ? 'chevron-up' : 'chevron-down'}
+                                                    size={16}
+                                                    color={COLORS.text.tertiary}
+                                                />
+                                            </Pressable>
 
-                            {/* Básico ou Secundário: Escola + Ano */}
-                            {(selectedLevel === 'basic_2' || selectedLevel === 'basic_3' || selectedLevel === 'secondary') && (
-                                <>
-                                    {/* Filtros de Localização */}
-                                    <Pressable
-                                        style={styles.filterToggle}
-                                        onPress={() => setShowFilters(!showFilters)}
-                                    >
-                                        <Ionicons name="filter-outline" size={18} color={colors.accent.primary} />
-                                        <Text style={styles.filterToggleText}>
-                                            {showFilters ? 'Esconder filtros' : 'Filtrar por localização'}
-                                        </Text>
-                                        <Ionicons
-                                            name={showFilters ? 'chevron-up' : 'chevron-down'}
-                                            size={16}
-                                            color={colors.text.tertiary}
-                                        />
-                                    </Pressable>
-
-                                    {showFilters && (
-                                        <View style={styles.filtersContainer}>
-                                            {/* Distrito */}
-                                            <View style={styles.filterGroup}>
-                                                <Text style={styles.filterLabel}>Distrito</Text>
-                                                <ScrollView
-                                                    horizontal
-                                                    showsHorizontalScrollIndicator={false}
-                                                    contentContainerStyle={styles.filterChipsContainer}
-                                                >
-                                                    <Pressable
-                                                        style={[
-                                                            styles.filterChip,
-                                                            !selectedDistrict && styles.filterChipActive,
-                                                        ]}
-                                                        onPress={() => setSelectedDistrict(null)}
-                                                    >
-                                                        <Text style={[
-                                                            styles.filterChipText,
-                                                            !selectedDistrict && styles.filterChipTextActive,
-                                                        ]}>Todos</Text>
-                                                    </Pressable>
-                                                    {districts.map((district) => (
-                                                        <Pressable
-                                                            key={district}
-                                                            style={[
-                                                                styles.filterChip,
-                                                                selectedDistrict === district && styles.filterChipActive,
-                                                            ]}
-                                                            onPress={() => setSelectedDistrict(district)}
+                                            {showFilters && (
+                                                <Animated.View entering={FadeInDown} style={styles.filtersContainer}>
+                                                    {/* Distrito */}
+                                                    <View style={styles.filterGroup}>
+                                                        <Text style={styles.filterLabel}>Distrito</Text>
+                                                        <ScrollView
+                                                            horizontal
+                                                            showsHorizontalScrollIndicator={false}
+                                                            contentContainerStyle={styles.filterChipsContainer}
                                                         >
-                                                            <Text style={[
-                                                                styles.filterChipText,
-                                                                selectedDistrict === district && styles.filterChipTextActive,
-                                                            ]}>{district}</Text>
-                                                        </Pressable>
-                                                    ))}
-                                                </ScrollView>
-                                            </View>
-
-                                            {/* Concelho (só aparece se tiver distrito selecionado) */}
-                                            {selectedDistrict && municipalities.length > 0 && (
-                                                <View style={styles.filterGroup}>
-                                                    <Text style={styles.filterLabel}>Concelho</Text>
-                                                    <ScrollView
-                                                        horizontal
-                                                        showsHorizontalScrollIndicator={false}
-                                                        contentContainerStyle={styles.filterChipsContainer}
-                                                    >
-                                                        <Pressable
-                                                            style={[
-                                                                styles.filterChip,
-                                                                !selectedMunicipality && styles.filterChipActive,
-                                                            ]}
-                                                            onPress={() => setSelectedMunicipality(null)}
-                                                        >
-                                                            <Text style={[
-                                                                styles.filterChipText,
-                                                                !selectedMunicipality && styles.filterChipTextActive,
-                                                            ]}>Todos</Text>
-                                                        </Pressable>
-                                                        {municipalities.map((municipality) => (
                                                             <Pressable
-                                                                key={municipality}
                                                                 style={[
                                                                     styles.filterChip,
-                                                                    selectedMunicipality === municipality && styles.filterChipActive,
+                                                                    !selectedDistrict && styles.filterChipActive,
                                                                 ]}
-                                                                onPress={() => setSelectedMunicipality(municipality)}
+                                                                onPress={() => setSelectedDistrict(null)}
                                                             >
                                                                 <Text style={[
                                                                     styles.filterChipText,
-                                                                    selectedMunicipality === municipality && styles.filterChipTextActive,
-                                                                ]}>{municipality}</Text>
+                                                                    !selectedDistrict && styles.filterChipTextActive,
+                                                                ]}>Todos</Text>
                                                             </Pressable>
-                                                        ))}
-                                                    </ScrollView>
-                                                </View>
+                                                            {districts.map((district) => (
+                                                                <Pressable
+                                                                    key={district}
+                                                                    style={[
+                                                                        styles.filterChip,
+                                                                        selectedDistrict === district && styles.filterChipActive,
+                                                                    ]}
+                                                                    onPress={() => setSelectedDistrict(district)}
+                                                                >
+                                                                    <Text style={[
+                                                                        styles.filterChipText,
+                                                                        selectedDistrict === district && styles.filterChipTextActive,
+                                                                    ]}>{district}</Text>
+                                                                </Pressable>
+                                                            ))}
+                                                        </ScrollView>
+                                                    </View>
+
+                                                    {/* Concelho (só aparece se tiver distrito selecionado) */}
+                                                    {selectedDistrict && municipalities.length > 0 && (
+                                                        <View style={styles.filterGroup}>
+                                                            <Text style={styles.filterLabel}>Concelho</Text>
+                                                            <ScrollView
+                                                                horizontal
+                                                                showsHorizontalScrollIndicator={false}
+                                                                contentContainerStyle={styles.filterChipsContainer}
+                                                            >
+                                                                <Pressable
+                                                                    style={[
+                                                                        styles.filterChip,
+                                                                        !selectedMunicipality && styles.filterChipActive,
+                                                                    ]}
+                                                                    onPress={() => setSelectedMunicipality(null)}
+                                                                >
+                                                                    <Text style={[
+                                                                        styles.filterChipText,
+                                                                        !selectedMunicipality && styles.filterChipTextActive,
+                                                                    ]}>Todos</Text>
+                                                                </Pressable>
+                                                                {municipalities.map((municipality) => (
+                                                                    <Pressable
+                                                                        key={municipality}
+                                                                        style={[
+                                                                            styles.filterChip,
+                                                                            selectedMunicipality === municipality && styles.filterChipActive,
+                                                                        ]}
+                                                                        onPress={() => setSelectedMunicipality(municipality)}
+                                                                    >
+                                                                        <Text style={[
+                                                                            styles.filterChipText,
+                                                                            selectedMunicipality === municipality && styles.filterChipTextActive,
+                                                                        ]}>{municipality}</Text>
+                                                                    </Pressable>
+                                                                ))}
+                                                            </ScrollView>
+                                                        </View>
+                                                    )}
+                                                </Animated.View>
                                             )}
-                                        </View>
-                                    )}
 
-                                    <Controller
-                                        control={control}
-                                        name="school"
-                                        rules={{ required: 'Escola é obrigatória' }}
-                                        render={({ field: { value, onChange } }) => (
-                                            <Autocomplete
-                                                label="Escola"
-                                                placeholder="Pesquisa ou seleciona a tua escola..."
-                                                value={value}
-                                                onSelect={onChange}
-                                                onSearch={handleSearchSchools}
-                                                error={errors.school?.message}
+                                            <Controller
+                                                control={control}
+                                                name="school"
+                                                rules={{ required: 'Escola é obrigatória' }}
+                                                render={({ field: { value, onChange } }) => (
+                                                    <View style={styles.inputGroup}>
+                                                        <Text style={styles.inputLabel}>Escola</Text>
+                                                        <Autocomplete
+                                                            label=""
+                                                            placeholder="Pesquisa a tua escola..."
+                                                            value={value}
+                                                            onSelect={onChange}
+                                                            onSearch={handleSearchSchools}
+                                                            error={errors.school?.message}
+                                                        />
+                                                    </View>
+                                                )}
                                             />
-                                        )}
-                                    />
 
 
-                                    <View style={styles.inputGroup}>
-                                        <Text style={styles.inputLabel}>Ano</Text>
-                                        <View style={styles.yearSelector}>
-                                            {getYearsForLevel(selectedLevel).map((year) => (
-                                                <Pressable
-                                                    key={year}
-                                                    style={[
-                                                        styles.yearButton,
-                                                        watch('year') === year && styles.yearButtonActive,
-                                                    ]}
-                                                    onPress={() => setValue('year', year)}
-                                                >
-                                                    <Text style={[
-                                                        styles.yearButtonText,
-                                                        watch('year') === year && styles.yearButtonTextActive,
-                                                    ]}>
-                                                        {year}º
-                                                    </Text>
-                                                </Pressable>
-                                            ))}
-                                        </View>
-                                    </View>
-                                </>
-                            )}
-
-                            {/* Secundário: Área */}
-                            {selectedLevel === 'secondary' && (
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>Área/Curso</Text>
-                                    <View style={styles.areaSelector}>
-                                        {secondaryAreas.map((area) => (
-                                            <Pressable
-                                                key={area.id}
-                                                style={[
-                                                    styles.areaButton,
-                                                    watch('secondaryArea') === area.id && styles.areaButtonActive,
-                                                ]}
-                                                onPress={() => setValue('secondaryArea', area.id)}
-                                            >
-                                                <Text style={[
-                                                    styles.areaButtonText,
-                                                    watch('secondaryArea') === area.id && styles.areaButtonTextActive,
-                                                ]}>
-                                                    {area.label}
-                                                </Text>
-                                            </Pressable>
-                                        ))}
-                                    </View>
-                                </View>
-                            )}
-
-                            {/* Superior: Universidade + Curso + Ano */}
-                            {selectedLevel === 'university' && (
-                                <>
-                                    {/* Filtros de Localização (Universidades) */}
-                                    <Pressable
-                                        style={styles.filterToggle}
-                                        onPress={() => setShowUniFilters(!showUniFilters)}
-                                    >
-                                        <Ionicons name="filter-outline" size={18} color={colors.accent.primary} />
-                                        <Text style={styles.filterToggleText}>
-                                            {showUniFilters ? 'Esconder filtros' : 'Filtrar por distrito'}
-                                        </Text>
-                                        <Ionicons
-                                            name={showUniFilters ? 'chevron-up' : 'chevron-down'}
-                                            size={16}
-                                            color={colors.text.tertiary}
-                                        />
-                                    </Pressable>
-
-                                    {showUniFilters && (
-                                        <View style={styles.filtersContainer}>
-                                            <View style={styles.filterGroup}>
-                                                <Text style={styles.filterLabel}>Distrito</Text>
-                                                <ScrollView
-                                                    horizontal
-                                                    showsHorizontalScrollIndicator={false}
-                                                    contentContainerStyle={styles.filterChipsContainer}
-                                                >
-                                                    <Pressable
-                                                        style={[
-                                                            styles.filterChip,
-                                                            !selectedUniDistrict && styles.filterChipActive,
-                                                        ]}
-                                                        onPress={() => setSelectedUniDistrict(null)}
-                                                    >
-                                                        <Text style={[
-                                                            styles.filterChipText,
-                                                            !selectedUniDistrict && styles.filterChipTextActive,
-                                                        ]}>Todos</Text>
-                                                    </Pressable>
-                                                    {uniDistricts.map((district) => (
+                                            <View style={styles.inputGroup}>
+                                                <Text style={styles.inputLabel}>Ano de Escolaridade</Text>
+                                                <View style={styles.yearSelector}>
+                                                    {getYearsForLevel(selectedLevel).map((year) => (
                                                         <Pressable
-                                                            key={district}
+                                                            key={year}
                                                             style={[
-                                                                styles.filterChip,
-                                                                selectedUniDistrict === district && styles.filterChipActive,
+                                                                styles.yearButton,
+                                                                watch('year') === year && styles.yearButtonActive,
                                                             ]}
-                                                            onPress={() => setSelectedUniDistrict(district)}
+                                                            onPress={() => setValue('year', year)}
                                                         >
                                                             <Text style={[
-                                                                styles.filterChipText,
-                                                                selectedUniDistrict === district && styles.filterChipTextActive,
-                                                            ]}>{district}</Text>
+                                                                styles.yearButtonText,
+                                                                watch('year') === year && styles.yearButtonTextActive,
+                                                            ]}>
+                                                                {year}º
+                                                            </Text>
                                                         </Pressable>
                                                     ))}
-                                                </ScrollView>
+                                                </View>
+                                            </View>
+                                        </>
+                                    )}
+
+                                    {/* Secundário: Área */}
+                                    {selectedLevel === 'secondary' && (
+                                        <View style={styles.inputGroup}>
+                                            <Text style={styles.inputLabel}>Área de Estudos</Text>
+                                            <View style={styles.areaSelector}>
+                                                {secondaryAreas.map((area) => (
+                                                    <Pressable
+                                                        key={area.id}
+                                                        style={[
+                                                            styles.areaButton,
+                                                            watch('secondaryArea') === area.id && styles.areaButtonActive,
+                                                        ]}
+                                                        onPress={() => setValue('secondaryArea', area.id)}
+                                                    >
+                                                        <Text style={[
+                                                            styles.areaButtonText,
+                                                            watch('secondaryArea') === area.id && styles.areaButtonTextActive,
+                                                        ]}>
+                                                            {area.label}
+                                                        </Text>
+                                                        {watch('secondaryArea') === area.id && (
+                                                            <Ionicons name="checkmark-circle" size={16} color={COLORS.text.inverse} />
+                                                        )}
+                                                    </Pressable>
+                                                ))}
                                             </View>
                                         </View>
                                     )}
 
-                                    <Controller
-                                        control={control}
-                                        name="university"
-                                        rules={{ required: 'Universidade é obrigatória' }}
-                                        render={({ field: { value, onChange } }) => (
-                                            <Autocomplete
-                                                label="Universidade / Politécnico"
-                                                placeholder="Pesquisa ou seleciona a tua instituição..."
-                                                value={value}
-                                                onSelect={(item) => {
-                                                    onChange(item);
-                                                    // Reset curso quando muda universidade
-                                                    setValue('degree', null);
-                                                }}
-                                                onSearch={handleSearchUniversities}
-                                                error={errors.university?.message}
+                                    {/* Superior: Universidade + Curso + Ano */}
+                                    {selectedLevel === 'university' && (
+                                        <>
+                                            {/* Filtros de Localização (Universidades) */}
+                                            <Pressable
+                                                style={styles.filterToggle}
+                                                onPress={() => setShowUniFilters(!showUniFilters)}
+                                            >
+                                                <View style={styles.filterToggleIcon}>
+                                                    <Ionicons name="filter" size={14} color={COLORS.accent.primary} />
+                                                </View>
+                                                <Text style={styles.filterToggleText}>
+                                                    {showUniFilters ? 'Esconder filtros' : 'Filtrar universidades por distrito'}
+                                                </Text>
+                                                <Ionicons
+                                                    name={showUniFilters ? 'chevron-up' : 'chevron-down'}
+                                                    size={16}
+                                                    color={COLORS.text.tertiary}
+                                                />
+                                            </Pressable>
+
+                                            {showUniFilters && (
+                                                <View style={styles.filtersContainer}>
+                                                    <View style={styles.filterGroup}>
+                                                        <Text style={styles.filterLabel}>Distrito</Text>
+                                                        <ScrollView
+                                                            horizontal
+                                                            showsHorizontalScrollIndicator={false}
+                                                            contentContainerStyle={styles.filterChipsContainer}
+                                                        >
+                                                            <Pressable
+                                                                style={[
+                                                                    styles.filterChip,
+                                                                    !selectedUniDistrict && styles.filterChipActive,
+                                                                ]}
+                                                                onPress={() => setSelectedUniDistrict(null)}
+                                                            >
+                                                                <Text style={[
+                                                                    styles.filterChipText,
+                                                                    !selectedUniDistrict && styles.filterChipTextActive,
+                                                                ]}>Todos</Text>
+                                                            </Pressable>
+                                                            {uniDistricts.map((district) => (
+                                                                <Pressable
+                                                                    key={district}
+                                                                    style={[
+                                                                        styles.filterChip,
+                                                                        selectedUniDistrict === district && styles.filterChipActive,
+                                                                    ]}
+                                                                    onPress={() => setSelectedUniDistrict(district)}
+                                                                >
+                                                                    <Text style={[
+                                                                        styles.filterChipText,
+                                                                        selectedUniDistrict === district && styles.filterChipTextActive,
+                                                                    ]}>{district}</Text>
+                                                                </Pressable>
+                                                            ))}
+                                                        </ScrollView>
+                                                    </View>
+                                                </View>
+                                            )}
+
+                                            <Controller
+                                                control={control}
+                                                name="university"
+                                                rules={{ required: 'Universidade é obrigatória' }}
+                                                render={({ field: { value, onChange } }) => (
+                                                    <View style={styles.inputGroup}>
+                                                        <Text style={styles.inputLabel}>Instituição</Text>
+                                                        <Autocomplete
+                                                            label=""
+                                                            placeholder="Pesquisa a tua universidade..."
+                                                            value={value}
+                                                            onSelect={(item) => {
+                                                                onChange(item);
+                                                                // Reset curso quando muda universidade
+                                                                setValue('degree', null);
+                                                            }}
+                                                            onSearch={handleSearchUniversities}
+                                                            error={errors.university?.message}
+                                                        />
+                                                    </View>
+                                                )}
                                             />
-                                        )}
-                                    />
 
-                                    <Controller
-                                        control={control}
-                                        name="degree"
-                                        rules={{ required: 'Curso é obrigatório' }}
-                                        render={({ field: { value, onChange } }) => (
-                                            <Autocomplete
-                                                label="Curso"
-                                                placeholder="Pesquisa o teu curso..."
-                                                value={value}
-                                                onSelect={onChange}
-                                                onSearch={handleSearchDegrees}
-                                                error={errors.degree?.message}
-                                                disabled={!selectedUniversity}
+                                            <Controller
+                                                control={control}
+                                                name="degree"
+                                                rules={{ required: 'Curso é obrigatório' }}
+                                                render={({ field: { value, onChange } }) => (
+                                                    <View style={styles.inputGroup}>
+                                                        <Text style={styles.inputLabel}>Curso</Text>
+                                                        <Autocomplete
+                                                            label=""
+                                                            placeholder="Pesquisa o teu curso..."
+                                                            value={value}
+                                                            onSelect={onChange}
+                                                            onSearch={handleSearchDegrees}
+                                                            error={errors.degree?.message}
+                                                            disabled={!selectedUniversity}
+                                                        />
+                                                    </View>
+                                                )}
                                             />
+
+                                            <View style={styles.inputGroup}>
+                                                <Text style={styles.inputLabel}>Ano Curricular</Text>
+                                                <View style={styles.yearSelector}>
+                                                    {getYearsForLevel('university').map((year) => (
+                                                        <Pressable
+                                                            key={year}
+                                                            style={[
+                                                                styles.yearButton,
+                                                                watch('uniYear') === year && styles.yearButtonActive,
+                                                            ]}
+                                                            onPress={() => setValue('uniYear', year)}
+                                                        >
+                                                            <Text style={[
+                                                                styles.yearButtonText,
+                                                                watch('uniYear') === year && styles.yearButtonTextActive,
+                                                            ]}>
+                                                                {year}º
+                                                            </Text>
+                                                        </Pressable>
+                                                    ))}
+                                                </View>
+                                            </View>
+                                        </>
+                                    )}
+                                </View>
+
+                                {/* Botão Continuar */}
+                                <Pressable
+                                    style={[styles.primaryButton, (!canContinue() || saving) && styles.primaryButtonDisabled]}
+                                    onPress={handleSubmit(onSubmit)}
+                                    disabled={!canContinue() || saving}
+                                >
+                                    <LinearGradient
+                                        colors={((!canContinue() || saving) ? [COLORS.surfaceMuted, COLORS.surfaceMuted] : COLORS.brand.gradient) as [string, string]}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={styles.gradientButton}
+                                    >
+                                        {saving ? (
+                                            <ActivityIndicator color={COLORS.text.tertiary} />
+                                        ) : (
+                                            <>
+                                                <Text style={[
+                                                    styles.primaryButtonText,
+                                                    (!canContinue()) && { color: COLORS.text.tertiary }
+                                                ]}>Concluir Configuração</Text>
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={20}
+                                                    color={(!canContinue()) ? COLORS.text.tertiary : COLORS.text.primary}
+                                                />
+                                            </>
                                         )}
-                                    />
+                                    </LinearGradient>
+                                </Pressable>
+                            </Animated.View>
+                        )}
 
-                                    <View style={styles.inputGroup}>
-                                        <Text style={styles.inputLabel}>Ano do Curso</Text>
-                                        <View style={styles.yearSelector}>
-                                            {getYearsForLevel('university').map((year) => (
-                                                <Pressable
-                                                    key={year}
-                                                    style={[
-                                                        styles.yearButton,
-                                                        watch('uniYear') === year && styles.yearButtonActive,
-                                                    ]}
-                                                    onPress={() => setValue('uniYear', year)}
-                                                >
-                                                    <Text style={[
-                                                        styles.yearButtonText,
-                                                        watch('uniYear') === year && styles.yearButtonTextActive,
-                                                    ]}>
-                                                        {year}º
-                                                    </Text>
-                                                </Pressable>
-                                            ))}
-                                        </View>
-                                    </View>
-                                </>
-                            )}
-
-                            {/* Botão Continuar */}
-                            <Pressable
-                                style={[styles.primaryButton, !canContinue() && styles.primaryButtonDisabled]}
-                                onPress={handleSubmit(onSubmit)}
-                                disabled={!canContinue() || saving}
-                            >
-                                {saving ? (
-                                    <ActivityIndicator color={colors.text.inverse} />
-                                ) : (
-                                    <>
-                                        <Text style={styles.primaryButtonText}>Concluir</Text>
-                                        <Ionicons name="checkmark" size={20} color={colors.text.inverse} />
-                                    </>
-                                )}
-                            </Pressable>
-                        </View>
-                    )}
-
-                    {/* Step: Saving */}
-                    {step === 'saving' && (
-                        <View style={styles.savingContainer}>
-                            <ActivityIndicator size="large" color={colors.accent.primary} />
-                            <Text style={styles.savingText}>A guardar...</Text>
-                        </View>
-                    )}
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+                        {/* Step: Saving */}
+                        {step === 'saving' && (
+                            <View style={styles.savingContainer}>
+                                <ActivityIndicator size="large" color={COLORS.accent.primary} />
+                                <Text style={styles.savingText}>A preparar o teu espaço...</Text>
+                            </View>
+                        )}
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
-    progressContainer: {
-        paddingHorizontal: spacing.lg,
-        paddingTop: spacing.md,
+    headerContainer: {
+        paddingTop: SPACING.md,
+        paddingHorizontal: SPACING.lg,
+        paddingBottom: SPACING.md,
     },
-    progressBar: {
-        height: 4,
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: 2,
+    progressTrack: {
+        height: 6,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.full,
         overflow: 'hidden',
     },
     progressFill: {
         height: '100%',
-        backgroundColor: colors.accent.primary,
-        borderRadius: 2,
+        borderRadius: RADIUS.full,
     },
-    keyboardView: {
-        flex: 1,
-    },
+
     scrollContent: {
         flexGrow: 1,
-        paddingHorizontal: spacing.lg,
-        paddingBottom: spacing.xl * 2,
+        paddingHorizontal: SPACING.xl,
+        paddingBottom: SPACING['4xl'],
     },
     stepContainer: {
         flex: 1,
-        paddingTop: spacing.xl,
+        paddingTop: SPACING.lg,
+    },
+
+    // Icons & Titles
+    iconRing: {
+        alignSelf: 'center',
+        padding: SPACING.sm,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: COLORS.glassBorder,
+        marginBottom: SPACING.xl,
     },
     iconContainer: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: colors.accent.light,
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: COLORS.accent.primary,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.lg,
+        ...SHADOWS.glow,
     },
     title: {
-        fontSize: typography.size['2xl'],
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
-        marginBottom: spacing.sm,
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontFamily: TYPOGRAPHY.family.bold,
+        color: COLORS.text.primary,
+        textAlign: 'center',
+        marginBottom: SPACING.sm,
     },
     subtitle: {
-        fontSize: typography.size.base,
-        color: colors.text.secondary,
-        marginBottom: spacing.xl,
-        lineHeight: 22,
+        fontSize: TYPOGRAPHY.size.base,
+        fontFamily: TYPOGRAPHY.family.regular,
+        color: COLORS.text.secondary,
+        textAlign: 'center',
+        marginBottom: SPACING['2xl'],
+        lineHeight: 24,
     },
+
+    // Navigation Header (Details)
+    navHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: SPACING.xl,
+    },
+    backButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: COLORS.surfaceElevated,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    stepTitle: {
+        fontSize: TYPOGRAPHY.size.md,
+        fontFamily: TYPOGRAPHY.family.semibold,
+        color: COLORS.text.primary,
+    },
+    sectionTitle: {
+        fontSize: TYPOGRAPHY.size['2xl'],
+        fontFamily: TYPOGRAPHY.family.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
+    },
+    sectionSubtitle: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.xl,
+    },
+
+    // Level Grid
     levelGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: spacing.md,
+        gap: SPACING.md,
+    },
+    levelCardWrapper: {
+        width: '47%',
     },
     levelCard: {
-        width: '47%',
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        padding: spacing.lg,
+        width: '100%',
+        borderRadius: RADIUS.xl,
+        padding: SPACING.lg,
         alignItems: 'center',
-        ...shadows.sm,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: COLORS.surfaceElevated,
+        minHeight: 160,
     },
-    levelIconWrapper: {
+    levelCardPressed: {
+        opacity: 0.9,
+        transform: [{ scale: 0.98 }],
+    },
+    levelCardIcon: {
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: colors.accent.light,
+        backgroundColor: 'rgba(79, 70, 229, 0.1)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: spacing.md,
+        marginBottom: SPACING.md,
     },
     levelLabel: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.primary,
-        marginBottom: spacing.xs,
+        fontSize: TYPOGRAPHY.size.md,
+        fontFamily: TYPOGRAPHY.family.semibold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.xs,
         textAlign: 'center',
     },
     levelDescription: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
         textAlign: 'center',
+        lineHeight: 16,
     },
-    backButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: spacing.lg,
+    cardArrow: {
+        position: 'absolute',
+        bottom: SPACING.md,
+        right: SPACING.md,
+        opacity: 0.5,
     },
-    backButtonText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        marginLeft: spacing.sm,
+
+    // Form
+    formContainer: {
+        gap: SPACING.xl,
     },
     inputGroup: {
-        marginBottom: spacing.lg,
+        gap: SPACING.xs,
     },
     inputLabel: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontFamily: TYPOGRAPHY.family.medium,
+        color: COLORS.text.secondary,
+        marginLeft: SPACING.xs,
     },
+
+    // Year Selector
     yearSelector: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     yearButton: {
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.lg,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.md,
+        width: 50,
+        height: 50,
+        borderRadius: RADIUS.lg,
+        backgroundColor: COLORS.surfaceElevated,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: COLORS.surfaceElevated,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     yearButtonActive: {
-        backgroundColor: colors.accent.primary,
-        borderColor: colors.accent.primary,
+        backgroundColor: COLORS.accent.primary,
+        borderColor: COLORS.accent.primary,
+        ...SHADOWS.glow,
     },
     yearButtonText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        fontWeight: typography.weight.medium,
+        fontSize: TYPOGRAPHY.size.md,
+        fontFamily: TYPOGRAPHY.family.semibold,
+        color: COLORS.text.primary,
     },
     yearButtonTextActive: {
-        color: colors.text.inverse,
+        color: COLORS.text.inverse,
     },
+
+    // Area Selector
     areaSelector: {
-        gap: spacing.sm,
+        gap: SPACING.sm,
     },
     areaButton: {
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.lg,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.lg,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.lg,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: COLORS.surfaceElevated,
     },
     areaButtonActive: {
-        backgroundColor: colors.accent.primary,
-        borderColor: colors.accent.primary,
+        backgroundColor: 'rgba(79, 70, 229, 0.15)',
+        borderColor: COLORS.accent.primary,
     },
     areaButtonText: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        fontFamily: TYPOGRAPHY.family.medium,
     },
     areaButtonTextActive: {
-        color: colors.text.inverse,
+        color: COLORS.accent.light,
+        fontFamily: TYPOGRAPHY.family.semibold,
     },
+
+    // Filters
+    filterToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: SPACING.sm,
+        gap: SPACING.sm,
+        backgroundColor: 'rgba(79, 70, 229, 0.05)',
+        paddingHorizontal: SPACING.md,
+        borderRadius: RADIUS.md,
+        alignSelf: 'flex-start',
+    },
+    filterToggleIcon: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    filterToggleText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.accent.primary,
+        fontFamily: TYPOGRAPHY.family.medium,
+    },
+    filtersContainer: {
+        backgroundColor: COLORS.surfaceElevated,
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginTop: -SPACING.md,
+        marginBottom: SPACING.md,
+    },
+    filterGroup: {
+        gap: SPACING.xs,
+    },
+    filterLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginBottom: SPACING.xs,
+    },
+    filterChipsContainer: {
+        gap: SPACING.xs,
+        paddingBottom: SPACING.xs,
+    },
+    filterChip: {
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: RADIUS.full,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1,
+        borderColor: COLORS.surfaceMuted,
+    },
+    filterChipActive: {
+        backgroundColor: COLORS.accent.primary,
+        borderColor: COLORS.accent.primary,
+    },
+    filterChipText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.secondary,
+    },
+    filterChipTextActive: {
+        color: COLORS.text.inverse,
+        fontWeight: '600',
+    },
+
+    // Primary Button
     primaryButton: {
+        marginTop: SPACING.xl,
+        borderRadius: RADIUS.xl,
+        overflow: 'hidden',
+        ...SHADOWS.lg,
+    },
+    primaryButtonDisabled: {
+        opacity: 0.7,
+        ...SHADOWS.none,
+    },
+    gradientButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: colors.accent.primary,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.xl,
-        borderRadius: borderRadius.lg,
-        gap: spacing.sm,
-        marginTop: spacing.xl,
-    },
-    primaryButtonDisabled: {
-        opacity: 0.5,
+        paddingVertical: SPACING.lg,
+        gap: SPACING.sm,
     },
     primaryButtonText: {
-        fontSize: typography.size.base,
-        fontWeight: typography.weight.semibold,
-        color: colors.text.inverse,
+        fontSize: TYPOGRAPHY.size.md,
+        fontFamily: TYPOGRAPHY.family.bold,
+        color: COLORS.text.primary,
     },
+
+    // Loading State
     savingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        minHeight: 300,
     },
     savingText: {
-        fontSize: typography.size.lg,
-        color: colors.text.secondary,
-        marginTop: spacing.lg,
-    },
-
-    // Estilos de Filtros
-    filterToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: spacing.sm,
-        marginBottom: spacing.md,
-        gap: spacing.xs,
-    },
-    filterToggleText: {
-        fontSize: typography.size.sm,
-        color: colors.accent.primary,
-        fontWeight: typography.weight.medium,
-        flex: 1,
-    },
-    filtersContainer: {
-        backgroundColor: colors.surfaceSubtle,
-        borderRadius: borderRadius.md,
-        padding: spacing.md,
-        marginBottom: spacing.lg,
-    },
-    filterGroup: {
-        marginBottom: spacing.md,
-    },
-    filterLabel: {
-        fontSize: typography.size.xs,
-        fontWeight: typography.weight.medium,
-        color: colors.text.tertiary,
-        marginBottom: spacing.sm,
-        textTransform: 'uppercase',
-    },
-    filterChipsContainer: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-        paddingRight: spacing.md,
-    },
-    filterChip: {
-        paddingVertical: spacing.xs,
-        paddingHorizontal: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.full,
-        borderWidth: 1,
-        borderColor: colors.divider,
-    },
-    filterChipActive: {
-        backgroundColor: colors.accent.primary,
-        borderColor: colors.accent.primary,
-    },
-    filterChipText: {
-        fontSize: typography.size.sm,
-        color: colors.text.primary,
-    },
-    filterChipTextActive: {
-        color: colors.text.inverse,
+        fontSize: TYPOGRAPHY.size.lg,
+        color: COLORS.text.secondary,
+        marginTop: SPACING.lg,
+        fontFamily: TYPOGRAPHY.family.medium,
     },
 });

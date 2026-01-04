@@ -9,8 +9,10 @@ import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/them
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
+import { getUserBadges, UserBadge } from '@/services/badgeService';
 import { Tier } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -30,7 +32,7 @@ import Animated, {
     FadeInUp,
     useAnimatedStyle,
     useSharedValue,
-    withSpring,
+    withSpring
 } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -147,9 +149,13 @@ function MenuItem({
 // MAIN COMPONENT
 // ============================================
 
+// ... imports
+import { useTutorial } from '@/providers/TutorialProvider';
+
 export default function ProfileScreen() {
     const { user, signOut, isLoading: authLoading } = useAuthContext();
     const { profile, loading, refetchProfile } = useProfile();
+    const { startTutorial } = useTutorial();
     const { showAlert } = useAlert();
     const [deleting, setDeleting] = useState(false);
     const [frameConfig, setFrameConfig] = useState<{
@@ -168,6 +174,32 @@ export default function ProfileScreen() {
         university?: { name: string; type?: string } | null;
         degree?: { name: string; level?: string } | null;
     } | null>(null);
+
+    // Equipped Badges
+    const [equippedBadges, setEquippedBadges] = useState<UserBadge[]>([]);
+
+    // Carregar badges equipados
+    const loadEquippedBadges = useCallback(async () => {
+        if (!user?.id) return;
+        try {
+            const allBadges = await getUserBadges(user.id);
+            const equipped = allBadges.filter(b => b.is_equipped);
+            setEquippedBadges(equipped);
+        } catch (err) {
+            console.error('Erro ao carregar badges equipados:', err);
+        }
+    }, [user?.id]);
+
+    useEffect(() => {
+        loadEquippedBadges();
+        // Subscribe to badge changes could be added here for realtime updates
+        const subscription = supabase
+            .channel('public:user_badges')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'user_badges', filter: `user_id=eq.${user?.id}` }, loadEquippedBadges)
+            .subscribe();
+
+        return () => { subscription.unsubscribe(); };
+    }, [loadEquippedBadges, user?.id]);
 
     // Carregar dados de educação
     const loadEducationData = useCallback(async () => {
@@ -451,6 +483,40 @@ export default function ProfileScreen() {
                     />
                 </View>
 
+                {/* ========== SHOWCASE (DESTAQUES) ========== */}
+                <Animated.View entering={FadeInDown.delay(220).springify()} style={styles.section}>
+                    <Text style={styles.sectionTitle}>Destaques</Text>
+                    <View style={styles.showcaseContainer}>
+                        {[0, 1, 2].map((index) => {
+                            const badge = equippedBadges[index];
+                            return (
+                                <Pressable
+                                    key={index}
+                                    style={styles.showcaseSlot}
+                                    onPress={() => router.push('/badges')}
+                                >
+                                    {badge ? (
+                                        <LinearGradient
+                                            colors={['#1F2937', '#111827']}
+                                            style={styles.showcaseBadge}
+                                        >
+                                            <View style={styles.showcaseIconWrap}>
+                                                <Text style={styles.showcaseEmoji}>{badge.badge.icon}</Text>
+                                            </View>
+                                            <View style={styles.showcaseGlow} />
+                                        </LinearGradient>
+                                    ) : (
+                                        <View style={styles.showcaseEmpty}>
+                                            <Ionicons name="add" size={24} color={COLORS.text.tertiary} />
+                                            <Text style={styles.showcaseEmptyText}>Vazio</Text>
+                                        </View>
+                                    )}
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+                </Animated.View>
+
                 {/* ========== QR CODE - ADD FRIENDS ========== */}
                 <Animated.View entering={FadeInDown.delay(250).springify()} style={styles.qrSection}>
                     <Pressable
@@ -542,6 +608,13 @@ export default function ProfileScreen() {
                         />
                         <View style={styles.menuDivider} />
                         <MenuItem
+                            icon="time-outline"
+                            label="Horário"
+                            subtitle="Ver horário escolar"
+                            onPress={() => router.push('/(tabs)/schedule' as any)}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
                             icon="trophy-outline"
                             label="Conquistas"
                             subtitle="Ver badges desbloqueados"
@@ -612,6 +685,12 @@ export default function ProfileScreen() {
                             label="Aparência"
                             onPress={() => router.push('/settings')}
                         />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="shield-checkmark-outline"
+                            label="Bloqueados"
+                            onPress={() => router.push('/settings/user-blocks')}
+                        />
                     </View>
                 </View>
 
@@ -632,6 +711,31 @@ export default function ProfileScreen() {
                             onPress={handleDeleteAccount}
                             danger
                             showArrow={false}
+                        />
+                    </View>
+                </View>
+
+                {/* ========== TEST ZONE ========== */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Área de Testes</Text>
+                    <View style={styles.menuCard}>
+                        <MenuItem
+                            icon="play-circle-outline"
+                            label="Reiniciar Tutorial"
+                            subtitle="Limpa memória e inicia onboarding"
+                            color="#2563EB"
+                            onPress={async () => {
+                                try {
+                                    if (profile?.id) {
+                                        await AsyncStorage.removeItem(`tutorial_seen_${profile.id}`);
+                                        // Navigate to Home first, then start tutorial
+                                        router.push('/(tabs)');
+                                        setTimeout(() => {
+                                            startTutorial();
+                                        }, 1000);
+                                    }
+                                } catch (e) { console.error(e); }
+                            }}
                         />
                     </View>
                 </View>
@@ -791,6 +895,65 @@ const styles = StyleSheet.create({
         borderRadius: RADIUS['2xl'],
         padding: SPACING.lg,
         ...SHADOWS.md,
+    },
+
+    // Showcase
+    showcaseContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: SPACING.lg,
+        marginTop: SPACING.md,
+    },
+    showcaseSlot: {
+        width: 80,
+        height: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    showcaseBadge: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#FFD700', // Gold border for featured
+        backgroundColor: COLORS.surfaceElevated,
+        ...SHADOWS.glow,
+    },
+    showcaseIconWrap: {
+        width: 70,
+        height: 70,
+        borderRadius: 35,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    showcaseEmoji: {
+        fontSize: 32,
+    },
+    showcaseGlow: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        borderRadius: 40,
+        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+        zIndex: -1,
+    },
+    showcaseEmpty: {
+        width: 70,
+        height: 70,
+        borderRadius: 35,
+        borderWidth: 2,
+        borderColor: COLORS.surfaceMuted,
+        borderStyle: 'dashed',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    showcaseEmptyText: {
+        fontSize: 10,
+        color: COLORS.text.tertiary,
+        marginTop: 4,
+        fontFamily: TYPOGRAPHY.family.medium,
     },
     xpHeader: {
         flexDirection: 'row',

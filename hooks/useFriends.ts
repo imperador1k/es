@@ -230,79 +230,108 @@ export function useSearchUsers() {
   const search = async (query: string, customFilters?: typeof filters) => {
     const activeFilters = customFilters || filters;
     
-    // Allow empty query if we have filters
-    if (!query.trim() && !activeFilters.schoolId && !activeFilters.universityId && !activeFilters.level) {
-      if (query.length < 2) {
-        setResults([]);
-        return;
-      }
+    // Check if we have enough criteria to search
+    // Either a text query >= 2 chars OR active filters
+    const hasQuery = query.trim().length >= 2;
+    const hasFilters = activeFilters.schoolId || activeFilters.universityId || activeFilters.level;
+
+    if (!hasQuery && !hasFilters) {
+      setResults([]);
+      return;
     }
 
     try {
       setSearching(true);
       
-      // Build query with education data
+      // We use !inner join to filter profiles that satisfy the education criteria
+      // If no filters are active, we use standard left join (implicit or explicit)
+      // But passing the filter in the select string with !inner is the way to filter parent rows.
+      
+      const educationJoinType = hasFilters ? '!inner' : '';
+      
       let queryBuilder = supabase
         .from('profiles')
         .select(`
           *,
-          user_education(
+          user_education${educationJoinType} (
             level,
             year,
             uni_year,
             school:schools(id, name),
             university:universities(id, name),
-            degree:degrees(id, name)
+            degree:degrees(id, name),
+            school_id,
+            university_id
           )
         `)
         .neq('id', user?.id || '')
-        .limit(30);
+        .limit(50);
 
       // Text search
-      if (query.trim().length >= 2) {
+      if (hasQuery) {
         queryBuilder = queryBuilder.or(`username.ilike.%${query}%,full_name.ilike.%${query}%`);
+      }
+
+      // Backend Filters
+      if (activeFilters.schoolId) {
+        queryBuilder = queryBuilder.eq('user_education.school_id', activeFilters.schoolId);
+      }
+      if (activeFilters.universityId) {
+        queryBuilder = queryBuilder.eq('user_education.university_id', activeFilters.universityId);
+      }
+      if (activeFilters.level) {
+        // Map frontend IDs to Database ENUM values
+        const LEVEL_MAP: Record<string, string> = {
+          'basico_2': 'basic_2',
+          'basico_3': 'basic_3',
+          'secundario': 'secondary',
+          'licenciatura': 'university',
+          'mestrado': 'university',
+          'doutoramento': 'university'
+        };
+
+        const dbLevel = LEVEL_MAP[activeFilters.level] || activeFilters.level;
+        queryBuilder = queryBuilder.eq('user_education.level', dbLevel);
+
+        // If filtering by specific university degree level
+        if (dbLevel === 'university' && ['licenciatura', 'mestrado', 'doutoramento'].includes(activeFilters.level)) {
+             // For now, we only filter the main level to avoid complex nested joins issues.
+             // The user will still see university students, and can filter by specific university in the next step.
+             // Ideally we would add: queryBuilder.eq('user_education.degree.level', ...label...)
+        }
       }
 
       const { data, error } = await queryBuilder;
 
       if (error) throw error;
 
-      // Map and filter results
-      let mapped = (data || []).map((p: any) => {
-        const edu = p.user_education?.[0];
+      // Map results
+      const mapped = (data || []).map((p: any) => {
+        const edu = p.user_education; // It serves as object or array depending on relation, usually object for 1:1 if defined correctly, but Supabase returns array for reverse relation usually.
+                                      // Wait, user_education PK is user_id. So profiles -> user_education is 1:1?
+                                      // The previous code did p.user_education?.[0]. Let's check relation.
+                                      // If it returns an array (has_many), we take the first.
+                                      // If user_education is 1:1, it might be an object. PostgREST usually returns object for single-relation if detected.
+                                      // Safest is to handle both.
+        const eduData = Array.isArray(edu) ? edu[0] : edu;
+
         return {
           ...p,
-          education: edu ? {
-            school_name: edu.school?.name,
-            university_name: edu.university?.name,
-            degree_name: edu.degree?.name,
-            level: edu.level,
-            year: edu.year || edu.uni_year,
+          education: eduData ? {
+            school_name: eduData.school?.name,
+            university_name: eduData.university?.name,
+            degree_name: eduData.degree?.name,
+            level: eduData.level,
+            year: eduData.year || eduData.uni_year,
           } : null
         };
       });
 
-      // Apply education filters client-side (for flexibility)
-      if (activeFilters.schoolId) {
-        mapped = mapped.filter(p => 
-          p.user_education?.[0]?.school?.id === activeFilters.schoolId
-        );
-      }
-      if (activeFilters.universityId) {
-        mapped = mapped.filter(p => 
-          p.user_education?.[0]?.university?.id === activeFilters.universityId
-        );
-      }
-      if (activeFilters.level) {
-        mapped = mapped.filter(p => 
-          p.user_education?.[0]?.level === activeFilters.level
-        );
-      }
-
       setResults(mapped);
     } catch (err) {
       console.error('Erro na pesquisa:', err);
-      setResults([]);
+      // Don't clear results on error, maybe toast?
+      // setResults([]); 
     } finally {
       setSearching(false);
     }

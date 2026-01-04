@@ -581,6 +581,8 @@ export default function SettingsScreen() {
                         <MenuItem icon="log-out-outline" label="Terminar Sessão" danger onPress={handleSignOut} rightElement={null} />
                         <View style={styles.menuDivider} />
                         <MenuItem icon="trash-outline" label="Eliminar Conta" subtitle="Esta ação é permanente" danger onPress={handleDeleteAccount} rightElement={null} />
+                        <View style={styles.menuDivider} />
+                        <MenuItem icon="shield-half-outline" label="Utilizadores Bloqueados" subtitle="Gerir bloqueios" color="#EF4444" onPress={() => router.push('/settings/user-blocks' as any)} rightElement={null} />
                     </View>
                 </Animated.View>
 

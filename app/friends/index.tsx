@@ -5,13 +5,14 @@
 
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
+import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { FriendWithProfile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Animated,
@@ -135,8 +136,35 @@ export default function FriendsScreen() {
     const { friends, loading, refetch, removeFriend } = useFriends();
     const { startOrGetConversation } = useStartConversation();
     const { showAlert } = useAlert();
+
     const [refreshing, setRefreshing] = useState(false);
     const headerAnim = useRef(new Animated.Value(0)).current;
+
+    // Blocked Users Filter
+    const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        const fetchBlocked = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data } = await supabase
+                .from('user_blocks')
+                .select('*')
+                .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+
+            if (data) {
+                const ids = new Set<string>();
+                data.forEach(b => {
+                    ids.add(b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+                });
+                setBlockedIds(ids);
+            }
+        };
+        fetchBlocked();
+    }, []);
+
+    const filteredFriends = friends.filter(f => !blockedIds.has(f.friend_id));
 
     useState(() => {
         Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -191,7 +219,7 @@ export default function FriendsScreen() {
                     <Text style={styles.headerEmoji}>👥</Text>
                     <View>
                         <Text style={styles.headerTitle}>Amigos</Text>
-                        <Text style={styles.headerSubtitle}>{friends.length} conexões</Text>
+                        <Text style={styles.headerSubtitle}>{filteredFriends.length} conexões</Text>
                     </View>
                 </View>
 
@@ -206,13 +234,13 @@ export default function FriendsScreen() {
             {friends.length > 0 && (
                 <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.statsBanner}>
                     <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{friends.length}</Text>
+                        <Text style={styles.statNumber}>{filteredFriends.length}</Text>
                         <Text style={styles.statLabel}>Amigos</Text>
                     </View>
                     <View style={styles.statDivider} />
                     <View style={styles.statItem}>
                         <Text style={styles.statNumber}>
-                            {friends.filter(f => f.profile?.current_tier).length}
+                            {filteredFriends.filter(f => f.profile?.current_tier).length}
                         </Text>
                         <Text style={styles.statLabel}>Ativos</Text>
                     </View>
@@ -221,7 +249,7 @@ export default function FriendsScreen() {
 
             {/* Friends List */}
             <FlatList
-                data={friends}
+                data={filteredFriends}
                 keyExtractor={(item) => item.friendship_id}
                 renderItem={({ item, index }) => (
                     <FriendCard

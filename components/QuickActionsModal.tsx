@@ -58,6 +58,15 @@ const MAIN_ACTIONS: ActionItem[] = [
         size: 'large',
     },
     {
+        id: 'schedule',
+        icon: 'time',
+        label: 'Horário',
+        description: 'Semana atual',
+        gradient: ['#F59E0B', '#FBBF24'],
+        route: '/(tabs)/schedule',
+        size: 'large',
+    },
+    {
         id: 'study-room',
         icon: 'videocam',
         label: 'Study Room',

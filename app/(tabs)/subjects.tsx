@@ -5,6 +5,7 @@
 
 import { AddClassModal } from '@/components/schedule/AddClassModal';
 import { AddEventModal, EventType } from '@/components/schedule/AddEventModal';
+import { ClassDetailModal } from '@/components/schedule/ClassDetailModal';
 import { QuickAddModal, QuickAddType } from '@/components/schedule/QuickAddModal';
 import { SubjectDetailModal } from '@/components/schedule/SubjectDetailModal';
 import { WeeklyScheduleGrid } from '@/components/schedule/WeeklyScheduleGrid';
@@ -24,8 +25,10 @@ import {
     Text,
     View
 } from 'react-native';
+import { CopilotStep, walkthroughable } from 'react-native-copilot';
 import Animated, { FadeInRight, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+const WalkthroughableView = walkthroughable(View);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // ============================================
@@ -105,13 +108,14 @@ function SubjectCard({
 
 export default function SubjectsScreen() {
     const { subjects, loading, fetchSubjects, deleteSubject } = useSubjects();
-    const { schedule, loading: scheduleLoading, fetchSchedule, getScheduleByDay } = useSchedule();
+    const { schedule, loading: scheduleLoading, fetchSchedule, getScheduleByDay, deleteClassSession } = useSchedule();
     const { showAlert } = useAlert();
 
     const [subjectModalVisible, setSubjectModalVisible] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
     const [selectedSession, setSelectedSession] = useState<ClassSessionWithSubject | null>(null);
     const [classModalVisible, setClassModalVisible] = useState(false);
+    const [classDetailVisible, setClassDetailVisible] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<'disciplinas' | 'horario'>('disciplinas');
 
@@ -177,14 +181,46 @@ export default function SubjectsScreen() {
 
     const handleSessionPress = (session: ClassSessionWithSubject) => {
         setSelectedSession(session);
-        setClassModalVisible(true);
+        setClassDetailVisible(true);
+    };
+
+    const handleEditClass = () => {
+        setClassDetailVisible(false);
+        // Small delay to allow modal to close
+        setTimeout(() => setClassModalVisible(true), 100);
+    };
+
+    const handleDeleteClass = () => {
+        if (!selectedSession) return;
+
+        showAlert({
+            title: 'Eliminar Aula',
+            message: 'Tens a certeza que queres eliminar esta aula?',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await deleteClassSession(selectedSession.id);
+                        setClassDetailVisible(false);
+                        setSelectedSession(null);
+                        handleRefresh();
+                    }
+                }
+            ]
+        });
     };
 
     return (
         <View style={styles.container}>
             {/* ========== HEADER ========== */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Disciplinas</Text>
+                <CopilotStep text="As tuas disciplinas e materiais de estudo! Adiciona novas ou gere as existentes! 📚" order={8} name="subjects_view">
+                    <WalkthroughableView>
+                        <Text style={styles.headerTitle}>Disciplinas</Text>
+                    </WalkthroughableView>
+                </CopilotStep>
                 <Pressable style={styles.addButton} onPress={handleAddNew}>
                     <Ionicons name="add" size={24} color="#FFF" />
                 </Pressable>
@@ -267,6 +303,14 @@ export default function SubjectsScreen() {
                 onClose={() => { setSubjectModalVisible(false); setSelectedSubject(null); }}
                 subject={selectedSubject}
                 onSuccess={handleRefresh}
+            />
+
+            <ClassDetailModal
+                visible={classDetailVisible}
+                onClose={() => setClassDetailVisible(false)}
+                classSession={selectedSession}
+                onEdit={handleEditClass}
+                onDelete={handleDeleteClass}
             />
 
             <AddClassModal

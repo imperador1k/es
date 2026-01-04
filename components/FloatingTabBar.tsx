@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, usePathname } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { CopilotStep, walkthroughable } from 'react-native-copilot';
 import Animated, {
     Easing,
     useAnimatedStyle,
@@ -20,6 +21,8 @@ import Animated, {
     withTiming
 } from 'react-native-reanimated';
 import { QuickActionsModal } from './QuickActionsModal';
+
+const WalkthroughableView = walkthroughable(View);
 
 // ============================================
 // TYPES
@@ -193,6 +196,10 @@ function TabItemButton({
 // MAIN COMPONENT
 // ============================================
 
+
+
+// ... (existing helper functions)
+
 export function FloatingTabBar() {
     const pathname = usePathname();
     const [quickActionsVisible, setQuickActionsVisible] = useState(false);
@@ -232,21 +239,36 @@ export function FloatingTabBar() {
                             />
                         </View>
 
-                        {/* Center Button */}
-                        <CenterButton onPress={() => setQuickActionsVisible(true)} />
+                        {/* Center Button (Step 2) */}
+                        <CopilotStep text="Toca aqui para criar tarefas, eventos ou usar o AI Tutor! 🚀" order={2} name="fab_add">
+                            <WalkthroughableView style={styles.centerButtonWrapper}>
+                                <CenterButton onPress={() => setQuickActionsVisible(true)} />
+                            </WalkthroughableView>
+                        </CopilotStep>
 
                         {/* Right Tabs */}
                         <View style={styles.tabsSection}>
-                            <TabItemButton
-                                tab={TABS[2]}
-                                isActive={isActive(TABS[2].route)}
-                                onPress={() => handleTabPress(TABS[2].route)}
-                            />
-                            <TabItemButton
-                                tab={TABS[3]}
-                                isActive={isActive(TABS[3].route)}
-                                onPress={() => handleTabPress(TABS[3].route)}
-                            />
+                            {/* Messages (Step 3) */}
+                            <CopilotStep text="Aqui entras nas Salas de Estudo e falas com a tua Squad! 💬" order={3} name="chat_tab">
+                                <WalkthroughableView>
+                                    <TabItemButton
+                                        tab={TABS[2]}
+                                        isActive={isActive(TABS[2].route)}
+                                        onPress={() => handleTabPress(TABS[2].route)}
+                                    />
+                                </WalkthroughableView>
+                            </CopilotStep>
+
+                            {/* Profile (Step 4) */}
+                            <CopilotStep text="O teu perfil! Vê XP, Badges e sobe no Leaderboard! 🏆" order={4} name="profile_tab">
+                                <WalkthroughableView>
+                                    <TabItemButton
+                                        tab={TABS[3]}
+                                        isActive={isActive(TABS[3].route)}
+                                        onPress={() => handleTabPress(TABS[3].route)}
+                                    />
+                                </WalkthroughableView>
+                            </CopilotStep>
                         </View>
                     </View>
 

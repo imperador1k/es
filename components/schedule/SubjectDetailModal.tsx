@@ -4,7 +4,7 @@
  */
 
 import { SUBJECT_COLORS, useSchedule, useSubjects } from '@/hooks/useSubjects';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { CLASS_TYPE_NAMES, ClassType, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
@@ -234,7 +234,10 @@ export function SubjectDetailModal({
     const { schedule, addClassSession, updateClassSession, deleteClassSession, fetchSchedule } = useSchedule();
     const { showAlert } = useAlert();
 
-    const isEditing = !!subject;
+    // Mode state: 'view' (default if subject exists) or 'edit' (default if new)
+    const [mode, setMode] = useState<'view' | 'edit'>('view');
+    const isEditing = mode === 'edit';
+    const isNew = !subject;
 
     // Subject fields
     const [name, setName] = useState('');
@@ -252,42 +255,47 @@ export function SubjectDetailModal({
 
     // Load data when modal opens
     useEffect(() => {
-        if (visible && subject) {
-            setName(subject.name);
-            setTeacherName(subject.teacher_name || '');
-            setRoom(subject.room || '');
-            setColor(subject.color);
+        if (visible) {
+            if (subject) {
+                setMode('view'); // Default to view for existing subjects
+                setName(subject.name);
+                setTeacherName(subject.teacher_name || '');
+                setRoom(subject.room || '');
+                setColor(subject.color);
 
-            // Load existing slots for this subject
-            const subjectSlots = schedule
-                .filter((s) => s.subject_id === subject.id)
-                .map((s) => ({
-                    id: s.id,
-                    day_of_week: s.day_of_week,
-                    start_time: s.start_time.slice(0, 5),
-                    end_time: s.end_time.slice(0, 5),
-                    type: s.type,
-                    room: s.room || undefined,
-                }));
-            setSlots(subjectSlots);
-            setSlotsToDelete([]);
-        } else if (visible) {
-            // New subject
-            setName('');
-            setTeacherName('');
-            setRoom('');
-            setColor(SUBJECT_COLORS[0]);
-            setSlots([]);
-            setSlotsToDelete([]);
+                // Load existing slots for this subject
+                const subjectSlots = schedule
+                    .filter((s) => s.subject_id === subject.id)
+                    .map((s) => ({
+                        id: s.id,
+                        day_of_week: s.day_of_week,
+                        start_time: s.start_time.slice(0, 5),
+                        end_time: s.end_time.slice(0, 5),
+                        type: s.type,
+                        room: s.room || undefined,
+                    }));
+                setSlots(subjectSlots);
+                setSlotsToDelete([]);
+            } else {
+                setMode('edit'); // Default to edit for new subjects
+                setName('');
+                setTeacherName('');
+                setRoom('');
+                setColor(SUBJECT_COLORS[0]);
+                setSlots([]);
+                setSlotsToDelete([]);
+            }
+            setEditingSlot(undefined);
+            setIsAddingSlot(false);
         }
-        setEditingSlot(undefined);
-        setIsAddingSlot(false);
     }, [visible, subject, schedule]);
 
     const handleClose = () => {
         setEditingSlot(undefined);
         setIsAddingSlot(false);
         onClose();
+        // Reset mode slightly after to avoid jump during close animation
+        setTimeout(() => setMode('view'), 300);
     };
 
     const handleAddSlot = (slot: ScheduleSlot) => {
@@ -359,7 +367,7 @@ export function SubjectDetailModal({
             let subjectId = subject?.id;
 
             // Save subject
-            if (isEditing && subject) {
+            if (subject) {
                 await updateSubject(subject.id, {
                     name: name.trim(),
                     teacher_name: teacherName.trim() || null,
@@ -422,6 +430,181 @@ export function SubjectDetailModal({
         }
     };
 
+    // --- VIEW MODE RENDER ---
+    const renderViewMode = () => (
+        <View style={styles.viewContent}>
+            {/* Subject Header Card */}
+            <View style={[styles.viewHeaderCard, { borderLeftColor: color }]}>
+                <View style={[styles.viewSubjectIcon, { backgroundColor: `${color}20` }]}>
+                    <Ionicons name="book" size={24} color={color} />
+                </View>
+                <View style={styles.viewHeaderText}>
+                    <Text style={styles.viewSubjectName}>{name}</Text>
+                    {teacherName ? (
+                        <View style={styles.viewDetailRow}>
+                            <Ionicons name="person-outline" size={14} color={COLORS.text.secondary} />
+                            <Text style={styles.viewDetailText}>{teacherName}</Text>
+                        </View>
+                    ) : null}
+                    {room ? (
+                        <View style={styles.viewDetailRow}>
+                            <Ionicons name="location-outline" size={14} color={COLORS.text.secondary} />
+                            <Text style={styles.viewDetailText}>{room}</Text>
+                        </View>
+                    ) : null}
+                </View>
+            </View>
+
+            {/* Schedule List */}
+            <Text style={styles.viewSectionTitle}>Horário Semanal</Text>
+            {slots.length === 0 ? (
+                <View style={styles.viewEmptyState}>
+                    <Text style={styles.viewEmptyText}>Sem aulas definidas.</Text>
+                </View>
+            ) : (
+                <View style={styles.viewSlotsList}>
+                    {slots
+                        .sort((a, b) => {
+                            if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
+                            return a.start_time.localeCompare(b.start_time);
+                        })
+                        .map((slot, index) => (
+                            <View key={index} style={styles.viewSlotRow}>
+                                <View style={styles.viewSlotDay}>
+                                    <Text style={styles.viewSlotDayText}>{DAY_SHORT[slot.day_of_week]}</Text>
+                                </View>
+                                <View style={styles.viewSlotInfo}>
+                                    <Text style={styles.viewSlotTime}>{slot.start_time} - {slot.end_time}</Text>
+                                    <View style={styles.viewSlotMeta}>
+                                        <View style={styles.viewSlotType}>
+                                            <Text style={styles.viewSlotTypeText}>{slot.type}</Text>
+                                        </View>
+                                        {slot.room && (
+                                            <Text style={styles.viewSlotRoom}>{slot.room}</Text>
+                                        )}
+                                    </View>
+                                </View>
+                            </View>
+                        ))}
+                </View>
+            )}
+        </View>
+    );
+
+    // --- EDIT MODE RENDER (Original Form) ---
+    const renderEditMode = () => (
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* ========== SUBJECT INFO ========== */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>📚 Informações</Text>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nome *</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={name}
+                        onChangeText={setName}
+                        placeholder="Ex: Matemática"
+                        placeholderTextColor={COLORS.text.tertiary}
+                        autoFocus={isNew}
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Professor</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={teacherName}
+                        onChangeText={setTeacherName}
+                        placeholder="Ex: Prof. João Silva"
+                        placeholderTextColor={COLORS.text.tertiary}
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Sala padrão</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={room}
+                        onChangeText={setRoom}
+                        placeholder="Ex: B204"
+                        placeholderTextColor={COLORS.text.tertiary}
+                    />
+                </View>
+
+                {/* Color Picker */}
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Cor</Text>
+                    <View style={styles.colorPicker}>
+                        {SUBJECT_COLORS.map((c) => (
+                            <Pressable
+                                key={c}
+                                style={[styles.colorOption, { backgroundColor: c }, color === c && styles.colorOptionSelected]}
+                                onPress={() => setColor(c)}
+                            >
+                                {color === c && <Ionicons name="checkmark" size={16} color="#FFF" />}
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
+            </View>
+
+            {/* ========== SCHEDULE SLOTS ========== */}
+            <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>📅 Horários</Text>
+                    {!isAddingSlot && !editingSlot && (
+                        <Pressable style={styles.addSlotBtn} onPress={() => setIsAddingSlot(true)}>
+                            <Ionicons name="add" size={18} color="#FFF" />
+                            <Text style={styles.addSlotText}>Aula</Text>
+                        </Pressable>
+                    )}
+                </View>
+
+                {slots.length === 0 && !isAddingSlot && (
+                    <View style={styles.emptySlots}>
+                        <Ionicons name="calendar-outline" size={32} color={COLORS.text.tertiary} />
+                        <Text style={styles.emptySlotsText}>Nenhum horário definido</Text>
+                        <Text style={styles.emptySlotsHint}>Adiciona os dias e horas das aulas</Text>
+                    </View>
+                )}
+
+                {slots.map((slot, index) => (
+                    <ScheduleSlotCard
+                        key={slot.id || `new-${index}`}
+                        slot={slot}
+                        index={index}
+                        subjectColor={color}
+                        onEdit={() => setEditingSlot(slot)}
+                        onDelete={() => handleDeleteSlot(slot)}
+                    />
+                ))}
+
+                {(isAddingSlot || editingSlot) && (
+                    <EditSlotInline
+                        slot={editingSlot}
+                        onSave={handleAddSlot}
+                        onCancel={() => {
+                            setIsAddingSlot(false);
+                            setEditingSlot(undefined);
+                        }}
+                    />
+                )}
+            </View>
+
+            {/* ========== DELETE BUTTON ========== */}
+            {/* Show delete only if editing an existing subject */}
+            {(!isNew) && (
+                <Pressable style={styles.deleteSubjectBtn} onPress={handleDeleteSubject}>
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    <Text style={styles.deleteSubjectText}>Eliminar Disciplina</Text>
+                </Pressable>
+            )}
+
+            <View style={{ height: 100 }} />
+        </ScrollView>
+    );
+
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
             <View style={styles.container}>
@@ -429,127 +612,30 @@ export function SubjectDetailModal({
                     {/* Header */}
                     <View style={styles.header}>
                         <Pressable onPress={handleClose}>
-                            <Text style={styles.cancelText}>Cancelar</Text>
+                            <Text style={styles.cancelText}>{isEditing ? 'Cancelar' : 'Fechar'}</Text>
                         </Pressable>
-                        <Text style={styles.title}>{isEditing ? 'Editar' : 'Nova'} Disciplina</Text>
-                        <Pressable onPress={handleSave} disabled={saving}>
-                            {saving ? (
-                                <ActivityIndicator size="small" color="#6366F1" />
-                            ) : (
-                                <Text style={styles.saveText}>Guardar</Text>
-                            )}
-                        </Pressable>
-                    </View>
+                        <Text style={styles.title}>
+                            {isEditing ? (isNew ? 'Nova Disciplina' : 'Editar Disciplina') : 'Detalhes'}
+                        </Text>
 
-                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                        {/* ========== SUBJECT INFO ========== */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>📚 Informações</Text>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Nome *</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={name}
-                                    onChangeText={setName}
-                                    placeholder="Ex: Matemática"
-                                    placeholderTextColor={COLORS.text.tertiary}
-                                    autoFocus={!isEditing}
-                                />
-                            </View>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Professor</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={teacherName}
-                                    onChangeText={setTeacherName}
-                                    placeholder="Ex: Prof. João Silva"
-                                    placeholderTextColor={COLORS.text.tertiary}
-                                />
-                            </View>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Sala padrão</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={room}
-                                    onChangeText={setRoom}
-                                    placeholder="Ex: B204"
-                                    placeholderTextColor={COLORS.text.tertiary}
-                                />
-                            </View>
-
-                            {/* Color Picker */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Cor</Text>
-                                <View style={styles.colorPicker}>
-                                    {SUBJECT_COLORS.map((c) => (
-                                        <Pressable
-                                            key={c}
-                                            style={[styles.colorOption, { backgroundColor: c }, color === c && styles.colorOptionSelected]}
-                                            onPress={() => setColor(c)}
-                                        >
-                                            {color === c && <Ionicons name="checkmark" size={16} color="#FFF" />}
-                                        </Pressable>
-                                    ))}
-                                </View>
-                            </View>
-                        </View>
-
-                        {/* ========== SCHEDULE SLOTS ========== */}
-                        <View style={styles.section}>
-                            <View style={styles.sectionHeader}>
-                                <Text style={styles.sectionTitle}>📅 Horários</Text>
-                                {!isAddingSlot && !editingSlot && (
-                                    <Pressable style={styles.addSlotBtn} onPress={() => setIsAddingSlot(true)}>
-                                        <Ionicons name="add" size={18} color="#FFF" />
-                                        <Text style={styles.addSlotText}>Aula</Text>
-                                    </Pressable>
+                        {/* Right Action: Edit (in View mode) or Save (in Edit mode) */}
+                        {isEditing ? (
+                            <Pressable onPress={handleSave} disabled={saving}>
+                                {saving ? (
+                                    <ActivityIndicator size="small" color="#6366F1" />
+                                ) : (
+                                    <Text style={styles.saveText}>Guardar</Text>
                                 )}
-                            </View>
-
-                            {slots.length === 0 && !isAddingSlot && (
-                                <View style={styles.emptySlots}>
-                                    <Ionicons name="calendar-outline" size={32} color={COLORS.text.tertiary} />
-                                    <Text style={styles.emptySlotsText}>Nenhum horário definido</Text>
-                                    <Text style={styles.emptySlotsHint}>Adiciona os dias e horas das aulas</Text>
-                                </View>
-                            )}
-
-                            {slots.map((slot, index) => (
-                                <ScheduleSlotCard
-                                    key={slot.id || `new-${index}`}
-                                    slot={slot}
-                                    index={index}
-                                    subjectColor={color}
-                                    onEdit={() => setEditingSlot(slot)}
-                                    onDelete={() => handleDeleteSlot(slot)}
-                                />
-                            ))}
-
-                            {(isAddingSlot || editingSlot) && (
-                                <EditSlotInline
-                                    slot={editingSlot}
-                                    onSave={handleAddSlot}
-                                    onCancel={() => {
-                                        setIsAddingSlot(false);
-                                        setEditingSlot(undefined);
-                                    }}
-                                />
-                            )}
-                        </View>
-
-                        {/* ========== DELETE BUTTON ========== */}
-                        {isEditing && (
-                            <Pressable style={styles.deleteSubjectBtn} onPress={handleDeleteSubject}>
-                                <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                                <Text style={styles.deleteSubjectText}>Eliminar Disciplina</Text>
+                            </Pressable>
+                        ) : (
+                            <Pressable onPress={() => setMode('edit')}>
+                                <Text style={styles.saveText}>Editar</Text>
                             </Pressable>
                         )}
+                    </View>
 
-                        <View style={{ height: 100 }} />
-                    </ScrollView>
+                    {/* Content Switch */}
+                    {isEditing ? renderEditMode() : renderViewMode()}
                 </KeyboardAvoidingView>
             </View>
         </Modal>
@@ -879,5 +965,117 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.base,
         fontWeight: TYPOGRAPHY.weight.medium,
         color: '#EF4444',
+    },
+
+    // View Mode Styles
+    viewContent: {
+        flex: 1,
+        padding: SPACING.lg,
+    },
+    viewHeaderCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.lg,
+        borderLeftWidth: 6,
+        marginBottom: SPACING.xl,
+        gap: SPACING.md,
+        ...SHADOWS.sm,
+    },
+    viewSubjectIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    viewHeaderText: {
+        flex: 1,
+    },
+    viewSubjectName: {
+        fontSize: TYPOGRAPHY.size.xl,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: 4,
+    },
+    viewDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 2,
+    },
+    viewDetailText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+    },
+    viewSectionTitle: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.md,
+    },
+    viewEmptyState: {
+        padding: SPACING.xl,
+        alignItems: 'center',
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.lg,
+    },
+    viewEmptyText: {
+        color: COLORS.text.secondary,
+        fontSize: TYPOGRAPHY.size.base,
+    },
+    viewSlotsList: {
+        gap: SPACING.sm,
+    },
+    viewSlotRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        gap: SPACING.md,
+    },
+    viewSlotDay: {
+        backgroundColor: COLORS.background,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+        borderRadius: RADIUS.md,
+        minWidth: 50,
+        alignItems: 'center',
+    },
+    viewSlotDayText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.secondary,
+    },
+    viewSlotInfo: {
+        flex: 1,
+    },
+    viewSlotTime: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
+        marginBottom: 2,
+    },
+    viewSlotMeta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    viewSlotType: {
+        backgroundColor: COLORS.surfaceElevated,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    viewSlotTypeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: COLORS.text.tertiary,
+    },
+    viewSlotRoom: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
     },
 });

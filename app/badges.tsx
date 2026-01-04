@@ -6,7 +6,7 @@
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
-import { Badge, checkAndAwardBadges, getAllBadges, getUserBadges, UserBadge } from '@/services/badgeService';
+import { Badge, checkAndAwardBadges, getAllBadges, getUserBadges, toggleBadgeEquip, UserBadge } from '@/services/badgeService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -24,7 +24,10 @@ import {
     View
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
+import { CopilotStep, walkthroughable } from 'react-native-copilot';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const WalkthroughableView = walkthroughable(View);
 
 // ============================================
 // TYPES & CONSTANTS
@@ -33,6 +36,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 interface DisplayBadge extends Badge {
     unlocked: boolean;
     unlocked_at?: string;
+    is_equipped?: boolean;
 }
 
 const { width } = Dimensions.get('window');
@@ -142,6 +146,7 @@ export default function BadgesScreen() {
         ...badge,
         unlocked: ownedIds.has(badge.id),
         unlocked_at: userBadges.find((ub) => ub.badge_id === badge.id)?.unlocked_at,
+        is_equipped: userBadges.find((ub) => ub.badge_id === badge.id)?.is_equipped,
     }));
 
     const sortedBadges = [...displayBadges].sort((a, b) => {
@@ -206,12 +211,14 @@ export default function BadgesScreen() {
                         <Pressable style={styles.backButton} onPress={() => router.back()}>
                             <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
                         </Pressable>
-                        <View style={styles.headerContent}>
-                            <Text style={styles.headerTitle}>🏆 Conquistas</Text>
-                            <Text style={styles.headerSubtitle}>
-                                {unlockedCount} de {totalCount} desbloqueadas
-                            </Text>
-                        </View>
+                        <CopilotStep text="As tuas conquistas! Desbloqueia badges ao completar desafios e mostra no perfil! 🎖️" order={12} name="badges_view">
+                            <WalkthroughableView style={styles.headerContent}>
+                                <Text style={styles.headerTitle}>🏆 Conquistas</Text>
+                                <Text style={styles.headerSubtitle}>
+                                    {unlockedCount} de {totalCount} desbloqueadas
+                                </Text>
+                            </WalkthroughableView>
+                        </CopilotStep>
                         <View style={styles.headerBadge}>
                             <Text style={styles.headerBadgeText}>{Math.round(progressPercent)}%</Text>
                         </View>
@@ -265,7 +272,13 @@ export default function BadgesScreen() {
                 <Modal visible={!!selectedBadge} transparent animationType="fade" onRequestClose={() => setSelectedBadge(null)}>
                     <Pressable style={styles.modalOverlay} onPress={() => setSelectedBadge(null)}>
                         <Animated.View style={[styles.modalContent, { transform: [{ scale: modalScale }] }]}>
-                            {selectedBadge && <BadgeDetail badge={selectedBadge} onClose={() => setSelectedBadge(null)} />}
+                            {selectedBadge && (
+                                <BadgeDetail
+                                    badge={selectedBadge}
+                                    onClose={() => setSelectedBadge(null)}
+                                    onUpdate={() => { loadBadges(); setSelectedBadge(null); }}
+                                />
+                            )}
                         </Animated.View>
                     </Pressable>
                 </Modal>
@@ -315,6 +328,11 @@ function BadgeCard({ badge, onPress }: { badge: DisplayBadge; onPress: () => voi
                 <View style={[styles.badgeIconWrap, !badge.unlocked && styles.badgeIconLocked]}>
                     {badge.unlocked ? (
                         <LinearGradient colors={rarity.gradient} style={styles.badgeIconGradient}>
+                            {badge.is_equipped && (
+                                <View style={styles.equippedBadgeOverlay}>
+                                    <Ionicons name="checkmark-circle" size={16} color="#FFF" />
+                                </View>
+                            )}
                             <Text style={styles.badgeEmoji}>{badge.icon}</Text>
                         </LinearGradient>
                     ) : (
@@ -347,8 +365,25 @@ function BadgeCard({ badge, onPress }: { badge: DisplayBadge; onPress: () => voi
 // BADGE DETAIL COMPONENT
 // ============================================
 
-function BadgeDetail({ badge, onClose }: { badge: DisplayBadge; onClose: () => void }) {
+function BadgeDetail({ badge, onClose, onUpdate }: { badge: DisplayBadge; onClose: () => void; onUpdate: () => void }) {
     const rarity = RARITY_CONFIG[badge.rarity];
+    const { showAlert } = useAlert();
+    const [equipping, setEquipping] = useState(false);
+
+    const handleEquipToggle = async () => {
+        setEquipping(true);
+        const result = await toggleBadgeEquip(badge.id);
+        setEquipping(false);
+
+        if (result.success) {
+            onUpdate(); // Reload badges to update UI
+        } else {
+            showAlert({
+                title: 'Erro',
+                message: result.error || 'Não foi possível equipar a medalha.',
+            });
+        }
+    };
 
     return (
         <View style={styles.detailContainer}>
@@ -405,6 +440,26 @@ function BadgeDetail({ badge, onClose }: { badge: DisplayBadge; onClose: () => v
                 </View>
             </View>
 
+            {/* Equip Action */}
+            {badge.unlocked && (
+                <Pressable
+                    style={[styles.actionButton, badge.is_equipped ? styles.actionButtonUnequip : styles.actionButtonEquip]}
+                    onPress={handleEquipToggle}
+                    disabled={equipping}
+                >
+                    {equipping ? (
+                        <ActivityIndicator color={badge.is_equipped ? COLORS.error : '#FFF'} />
+                    ) : (
+                        <>
+                            <Ionicons name={badge.is_equipped ? 'close-circle' : 'shield-checkmark'} size={20} color={badge.is_equipped ? COLORS.error : '#FFF'} />
+                            <Text style={[styles.actionButtonText, badge.is_equipped && { color: COLORS.error }]}>
+                                {badge.is_equipped ? 'Desequipar' : 'Equipar'}
+                            </Text>
+                        </>
+                    )}
+                </Pressable>
+            )}
+
             {/* Close Button */}
             <Pressable onPress={onClose}>
                 <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.closeButton}>
@@ -457,6 +512,7 @@ const styles = StyleSheet.create({
     badgeCard: { width: CARD_SIZE, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['2xl'], padding: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', position: 'relative', overflow: 'hidden' },
     badgeGlow: { position: 'absolute', top: -20, left: -20, right: -20, bottom: -20, borderRadius: 100 },
     badgeIconWrap: { marginBottom: SPACING.xs },
+    equippedBadgeOverlay: { position: 'absolute', top: 0, right: 0, zIndex: 10, backgroundColor: COLORS.success, borderRadius: 8 },
     badgeIconLocked: { opacity: 0.5 },
     badgeIconGradient: { width: CARD_SIZE - 32, height: CARD_SIZE - 32, borderRadius: (CARD_SIZE - 32) / 2, alignItems: 'center', justifyContent: 'center' },
     badgeIconGradientLocked: { width: CARD_SIZE - 32, height: CARD_SIZE - 32, borderRadius: (CARD_SIZE - 32) / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceMuted, position: 'relative' },
@@ -491,6 +547,12 @@ const styles = StyleSheet.create({
     statusContent: { flex: 1 },
     statusTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
     statusSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
-    closeButton: { paddingHorizontal: SPACING['3xl'], paddingVertical: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.xl },
+    closeButton: { paddingHorizontal: SPACING['3xl'], paddingVertical: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.md },
     closeButtonText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFF' },
+
+    // Actions
+    actionButton: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, width: '100%', padding: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.md, justifyContent: 'center', borderWidth: 1 },
+    actionButtonEquip: { backgroundColor: COLORS.accent.primary, borderColor: COLORS.accent.primary },
+    actionButtonUnequip: { backgroundColor: 'transparent', borderColor: COLORS.error },
+    actionButtonText: { fontSize: TYPOGRAPHY.size.md, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
 });

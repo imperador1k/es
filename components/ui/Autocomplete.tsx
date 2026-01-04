@@ -1,5 +1,6 @@
-import { borderRadius, colors, shadows, spacing, typography } from '@/lib/theme';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
@@ -35,6 +36,7 @@ interface AutocompleteProps {
  * Componente Autocomplete para pesquisa em grandes listas
  * (Escolas, Universidades, Cursos)
  * AGORA: Carrega resultados iniciais ao abrir!
+ * ATUALIZADO: Tema Premium
  */
 export function Autocomplete({
     label,
@@ -112,7 +114,7 @@ export function Autocomplete({
 
     return (
         <View style={styles.container}>
-            <Text style={styles.label}>{label}</Text>
+            {label ? <Text style={styles.label}>{label}</Text> : null}
 
             <Pressable
                 style={[
@@ -134,13 +136,13 @@ export function Autocomplete({
                                 </Text>
                             )}
                         </View>
-                        <Pressable onPress={handleClear} hitSlop={10}>
-                            <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
+                        <Pressable onPress={(e) => { e.stopPropagation(); handleClear(); }} hitSlop={10}>
+                            <Ionicons name="close-circle" size={20} color={COLORS.text.tertiary} />
                         </Pressable>
                     </View>
                 ) : (
                     <View style={styles.placeholderContainer}>
-                        <Ionicons name="search" size={18} color={colors.text.tertiary} />
+                        <Ionicons name="search" size={18} color={COLORS.text.tertiary} />
                         <Text style={styles.placeholder}>{placeholder}</Text>
                     </View>
                 )}
@@ -155,67 +157,81 @@ export function Autocomplete({
                 presentationStyle="pageSheet"
                 onRequestClose={() => setModalVisible(false)}
             >
-                <SafeAreaView style={styles.modalContainer}>
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                        style={{ flex: 1 }}
-                    >
-                        {/* Header */}
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>{label}</Text>
-                            <Pressable onPress={() => setModalVisible(false)}>
-                                <Ionicons name="close" size={24} color={colors.text.primary} />
-                            </Pressable>
-                        </View>
+                <View style={styles.modalContainer}>
+                    <LinearGradient
+                        colors={['#0F1115', '#161922', '#0A0B0E']}
+                        style={StyleSheet.absoluteFill}
+                    />
 
-                        {/* Search Input */}
-                        <View style={styles.searchContainer}>
-                            <Ionicons name="search" size={20} color={colors.text.tertiary} />
-                            <TextInput
-                                style={styles.searchInput}
-                                placeholder="Escreve para pesquisar..."
-                                placeholderTextColor={colors.text.tertiary}
-                                value={query}
-                                onChangeText={handleSearch}
-                                autoFocus
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                            {loading && <ActivityIndicator size="small" color={colors.accent.primary} />}
-                        </View>
-
-                        {/* Results */}
-                        <FlatList
-                            data={results}
-                            keyExtractor={(item) => item.id}
-                            renderItem={({ item }) => (
+                    <SafeAreaView style={{ flex: 1 }}>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                            style={{ flex: 1 }}
+                        >
+                            {/* Header */}
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>{label || 'Pesquisar'}</Text>
                                 <Pressable
-                                    style={styles.resultItem}
-                                    onPress={() => handleSelect(item)}
+                                    onPress={() => setModalVisible(false)}
+                                    style={styles.closeButton}
                                 >
-                                    <Text style={styles.resultLabel}>{item.label}</Text>
-                                    {item.sublabel && (
-                                        <Text style={styles.resultSublabel}>{item.sublabel}</Text>
-                                    )}
+                                    <Ionicons name="close" size={20} color={COLORS.text.primary} />
                                 </Pressable>
-                            )}
-                            ListEmptyComponent={
-                                loading ? null : (
-                                    <View style={styles.emptyContainer}>
-                                        <Ionicons name="search-outline" size={48} color={colors.text.tertiary} />
-                                        <Text style={styles.emptyText}>
-                                            {query.length > 0
-                                                ? 'Nenhum resultado encontrado'
-                                                : 'Nenhum item disponível'}
-                                        </Text>
-                                    </View>
-                                )
-                            }
-                            contentContainerStyle={styles.resultsList}
-                            keyboardShouldPersistTaps="handled"
-                        />
-                    </KeyboardAvoidingView>
-                </SafeAreaView>
+                            </View>
+
+                            {/* Search Input */}
+                            <View style={styles.searchContainer}>
+                                <Ionicons name="search" size={20} color={COLORS.text.tertiary} />
+                                <TextInput
+                                    style={styles.searchInput}
+                                    placeholder="Escreve para pesquisar..."
+                                    placeholderTextColor={COLORS.text.tertiary}
+                                    value={query}
+                                    onChangeText={handleSearch}
+                                    autoFocus
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                                {loading && <ActivityIndicator size="small" color={COLORS.accent.primary} />}
+                            </View>
+
+                            {/* Results */}
+                            <FlatList
+                                data={results}
+                                keyExtractor={(item) => item.id}
+                                renderItem={({ item }) => (
+                                    <Pressable
+                                        style={({ pressed }) => [
+                                            styles.resultItem,
+                                            pressed && styles.resultItemPressed
+                                        ]}
+                                        onPress={() => handleSelect(item)}
+                                    >
+                                        <Text style={styles.resultLabel}>{item.label}</Text>
+                                        {item.sublabel && (
+                                            <Text style={styles.resultSublabel}>{item.sublabel}</Text>
+                                        )}
+                                    </Pressable>
+                                )}
+                                ListEmptyComponent={
+                                    loading ? null : (
+                                        <View style={styles.emptyContainer}>
+                                            <Ionicons name="search-outline" size={48} color={COLORS.text.tertiary} />
+                                            <Text style={styles.emptyText}>
+                                                {query.length > 0
+                                                    ? 'Nenhum resultado encontrado'
+                                                    : 'Nenhum item disponível'}
+                                            </Text>
+                                        </View>
+                                    )
+                                }
+                                contentContainerStyle={styles.resultsList}
+                                keyboardShouldPersistTaps="handled"
+                                ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+                            />
+                        </KeyboardAvoidingView>
+                    </SafeAreaView>
+                </View>
             </Modal>
         </View>
     );
@@ -223,26 +239,28 @@ export function Autocomplete({
 
 const styles = StyleSheet.create({
     container: {
-        marginBottom: spacing.lg,
+        marginBottom: SPACING.lg,
     },
     label: {
-        fontSize: typography.size.sm,
-        fontWeight: typography.weight.medium,
-        color: colors.text.secondary,
-        marginBottom: spacing.sm,
+        fontSize: TYPOGRAPHY.size.sm,
+        fontFamily: TYPOGRAPHY.family.medium,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.sm,
+        marginLeft: SPACING.xs,
     },
     selector: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.lg,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.lg,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
         borderWidth: 1,
-        borderColor: colors.divider,
+        borderColor: COLORS.surfaceElevated,
         minHeight: 56,
         justifyContent: 'center',
     },
     selectorError: {
-        borderColor: colors.danger.primary,
+        borderColor: COLORS.error,
+        borderWidth: 1,
     },
     selectorDisabled: {
         opacity: 0.5,
@@ -254,16 +272,16 @@ const styles = StyleSheet.create({
     },
     selectedTextContainer: {
         flex: 1,
-        marginRight: spacing.sm,
+        marginRight: SPACING.sm,
     },
     selectedLabel: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        fontWeight: typography.weight.medium,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        fontFamily: TYPOGRAPHY.family.medium,
     },
     selectedSublabel: {
-        fontSize: typography.size.xs,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
     placeholderContainer: {
@@ -271,81 +289,100 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     placeholder: {
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
-        marginLeft: spacing.sm,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
+        marginLeft: SPACING.sm,
+        fontFamily: TYPOGRAPHY.family.regular,
     },
     errorText: {
-        fontSize: typography.size.xs,
-        color: colors.danger.primary,
-        marginTop: spacing.xs,
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.error,
+        marginTop: SPACING.xs,
+        marginLeft: SPACING.xs,
     },
 
     // Modal
     modalContainer: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: COLORS.background,
     },
     modalHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
         borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        borderBottomColor: COLORS.surfaceMuted,
     },
     modalTitle: {
-        fontSize: typography.size.lg,
-        fontWeight: typography.weight.bold,
-        color: colors.text.primary,
+        fontSize: TYPOGRAPHY.size.lg,
+        fontFamily: TYPOGRAPHY.family.bold,
+        color: COLORS.text.primary,
+    },
+    closeButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: COLORS.surfaceElevated,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     searchContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface,
-        marginHorizontal: spacing.lg,
-        marginVertical: spacing.md,
-        paddingHorizontal: spacing.md,
-        borderRadius: borderRadius.lg,
-        ...shadows.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        marginHorizontal: SPACING.lg,
+        marginVertical: SPACING.md,
+        paddingHorizontal: SPACING.md,
+        borderRadius: RADIUS.lg,
+        borderWidth: 1,
+        borderColor: COLORS.surfaceMuted,
     },
     searchInput: {
         flex: 1,
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        paddingVertical: spacing.md,
-        marginLeft: spacing.sm,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        paddingVertical: SPACING.md,
+        marginLeft: SPACING.sm,
+        height: 50,
+        fontFamily: TYPOGRAPHY.family.medium,
     },
     resultsList: {
-        paddingHorizontal: spacing.lg,
-        paddingBottom: spacing.xl,
+        paddingHorizontal: SPACING.lg,
+        paddingBottom: SPACING.xl,
     },
     resultItem: {
-        backgroundColor: colors.surface,
-        borderRadius: borderRadius.md,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        borderWidth: 1,
+        borderColor: COLORS.surfaceMuted,
+    },
+    resultItemPressed: {
+        backgroundColor: COLORS.surface,
+        borderColor: COLORS.accent.primary,
     },
     resultLabel: {
-        fontSize: typography.size.base,
-        color: colors.text.primary,
-        fontWeight: typography.weight.medium,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        fontFamily: TYPOGRAPHY.family.medium,
     },
     resultSublabel: {
-        fontSize: typography.size.sm,
-        color: colors.text.tertiary,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
         marginTop: 2,
     },
     emptyContainer: {
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: spacing['3xl'],
+        paddingVertical: SPACING['3xl'],
     },
     emptyText: {
-        fontSize: typography.size.base,
-        color: colors.text.tertiary,
-        marginTop: spacing.md,
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.tertiary,
+        marginTop: SPACING.md,
         textAlign: 'center',
+        fontFamily: TYPOGRAPHY.family.regular,
     },
 });

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { blockUser, reportUser } from '@/services/userService';
 import { Profile, TeamRole } from '@/types/database.types';
 import {
     canModifyRole,
@@ -17,14 +18,17 @@ import {
     ROLE_LABELS,
 } from '@/utils/permissions';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActionSheetIOS,
     ActivityIndicator,
+    Alert,
     Animated,
     Image,
+    Modal,
     Platform,
     Pressable,
     RefreshControl,
@@ -32,7 +36,7 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -72,6 +76,12 @@ export default function TeamMembersScreen() {
     const [userRole, setUserRole] = useState<TeamRole | null>(null);
     const [teamName, setTeamName] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Report State
+    const [reportModalVisible, setReportModalVisible] = useState(false);
+    const [selectedMember, setSelectedMember] = useState<TeamMemberWithProfile | null>(null);
+    const [reportReason, setReportReason] = useState('');
+    const [reporting, setReporting] = useState(false);
 
     // Load members
     const loadMembers = useCallback(async () => {
@@ -191,29 +201,88 @@ export default function TeamMembersScreen() {
         });
     };
 
+    const handleBlockMember = (member: TeamMemberWithProfile) => {
+        Alert.alert(
+            'Bloquear Utilizador',
+            `Tens a certeza que queres bloquear ${member.profile.full_name || member.profile.username}?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Bloquear',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await blockUser(member.user_id);
+                            showAlert({ title: 'Bloqueado', message: 'Utilizador bloqueado.' });
+                            // Optionally remove from list locally or refresh?
+                            // User might technically still be in team, but hidden? 
+                            // Usually block means you don't see them.
+                            setMembers(prev => prev.filter(m => m.user_id !== member.user_id));
+                        } catch (error) {
+                            console.error(error);
+                            showAlert({ title: 'Erro', message: 'Não foi possível bloquear.' });
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleReportSubmit = async () => {
+        if (!selectedMember || !reportReason.trim()) return;
+        try {
+            setReporting(true);
+            await reportUser(selectedMember.user_id, reportReason);
+            setReportModalVisible(false);
+            setReportReason('');
+            setSelectedMember(null);
+            showAlert({ title: 'Reportado', message: 'Obrigado pelo teu report.' });
+        } catch (error) {
+            console.error(error);
+            showAlert({ title: 'Erro', message: 'Não foi possível reportar.' });
+        } finally {
+            setReporting(false);
+        }
+    };
+
     // Show member actions
     const showMemberActions = (member: TeamMemberWithProfile) => {
-        if (member.user_id === user?.id || !isAdmin(userRole)) return;
+        if (member.user_id === user?.id) return;
 
+        // Combine admin actions and general actions
         const options: string[] = [];
         const actions: (() => void)[] = [];
 
-        if (canUser(userRole, 'PROMOTE_TO_ADMIN') && member.role !== 'admin') {
-            options.push('⭐ Promover a Admin');
-            actions.push(() => handleChangeRole(member, 'admin'));
+        // Admin actions
+        if (isAdmin(userRole)) {
+            if (canUser(userRole, 'PROMOTE_TO_ADMIN') && member.role !== 'admin') {
+                options.push('⭐ Promover a Admin');
+                actions.push(() => handleChangeRole(member, 'admin'));
+            }
+            if (canUser(userRole, 'PROMOTE_TO_MODERATOR') && member.role !== 'moderator') {
+                options.push('🛡️ Promover a Moderador');
+                actions.push(() => handleChangeRole(member, 'moderator'));
+            }
+            if (member.role !== 'member' && canModifyRole(userRole, member.role)) {
+                options.push('👤 Demover a Membro');
+                actions.push(() => handleChangeRole(member, 'member'));
+            }
+            if (canUser(userRole, 'KICK_MEMBERS') && canModifyRole(userRole, member.role)) {
+                options.push('🚫 Remover da Equipa');
+                actions.push(() => handleRemoveMember(member));
+            }
         }
-        if (canUser(userRole, 'PROMOTE_TO_MODERATOR') && member.role !== 'moderator') {
-            options.push('🛡️ Promover a Moderador');
-            actions.push(() => handleChangeRole(member, 'moderator'));
-        }
-        if (member.role !== 'member' && canModifyRole(userRole, member.role)) {
-            options.push('👤 Demover a Membro');
-            actions.push(() => handleChangeRole(member, 'member'));
-        }
-        if (canUser(userRole, 'KICK_MEMBERS') && canModifyRole(userRole, member.role)) {
-            options.push('🚫 Remover da Equipa');
-            actions.push(() => handleRemoveMember(member));
-        }
+
+        // General Actions (Block/Report)
+        options.push('🚩 Reportar');
+        actions.push(() => {
+            setSelectedMember(member);
+            setReportModalVisible(true);
+        });
+
+        options.push('⛔ Bloquear');
+        actions.push(() => handleBlockMember(member));
+
 
         if (options.length === 0) return;
         options.push('Cancelar');
@@ -223,7 +292,7 @@ export default function TeamMembersScreen() {
                 {
                     options,
                     cancelButtonIndex: options.length - 1,
-                    destructiveButtonIndex: options.findIndex((o) => o.includes('Remover')),
+                    destructiveButtonIndex: options.findIndex((o) => o.includes('Remover') || o.includes('Bloquear')),
                     title: member.profile.full_name || member.profile.username || 'Membro',
                 },
                 (buttonIndex) => {
@@ -236,7 +305,7 @@ export default function TeamMembersScreen() {
                 message: 'Escolhe uma ação:',
                 buttons: options.map((opt, i) => ({
                     text: opt,
-                    style: opt.includes('Remover') ? 'destructive' : opt === 'Cancelar' ? 'cancel' : 'default',
+                    style: (opt.includes('Remover') || opt.includes('Bloquear')) ? 'destructive' : opt === 'Cancelar' ? 'cancel' : 'default',
                     onPress: () => {
                         if (i < actions.length) actions[i]();
                     },
@@ -367,8 +436,42 @@ export default function TeamMembersScreen() {
                         </View>
                     )}
                 </ScrollView>
+
+                {/* REPORT MODAL */}
+                <Modal transparent visible={reportModalVisible} animationType="slide" onRequestClose={() => setReportModalVisible(false)}>
+                    <Pressable style={styles.modalOverlay} onPress={() => setReportModalVisible(false)}>
+                        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+                        <Pressable style={styles.reportModal} onPress={(e) => e.stopPropagation()}>
+                            <Text style={styles.reportTitle}>Reportar {selectedMember?.profile.username}</Text>
+                            <Text style={styles.reportSubtitle}>Por favor descreve o motivo.</Text>
+
+                            <TextInput
+                                style={styles.reasonInput}
+                                placeholder="Motivo..."
+                                placeholderTextColor={COLORS.text.tertiary}
+                                multiline
+                                numberOfLines={4}
+                                value={reportReason}
+                                onChangeText={setReportReason}
+                            />
+
+                            <View style={styles.reportActions}>
+                                <Pressable style={styles.reportCancelBtn} onPress={() => setReportModalVisible(false)}>
+                                    <Text style={styles.reportCancelText}>Cancelar</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[styles.reportSubmitBtn, (!reportReason.trim() || reporting) && { opacity: 0.5 }]}
+                                    onPress={handleReportSubmit}
+                                    disabled={!reportReason.trim() || reporting}
+                                >
+                                    {reporting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.reportSubmitText}>Enviar</Text>}
+                                </Pressable>
+                            </View>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
             </SafeAreaView>
-        </View>
+        </View >
     );
 }
 
@@ -620,5 +723,66 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.base,
         color: COLORS.text.tertiary,
         marginTop: SPACING.md,
+    },
+
+
+    // Report Modal (Duplicated from user/[id].tsx for consistency)
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    reportModal: {
+        backgroundColor: COLORS.surface,
+        margin: SPACING.lg,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.xl,
+        marginTop: 'auto',
+        marginBottom: 'auto',
+    },
+    reportTitle: {
+        fontSize: TYPOGRAPHY.size.lg,
+        color: COLORS.text.primary,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        marginBottom: SPACING.xs,
+    },
+    reportSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.lg,
+    },
+    reasonInput: {
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        color: COLORS.text.primary,
+        minHeight: 100,
+        textAlignVertical: 'top',
+        marginBottom: SPACING.lg,
+    },
+    reportActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: SPACING.md,
+    },
+    reportCancelBtn: {
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.lg,
+    },
+    reportCancelText: {
+        color: COLORS.text.secondary,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+    },
+    reportSubmitBtn: {
+        backgroundColor: '#EF4444',
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.lg,
+        borderRadius: RADIUS.lg,
+        minWidth: 80,
+        alignItems: 'center',
+    },
+    reportSubmitText: {
+        color: '#FFF',
+        fontWeight: TYPOGRAPHY.weight.bold,
     },
 });

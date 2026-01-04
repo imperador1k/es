@@ -34,6 +34,7 @@ import { AudioPlayerProvider } from '@/providers/AudioPlayerProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ProfileProvider } from '@/providers/ProfileProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
+import { SettingsProvider } from '@/providers/SettingsProvider';
 import { TeamsProvider } from '@/providers/TeamsProvider';
 import { View } from 'react-native';
 
@@ -157,34 +158,36 @@ function RootLayoutNav() {
     <QueryProvider>
       <AuthProvider>
         <ProfileProvider>
-          <DataSyncProvider>
-            <AlertProvider>
-              <ToastProvider>
-                <CallProvider>
-                  <TeamsProvider>
-                    <AudioPlayerProvider>
-                      <PushNotificationsInitializer>
-                        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                          <View style={{ flex: 1 }}>
-                            <OfflineBanner />
-                            <Stack screenOptions={{ headerShown: false }}>
-                              <Stack.Screen name="(auth)" />
-                              <Stack.Screen name="(tabs)" />
-                              <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-                            </Stack>
-                            <MiniPlayer />
-                          </View>
-                        </ThemeProvider>
-                      </PushNotificationsInitializer>
-                    </AudioPlayerProvider>
-                  </TeamsProvider>
-                </CallProvider>
-              </ToastProvider>
-            </AlertProvider>
-          </DataSyncProvider>
+          <SettingsProvider>
+            <DataSyncProvider>
+              <AlertProvider>
+                <ToastProvider>
+                  <CallProvider>
+                    <TeamsProvider>
+                      <AudioPlayerProvider>
+                        <PushNotificationsInitializer>
+                          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                            <View style={{ flex: 1 }}>
+                              <OfflineBanner />
+                              <Stack screenOptions={{ headerShown: false }}>
+                                <Stack.Screen name="(auth)" />
+                                <Stack.Screen name="(tabs)" />
+                                <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                              </Stack>
+                              <MiniPlayer />
+                            </View>
+                          </ThemeProvider>
+                        </PushNotificationsInitializer>
+                      </AudioPlayerProvider>
+                    </TeamsProvider>
+                  </CallProvider>
+                </ToastProvider>
+              </AlertProvider>
+            </DataSyncProvider>
+          </SettingsProvider>
         </ProfileProvider>
       </AuthProvider>
-    </QueryProvider>
+    </QueryProvider >
   );
 }
 

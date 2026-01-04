@@ -1,3 +1,4 @@
+
 /**
  * User Profile Detail Screen - Premium Dark Design
  * Ecrã para ver detalhes de perfil de outro utilizador
@@ -5,25 +6,30 @@
  */
 
 import { useStartConversation } from '@/hooks/useDMs';
+import { getUserEducation } from '@/hooks/useEducation';
 import { useFriends } from '@/hooks/useFriends';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { getUserBadges, UserBadge } from '@/services/badgeService';
+import { blockUser, reportUser } from '@/services/userService';
 import { Profile, Tier } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Image,
+    Modal,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
-    View,
+    TextInput,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -57,6 +63,22 @@ export default function UserProfileScreen() {
     const [badges, setBadges] = useState<UserBadge[]>([]);
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
+    const [equippedBadges, setEquippedBadges] = useState<UserBadge[]>([]);
+    const [educationData, setEducationData] = useState<{
+        level: string;
+        year?: number;
+        school?: { name: string; district?: string } | null;
+        university?: { name: string; type?: string } | null;
+        degree?: { name: string; level?: string } | null;
+    } | null>(null);
+
+    // Block/Report State
+    const [optionsVisible, setOptionsVisible] = useState(false);
+    const [reportModalVisible, setReportModalVisible] = useState(false);
+    const [blockModalVisible, setBlockModalVisible] = useState(false);
+    const [reportReason, setReportReason] = useState('');
+    const [reporting, setReporting] = useState(false);
+    const [blocking, setBlocking] = useState(false);
 
     // Verificar relação
     const isFriend = friends.some(f => f.friend_id === id);
@@ -80,9 +102,26 @@ export default function UserProfileScreen() {
                 if (error) throw error;
                 setProfile(data as Profile);
 
-                // Carregar badges
+                // Carregar education
+                try {
+                    const edu = await getUserEducation(id);
+                    if (edu) {
+                        setEducationData({
+                            level: edu.level,
+                            year: edu.year || edu.uni_year,
+                            school: edu.school,
+                            university: edu.university,
+                            degree: edu.degree,
+                        });
+                    }
+                } catch (e) {
+                    console.log('User has no education data');
+                }
+
+                // Carregar badges e filtrar equipados
                 const userBadges = await getUserBadges(id);
                 setBadges(userBadges);
+                setEquippedBadges(userBadges.filter(b => b.is_equipped));
             } catch (err) {
                 console.error(err);
             } finally {
@@ -107,7 +146,63 @@ export default function UserProfileScreen() {
         if (!id) return;
         const convId = await startOrGetConversation(id);
         if (convId) {
-            router.push(`/dm/${convId}` as any);
+            router.push(`/ dm / ${convId} ` as any);
+        }
+    };
+
+    const handleBlock = () => {
+        setOptionsVisible(false);
+        // Small timeout to allow sheet to close smoothly before opening alert/modal
+        setTimeout(() => setBlockModalVisible(true), 100);
+    };
+
+    const confirmBlock = async () => {
+        try {
+            setBlocking(true);
+            if (!id) return;
+            await blockUser(id);
+            setBlockModalVisible(false);
+            showAlert({ title: 'Bloqueado', message: 'Utilizador bloqueado.' });
+            router.replace('/' as any);
+        } catch (error) {
+            console.error(error);
+            showAlert({ title: 'Erro', message: 'Não foi possível bloquear.' });
+        } finally {
+            setBlocking(false);
+        }
+    };
+
+    const handleReport = async () => {
+        if (!reportReason.trim()) {
+            showAlert({ title: 'Erro', message: 'Por favor indica um motivo.' });
+            return;
+        }
+        try {
+            setReporting(true);
+            if (!id) return;
+
+            // 1. Record in DB
+            await reportUser(id, reportReason);
+
+            // 2. Alert Admin (Edge Function)
+            const { data: { user } } = await supabase.auth.getUser();
+            await supabase.functions.invoke('send-report-alert', {
+                body: {
+                    reporter_email: user?.email || 'unknown',
+                    reported_id: id,
+                    reported_name: profile?.full_name || profile?.username || 'Unknown',
+                    reason: reportReason
+                }
+            });
+
+            setReportModalVisible(false);
+            setReportReason('');
+            showAlert({ title: 'Obrigado', message: 'Reportado com sucesso. Vamos analisar.' });
+        } catch (error) {
+            console.error(error);
+            showAlert({ title: 'Erro', message: 'Não foi possível reportar.' });
+        } finally {
+            setReporting(false);
         }
     };
 
@@ -156,7 +251,12 @@ export default function UserProfileScreen() {
                     <Ionicons name="arrow-back" size={22} color="#FFF" />
                 </Pressable>
                 <Text style={styles.headerTitle}>Perfil</Text>
-                <View style={{ width: 40 }} />
+                {!isMe && (
+                    <Pressable style={styles.backButton} onPress={() => setOptionsVisible(true)}>
+                        <Ionicons name="ellipsis-horizontal" size={22} color="#FFF" />
+                    </Pressable>
+                )}
+                {isMe && <View style={{ width: 40 }} />}
             </LinearGradient>
 
             <ScrollView
@@ -186,6 +286,49 @@ export default function UserProfileScreen() {
                             <Text style={styles.levelText}>{level}</Text>
                         </View>
                     </View>
+
+                    {/* Education Badges - COPIED FROM PROFILE.TSX */}
+                    {educationData && (
+                        <View style={styles.educationBadges}>
+                            {/* School/University Badge */}
+                            {(educationData.school || educationData.university) && (
+                                <View style={styles.educationBadge}>
+                                    <LinearGradient
+                                        colors={educationData.university ? ['#6366F1', '#8B5CF6'] : ['#10B981', '#059669']}
+                                        style={styles.educationBadgeGradient}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    >
+                                        <Ionicons
+                                            name={educationData.university ? "school" : "business"}
+                                            size={12}
+                                            color="#FFF"
+                                        />
+                                        <Text style={styles.educationBadgeText} numberOfLines={1}>
+                                            {educationData.university?.name || educationData.school?.name}
+                                        </Text>
+                                    </LinearGradient>
+                                </View>
+                            )}
+
+                            {/* Degree/Year Badge */}
+                            {(educationData.degree || educationData.year) && (
+                                <View style={styles.educationBadge}>
+                                    <LinearGradient
+                                        colors={['#F59E0B', '#D97706']}
+                                        style={styles.educationBadgeGradient}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    >
+                                        <Ionicons name="ribbon" size={12} color="#FFF" />
+                                        <Text style={styles.educationBadgeText} numberOfLines={1}>
+                                            {educationData.degree?.name || `${educationData.year}º Ano`}
+                                        </Text>
+                                    </LinearGradient>
+                                </View>
+                            )}
+                        </View>
+                    )}
 
                     {/* Name & Username */}
                     <Text style={styles.name}>{profile.full_name || profile.username}</Text>
@@ -258,6 +401,38 @@ export default function UserProfileScreen() {
                             )}
                         </View>
                     )}
+                </View>
+
+
+
+                {/* ========== SHOWCASE (DESTAQUES) ========== */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Destaques</Text>
+                    <View style={styles.showcaseContainer}>
+                        {[0, 1, 2].map((index) => {
+                            const badge = equippedBadges[index];
+                            return (
+                                <View key={index} style={styles.showcaseSlot}>
+                                    {badge ? (
+                                        <LinearGradient
+                                            colors={['#1F2937', '#111827']}
+                                            style={styles.showcaseBadge}
+                                        >
+                                            <View style={styles.showcaseIconWrap}>
+                                                <Text style={styles.showcaseEmoji}>{badge.badge.icon}</Text>
+                                            </View>
+                                            <View style={styles.showcaseGlow} />
+                                        </LinearGradient>
+                                    ) : (
+                                        <View style={styles.showcaseEmpty}>
+                                            <Ionicons name="ribbon-outline" size={24} color={COLORS.text.tertiary} />
+                                            <Text style={styles.showcaseEmptyText}>Vazio</Text>
+                                        </View>
+                                    )}
+                                </View>
+                            );
+                        })}
+                    </View>
                 </View>
 
                 {/* Stats Grid */}
@@ -333,6 +508,95 @@ export default function UserProfileScreen() {
                 {/* Bottom Spacer */}
                 <View style={{ height: 40 }} />
             </ScrollView>
+
+            {/* OPTIONS MODAL */}
+            <Modal transparent visible={optionsVisible} animationType="fade" onRequestClose={() => setOptionsVisible(false)}>
+                <Pressable style={styles.modalOverlay} onPress={() => setOptionsVisible(false)}>
+                    <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+                    <View style={styles.optionsSheet}>
+                        <Text style={styles.optionsTitle}>Opções</Text>
+
+                        <Pressable style={styles.optionItem} onPress={() => { setOptionsVisible(false); setReportModalVisible(true); }}>
+                            <Ionicons name="flag-outline" size={20} color={COLORS.text.primary} />
+                            <Text style={styles.optionText}>Reportar Utilizador</Text>
+                        </Pressable>
+
+                        <View style={styles.optionDivider} />
+
+                        <Pressable style={styles.optionItem} onPress={handleBlock}>
+                            <Ionicons name="ban-outline" size={20} color="#EF4444" />
+                            <Text style={[styles.optionText, { color: '#EF4444' }]}>Bloquear Utilizador</Text>
+                        </Pressable>
+
+                        <View style={styles.optionDivider} />
+
+                        <Pressable style={styles.optionItem} onPress={() => setOptionsVisible(false)}>
+                            <Text style={styles.optionCancel}>Cancelar</Text>
+                        </Pressable>
+                    </View>
+                </Pressable>
+            </Modal>
+
+            {/* REPORT MODAL */}
+            <Modal transparent visible={reportModalVisible} animationType="slide" onRequestClose={() => setReportModalVisible(false)}>
+                <Pressable style={styles.modalOverlay} onPress={() => setReportModalVisible(false)}>
+                    <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+                    <Pressable style={styles.reportModal} onPress={(e) => e.stopPropagation()}>
+                        <Text style={styles.reportTitle}>Reportar {profile?.username}</Text>
+                        <Text style={styles.reportSubtitle}>Por favor descreve o motivo.</Text>
+
+                        <TextInput
+                            style={styles.reasonInput}
+                            placeholder="Motivo..."
+                            placeholderTextColor={COLORS.text.tertiary}
+                            multiline
+                            numberOfLines={4}
+                            value={reportReason}
+                            onChangeText={setReportReason}
+                        />
+
+                        <View style={styles.reportActions}>
+                            <Pressable style={styles.reportCancelBtn} onPress={() => setReportModalVisible(false)}>
+                                <Text style={styles.reportCancelText}>Cancelar</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.reportSubmitBtn, (!reportReason.trim() || reporting) && { opacity: 0.5 }]}
+                                onPress={handleReport}
+                                disabled={!reportReason.trim() || reporting}
+                            >
+                                {reporting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.reportSubmitText}>Enviar</Text>}
+                            </Pressable>
+                        </View>
+                    </Pressable>
+                </Pressable>
+            </Modal>
+
+            {/* BLOCK MODAL */}
+            <Modal transparent visible={blockModalVisible} animationType="slide" onRequestClose={() => setBlockModalVisible(false)}>
+                <Pressable style={styles.modalOverlay} onPress={() => setBlockModalVisible(false)}>
+                    <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+                    <Pressable style={styles.reportModal} onPress={(e) => e.stopPropagation()}>
+                        <Text style={[styles.reportTitle, { color: '#EF4444' }]}>Bloquear Utilizador?</Text>
+                        <Text style={styles.reportSubtitle}>
+                            Deixarás de ver publicações e mensagens de {profile?.full_name || 'este utilizador'}.
+                            Esta ação é reversível nas definições.
+                        </Text>
+
+                        <View style={styles.reportActions}>
+                            <Pressable style={styles.reportCancelBtn} onPress={() => setBlockModalVisible(false)}>
+                                <Text style={styles.reportCancelText}>Cancelar</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.reportSubmitBtn, { backgroundColor: '#EF4444', minWidth: 100 }]}
+                                onPress={confirmBlock}
+                                disabled={blocking}
+                            >
+                                {blocking ? <ActivityIndicator color="#FFF" /> : <Text style={styles.reportSubmitText}>Bloquear</Text>}
+                            </Pressable>
+                        </View>
+                    </Pressable>
+                </Pressable>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -458,6 +722,31 @@ const styles = StyleSheet.create({
     levelText: {
         fontSize: TYPOGRAPHY.size.sm,
         fontWeight: TYPOGRAPHY.weight.bold,
+        color: '#FFF',
+    },
+    educationBadges: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        marginTop: SPACING.sm,
+        marginBottom: SPACING.xs,
+        paddingHorizontal: SPACING.md,
+    },
+    educationBadge: {
+        borderRadius: RADIUS.full,
+        overflow: 'hidden',
+    },
+    educationBadgeGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 4,
+        gap: 6,
+    },
+    educationBadgeText: {
+        fontSize: 11,
+        fontWeight: TYPOGRAPHY.weight.semibold,
         color: '#FFF',
     },
     name: {
@@ -654,4 +943,165 @@ const styles = StyleSheet.create({
         color: COLORS.text.tertiary,
         textAlign: 'center',
     },
+
+    // Showcase
+    showcaseContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: SPACING.lg,
+        marginTop: SPACING.md,
+    },
+    showcaseSlot: {
+        width: 80,
+        height: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    showcaseBadge: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#FFD700', // Gold border for featured
+        backgroundColor: COLORS.surfaceElevated,
+        ...SHADOWS.glow,
+    },
+    showcaseIconWrap: {
+        width: 70,
+        height: 70,
+        borderRadius: 35,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    showcaseEmoji: {
+        fontSize: 32,
+    },
+    showcaseGlow: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        borderRadius: 40,
+        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+        zIndex: -1,
+    },
+    showcaseEmpty: {
+        width: 70,
+        height: 70,
+        borderRadius: 35,
+        borderWidth: 2,
+        borderColor: COLORS.surfaceMuted,
+        borderStyle: 'dashed',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    showcaseEmptyText: {
+        fontSize: 10,
+        color: COLORS.text.tertiary,
+        marginTop: 4,
+        fontFamily: TYPOGRAPHY.family.medium,
+    },
+
+
+    // Modals
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    optionsSheet: {
+        backgroundColor: COLORS.surface,
+        borderTopLeftRadius: RADIUS.xl,
+        borderTopRightRadius: RADIUS.xl,
+        padding: SPACING.xl,
+        paddingBottom: SPACING['3xl'],
+    },
+    optionsTitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.tertiary,
+        textAlign: 'center',
+        marginBottom: SPACING.lg,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    optionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: SPACING.md,
+        gap: SPACING.md,
+    },
+    optionText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        fontWeight: TYPOGRAPHY.weight.medium,
+    },
+    optionDivider: {
+        height: 1,
+        backgroundColor: COLORS.surfaceElevated,
+        marginVertical: SPACING.xs,
+    },
+    optionCancel: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.secondary,
+        textAlign: 'center',
+        fontWeight: TYPOGRAPHY.weight.medium,
+        marginTop: SPACING.xs,
+    },
+
+    // Report Modal
+    reportModal: {
+        backgroundColor: COLORS.surface,
+        margin: SPACING.lg,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.xl,
+        marginTop: 'auto',
+        marginBottom: 'auto',
+    },
+    reportTitle: {
+        fontSize: TYPOGRAPHY.size.lg,
+        color: COLORS.text.primary,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        marginBottom: SPACING.xs,
+    },
+    reportSubtitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+        marginBottom: SPACING.lg,
+    },
+    reasonInput: {
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        color: COLORS.text.primary,
+        minHeight: 100,
+        textAlignVertical: 'top',
+        marginBottom: SPACING.lg,
+    },
+    reportActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: SPACING.md,
+    },
+    reportCancelBtn: {
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.lg,
+    },
+    reportCancelText: {
+        color: COLORS.text.secondary,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+    },
+    reportSubmitBtn: {
+        backgroundColor: '#EF4444',
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.lg,
+        borderRadius: RADIUS.lg,
+        minWidth: 80,
+        alignItems: 'center',
+    },
+    reportSubmitText: {
+        color: '#FFF',
+        fontWeight: TYPOGRAPHY.weight.bold,
+    },
 });
+
+

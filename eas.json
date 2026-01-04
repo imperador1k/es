@@ -1,7 +1,6 @@
 {
   "cli": {
-    "version": ">= 16.28.0",
-    "appVersionSource": "remote"
+    "version": ">= 7.0.0"
   },
   "build": {
     "development": {
@@ -9,11 +8,16 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oyeilbfycrkdcqvnkctr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_-CiEWJBZKUTdeLrs-P3PzQ_ibpoXIjC",
+        "GEMINI_API_KEY": "AIzaSyB2hKRM0bRSmrMtCNbXjIymY6OjXMID4a0"
+      }
     },
-    "production": {
-      "autoIncrement": true
-    }
+    "production": {}
   },
   "submit": {
     "production": {}
