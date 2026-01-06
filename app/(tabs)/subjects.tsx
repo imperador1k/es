@@ -111,6 +111,10 @@ export default function SubjectsScreen() {
     const { schedule, loading: scheduleLoading, fetchSchedule, getScheduleByDay, deleteClassSession } = useSchedule();
     const { showAlert } = useAlert();
 
+    // Tutorial auto-start when navigating from tutorial
+    const { useTutorialAutoStart } = require('@/hooks/useTutorialAutoStart');
+    useTutorialAutoStart('subjects_view');
+
     const [subjectModalVisible, setSubjectModalVisible] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
     const [selectedSession, setSelectedSession] = useState<ClassSessionWithSubject | null>(null);

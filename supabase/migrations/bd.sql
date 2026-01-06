@@ -223,6 +223,12 @@ CREATE TABLE public.profiles (
   last_seen_at timestamp with time zone DEFAULT now(),
   last_daily_spin timestamp with time zone,
   push_token text,
+  streak_freezes integer DEFAULT 0,
+  xp_multiplier numeric DEFAULT 1.0,
+  xp_multiplier_expires timestamp with time zone,
+  equipped_title text,
+  equipped_frame uuid,
+  current_theme text DEFAULT 'default'::text,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
@@ -462,9 +468,19 @@ CREATE TABLE public.user_badges (
   user_id uuid,
   badge_id uuid,
   unlocked_at timestamp with time zone DEFAULT now(),
+  is_equipped boolean DEFAULT false,
   CONSTRAINT user_badges_pkey PRIMARY KEY (id),
   CONSTRAINT user_badges_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
   CONSTRAINT user_badges_badge_id_fkey FOREIGN KEY (badge_id) REFERENCES public.badges(id)
+);
+CREATE TABLE public.user_blocks (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  blocker_id uuid NOT NULL,
+  blocked_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT user_blocks_pkey PRIMARY KEY (id),
+  CONSTRAINT user_blocks_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES auth.users(id),
+  CONSTRAINT user_blocks_blocked_id_fkey FOREIGN KEY (blocked_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.user_education (
   user_id uuid NOT NULL,
@@ -514,6 +530,17 @@ CREATE TABLE public.user_push_tokens (
   device_type text,
   CONSTRAINT user_push_tokens_pkey PRIMARY KEY (id),
   CONSTRAINT user_push_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.user_reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  reporter_id uuid NOT NULL,
+  reported_id uuid NOT NULL,
+  reason text NOT NULL CHECK (char_length(reason) > 0),
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'reviewed'::text, 'dismissed'::text, 'action_taken'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT user_reports_pkey PRIMARY KEY (id),
+  CONSTRAINT user_reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES auth.users(id),
+  CONSTRAINT user_reports_reported_id_fkey FOREIGN KEY (reported_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.user_subjects (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

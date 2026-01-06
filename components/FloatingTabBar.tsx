@@ -3,6 +3,7 @@
  * Inspired by TripGlide with integrated center button
  */
 
+import { hapticImpact } from '@/hooks/useHaptics';
 import { SHADOWS } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -105,7 +106,10 @@ function CenterButton({ onPress }: { onPress: () => void }) {
             {/* Main Button */}
             <AnimatedPressable
                 style={[styles.centerButton, animatedButtonStyle]}
-                onPress={onPress}
+                onPress={() => {
+                    hapticImpact.medium();
+                    onPress();
+                }}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
             >
@@ -212,6 +216,7 @@ export function FloatingTabBar() {
     };
 
     const handleTabPress = (route: string) => {
+        hapticImpact.light();
         router.push(route as any);
     };
 

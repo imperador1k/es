@@ -114,10 +114,15 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     return (
         <CopilotProvider
             tooltipComponent={TutorialTooltip}
-            overlay="view"
+            overlay="svg"
             animated={true}
             backdropColor="rgba(0,0,0,0.85)"
             verticalOffset={0}
+            stepNumberComponent={() => null}
+            arrowSize={12}
+            arrowColor="#6366F1"
+            stopOnOutsideClick={false}
+            margin={16}
             tooltipStyle={{
                 backgroundColor: 'transparent',
                 padding: 0,

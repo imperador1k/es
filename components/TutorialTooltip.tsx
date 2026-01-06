@@ -3,12 +3,13 @@ import { RADIUS, SPACING } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useEffect } from 'react';
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCopilot } from 'react-native-copilot';
 import Animated, {
     FadeIn,
     FadeInDown,
+    FadeOut,
     useAnimatedStyle,
     useSharedValue,
     withRepeat,
@@ -17,7 +18,7 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // ============================================
 // STEP CONFIGURATION (8 Steps)
@@ -37,11 +38,52 @@ const STEP_CONFIG: Record<number, { emoji: string; title: string; color: string;
 const TOTAL_STEPS = Object.keys(STEP_CONFIG).length;
 
 // ============================================
+// LOADING TRANSITION OVERLAY
+// ============================================
+
+function LoadingTransition({ nextStep }: { nextStep: { emoji: string; title: string; color: string } }) {
+    const scale = useSharedValue(0.8);
+    const opacity = useSharedValue(0);
+
+    useEffect(() => {
+        scale.value = withSpring(1, { damping: 12 });
+        opacity.value = withTiming(1, { duration: 300 });
+    }, []);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+        opacity: opacity.value,
+    }));
+
+    return (
+        <Animated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(200)}
+            style={styles.loadingOverlay}
+        >
+            <Animated.View style={[styles.loadingContent, animatedStyle]}>
+                <LinearGradient
+                    colors={[nextStep.color, `${nextStep.color}CC`]}
+                    style={styles.loadingEmojiContainer}
+                >
+                    <Text style={styles.loadingEmoji}>{nextStep.emoji}</Text>
+                </LinearGradient>
+                <Text style={styles.loadingTitle}>A carregar...</Text>
+                <Text style={styles.loadingSubtitle}>{nextStep.title}</Text>
+                <ActivityIndicator size="small" color={nextStep.color} style={{ marginTop: 16 }} />
+            </Animated.View>
+        </Animated.View>
+    );
+}
+
+// ============================================
 // TOOLTIP COMPONENT
 // ============================================
 
 export const TutorialTooltip = () => {
     const { isFirstStep, isLastStep, goToNext, goToPrev, goToNth, start, stop, currentStep, totalStepsNumber } = useCopilot();
+    const [isTransitioning, setIsTransitioning] = useState(false);
+    const [nextStepInfo, setNextStepInfo] = useState<{ emoji: string; title: string; color: string } | null>(null);
 
     // Animations
     const pulseScale = useSharedValue(1);
@@ -74,28 +116,41 @@ export const TutorialTooltip = () => {
         opacity: glowOpacity.value,
     }));
 
+    // Show loading overlay during transition
+    if (isTransitioning && nextStepInfo) {
+        return <LoadingTransition nextStep={nextStepInfo} />;
+    }
+
     if (!currentStep) return null;
 
     const stepOrder = currentStep.order || 1;
     const stepInfo = STEP_CONFIG[stepOrder] || STEP_CONFIG[1];
-    const total = TOTAL_STEPS; // Use our constant, not copilot's count (which only sees mounted steps)
+    const total = TOTAL_STEPS;
     const progress = (stepOrder / total) * 100;
     const isLast = stepOrder >= TOTAL_STEPS;
 
     // Handle next with navigation
-    const handleNext = () => {
+    const handleNext = async () => {
         const nextStepOrder = stepOrder + 1;
         const nextConfig = STEP_CONFIG[nextStepOrder];
 
         if (nextConfig?.route) {
-            // Navigate to the page first
-            router.push(nextConfig.route as any);
+            // Show loading transition
+            setNextStepInfo(nextConfig);
+            setIsTransitioning(true);
 
-            // Wait for page to mount, then restart tour from that step
-            setTimeout(() => {
-                // start() with step name to begin from specific step
-                start(nextConfig.stepName);
-            }, 800);
+            // Small delay for visual transition
+            await new Promise(resolve => setTimeout(resolve, 400));
+
+            // Stop the current tutorial
+            stop();
+
+            // Save the target step name
+            const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+            await AsyncStorage.setItem('@tutorial_pending_step', nextConfig.stepName || '');
+
+            // Navigate to the page
+            router.push(nextConfig.route as any);
         } else {
             goToNext();
         }
@@ -346,5 +401,45 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontWeight: 'bold',
         fontSize: 15,
+    },
+
+    // Loading Transition Overlay
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        backgroundColor: 'rgba(0, 0, 0, 0.9)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+    },
+    loadingContent: {
+        alignItems: 'center',
+        padding: 32,
+    },
+    loadingEmojiContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+    },
+    loadingEmoji: {
+        fontSize: 36,
+    },
+    loadingTitle: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 14,
+        marginBottom: 4,
+    },
+    loadingSubtitle: {
+        color: '#FFF',
+        fontSize: 20,
+        fontWeight: 'bold',
     },
 });

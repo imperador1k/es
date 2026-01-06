@@ -24,10 +24,7 @@ import {
     View
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import { CopilotStep, walkthroughable } from 'react-native-copilot';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const WalkthroughableView = walkthroughable(View);
 
 // ============================================
 // TYPES & CONSTANTS
@@ -211,14 +208,12 @@ export default function BadgesScreen() {
                         <Pressable style={styles.backButton} onPress={() => router.back()}>
                             <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
                         </Pressable>
-                        <CopilotStep text="As tuas conquistas! Desbloqueia badges ao completar desafios e mostra no perfil! 🎖️" order={12} name="badges_view">
-                            <WalkthroughableView style={styles.headerContent}>
-                                <Text style={styles.headerTitle}>🏆 Conquistas</Text>
-                                <Text style={styles.headerSubtitle}>
-                                    {unlockedCount} de {totalCount} desbloqueadas
-                                </Text>
-                            </WalkthroughableView>
-                        </CopilotStep>
+                        <View style={styles.headerContent}>
+                            <Text style={styles.headerTitle}>🏆 Conquistas</Text>
+                            <Text style={styles.headerSubtitle}>
+                                {unlockedCount} de {totalCount} desbloqueadas
+                            </Text>
+                        </View>
                         <View style={styles.headerBadge}>
                             <Text style={styles.headerBadgeText}>{Math.round(progressPercent)}%</Text>
                         </View>

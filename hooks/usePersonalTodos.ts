@@ -151,6 +151,12 @@ export function usePersonalTodos() {
 
             if (error) throw error;
 
+            // Haptic feedback on completion
+            if (data) {
+                const { hapticNotification } = await import('@/hooks/useHaptics');
+                hapticNotification.success();
+            }
+
             // Update local state
             setTodos(prev => prev.map(t => 
                 t.id === todoId 

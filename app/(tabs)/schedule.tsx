@@ -33,6 +33,10 @@ export default function ScheduleScreen() {
     const { showAlert } = useAlert();
     const [refreshing, setRefreshing] = useState(false);
 
+    // Tutorial auto-start when navigating from tutorial
+    const { useTutorialAutoStart } = require('@/hooks/useTutorialAutoStart');
+    useTutorialAutoStart('schedule_view');
+
     // UI State
     const [classModalVisible, setClassModalVisible] = useState(false);
     const [classDetailVisible, setClassDetailVisible] = useState(false);

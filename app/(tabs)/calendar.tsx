@@ -77,6 +77,10 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export default function CalendarScreen() {
     const { refetchProfile } = useProfile();
 
+    // Tutorial auto-start when navigating from tutorial
+    const { useTutorialAutoStart } = require('@/hooks/useTutorialAutoStart');
+    useTutorialAutoStart('calendar_view');
+
     // State
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [modalVisible, setModalVisible] = useState(false);

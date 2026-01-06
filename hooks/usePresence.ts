@@ -14,13 +14,15 @@ interface PresenceState {
 }
 
 const PREFERRED_STATUS_KEY = '@preferred_status';
+const HEARTBEAT_INTERVAL_MS = 30000; // 30 segundos
 
 /**
  * Hook para gerir o status de presença do utilizador
  * 
- * COMPORTAMENTO TIPO DISCORD:
+ * COMPORTAMENTO TIPO WHATSAPP/DISCORD:
  * - Quando fecha a app → SEMPRE fica offline
  * - Quando abre a app → Restaura o status preferido (online, away, dnd)
+ * - Heartbeat a cada 30s para manter o servidor informado
  * - O utilizador pode definir o seu status preferido
  */
 export function usePresence() {
@@ -29,6 +31,7 @@ export function usePresence() {
   const [preferredStatus, setPreferredStatus] = useState<Exclude<UserStatus, 'offline'>>('online');
   const [onlineUsers, setOnlineUsers] = useState<Map<string, PresenceState>>(new Map());
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isAppActive = useRef(AppState.currentState === 'active');
 
   // Carregar status preferido do AsyncStorage
@@ -60,8 +63,28 @@ export function usePresence() {
         .eq('id', user.id);
 
       setMyStatus(status);
+
+      // Atualizar o track no canal de presença
+      if (channelRef.current) {
+        await channelRef.current.track({
+          status,
+          lastSeen: new Date().toISOString(),
+        });
+      }
     } catch (err) {
       console.error('Erro ao atualizar status:', err);
+    }
+  }, [user?.id]);
+
+  // Heartbeat - manter o servidor informado que estamos ativos
+  const sendHeartbeat = useCallback(async () => {
+    if (!user?.id || !isAppActive.current) return;
+
+    try {
+      // Usar a função RPC para performance
+      await supabase.rpc('presence_heartbeat');
+    } catch (err) {
+      console.error('Erro no heartbeat:', err);
     }
   }, [user?.id]);
 
@@ -79,7 +102,7 @@ export function usePresence() {
     
     // Se a app está ativa, aplicar imediatamente
     if (isAppActive.current) {
-      updateStatus(status);
+      await updateStatus(status);
     }
   }, [updateStatus]);
 
@@ -94,7 +117,7 @@ export function usePresence() {
     return onlineUsers.get(userId)?.status || 'offline';
   }, [onlineUsers]);
 
-  // Configurar Presence Realtime
+  // Configurar Presence Realtime + Heartbeat
   useEffect(() => {
     if (!user?.id) return;
 
@@ -139,28 +162,49 @@ export function usePresence() {
         }
       });
 
+    // Iniciar heartbeat (a cada 30 segundos)
+    heartbeatIntervalRef.current = setInterval(() => {
+      sendHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
+
     // Cleanup
     return () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+      }
     };
-  }, [user?.id, updateStatus, myStatus, preferredStatus]);
+  }, [user?.id, updateStatus, myStatus, preferredStatus, sendHeartbeat]);
 
-  // Gerir AppState - COMPORTAMENTO TIPO DISCORD
+  // Gerir AppState - COMPORTAMENTO TIPO WHATSAPP/DISCORD
   useEffect(() => {
-    const handleAppStateChange = (nextState: AppStateStatus) => {
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
       const wasActive = isAppActive.current;
       isAppActive.current = nextState === 'active';
 
       if (nextState === 'active' && !wasActive) {
         // App abriu -> Restaurar status PREFERIDO (online, away, ou dnd)
         console.log('📱 App aberta - restaurando status:', preferredStatus);
-        updateStatus(preferredStatus);
+        await updateStatus(preferredStatus);
+        
+        // Reiniciar heartbeat
+        if (!heartbeatIntervalRef.current) {
+          heartbeatIntervalRef.current = setInterval(() => {
+            sendHeartbeat();
+          }, HEARTBEAT_INTERVAL_MS);
+        }
       } else if ((nextState === 'background' || nextState === 'inactive') && wasActive) {
         // App fechou -> SEMPRE offline (independente do status preferido)
         console.log('📱 App fechada - marcando offline');
-        updateStatus('offline');
+        await updateStatus('offline');
+        
+        // Parar heartbeat quando app está em background
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = null;
+        }
       }
     };
 
@@ -169,7 +213,7 @@ export function usePresence() {
     return () => {
       subscription.remove();
     };
-  }, [preferredStatus, updateStatus]);
+  }, [preferredStatus, updateStatus, sendHeartbeat]);
 
   return {
     myStatus,

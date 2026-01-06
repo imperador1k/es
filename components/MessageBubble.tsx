@@ -1,6 +1,6 @@
 /**
  * MessageBubble Component - PREMIUM
- * Renders chat messages with rich media + Image Viewer Modal
+ * Renders chat messages with rich media + Image Viewer Modal + Document Viewer
  */
 
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
@@ -20,6 +20,7 @@ import {
     View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DocumentViewerModal } from './DocumentViewerModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -162,10 +163,12 @@ export function MessageBubble({
     attachmentName,
 }: MessageBubbleProps) {
     const [viewerVisible, setViewerVisible] = useState(false);
+    const [documentViewerVisible, setDocumentViewerVisible] = useState(false);
 
     const handleFilePress = () => {
         if (attachmentUrl) {
-            Linking.openURL(attachmentUrl);
+            // Open in-app document viewer instead of external browser
+            setDocumentViewerVisible(true);
         }
     };
 
@@ -285,6 +288,16 @@ export function MessageBubble({
                     onClose={() => setViewerVisible(false)}
                 />
             )}
+
+            {/* Document Viewer Modal */}
+            {attachmentUrl && attachmentType === 'file' && (
+                <DocumentViewerModal
+                    visible={documentViewerVisible}
+                    onClose={() => setDocumentViewerVisible(false)}
+                    fileUrl={attachmentUrl}
+                    fileName={attachmentName}
+                />
+            )}
         </>
     );
 }
@@ -308,7 +321,7 @@ const styles = StyleSheet.create({
     bubble: {
         backgroundColor: COLORS.surfaceElevated,
         borderRadius: RADIUS.xl,
-        borderTopLeftRadius: RADIUS.xs,
+        borderTopLeftRadius: RADIUS.sm,
         padding: SPACING.sm,
         overflow: 'hidden',
         ...SHADOWS.sm,
@@ -316,7 +329,7 @@ const styles = StyleSheet.create({
     bubbleMe: {
         backgroundColor: '#6366F1',
         borderTopLeftRadius: RADIUS.xl,
-        borderTopRightRadius: RADIUS.xs,
+        borderTopRightRadius: RADIUS.sm,
     },
     content: {
         fontSize: TYPOGRAPHY.size.base,

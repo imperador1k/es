@@ -219,6 +219,10 @@ export default function PlannerScreen() {
     const { user } = useAuthContext();
     const { todos, loading: todosLoading, toggleTodo, createTodo, refresh: refreshTodos } = usePersonalTodos();
 
+    // Tutorial auto-start when navigating from tutorial
+    const { useTutorialAutoStart } = require('@/hooks/useTutorialAutoStart');
+    useTutorialAutoStart('planner_view');
+
     const [tasks, setTasks] = useState<TeamTask[]>([]);
     const [tasksLoading, setTasksLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);

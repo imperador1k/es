@@ -6,6 +6,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useRef } from 'react';
 import {
     Animated,
@@ -227,6 +228,14 @@ const UTILITY_ACTIONS: ActionItem[] = [
         route: '/(tabs)/profile',
         size: 'small',
     },
+    {
+        id: 'support',
+        icon: 'heart',
+        label: 'Apoiar',
+        gradient: ['#EC4899', '#F472B6'],
+        route: 'SUPPORT', // Special route handled separately
+        size: 'small',
+    },
 ];
 
 // ============================================
@@ -370,6 +379,17 @@ export function QuickActionsModal({ visible, onClose }: QuickActionsModalProps) 
     };
 
     const handleAction = (route: string) => {
+        if (route === 'SUPPORT') {
+            closeWithAnimation();
+            setTimeout(() => {
+                WebBrowser.openBrowserAsync('https://buymeacoffee.com/imperador1k', {
+                    presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+                    controlsColor: '#FFDD00',
+                    toolbarColor: '#0C0C0E',
+                });
+            }, 200);
+            return;
+        }
         closeWithAnimation();
         setTimeout(() => router.push(route as any), 200);
     };

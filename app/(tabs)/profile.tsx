@@ -3,6 +3,7 @@
  * Ultra-premium design inspirado em apps de gaming/social
  */
 
+import { SupportModal } from '@/components/SupportModal';
 import { getUserEducation } from '@/hooks/useEducation';
 import { supabase } from '@/lib/supabase';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
@@ -158,6 +159,7 @@ export default function ProfileScreen() {
     const { startTutorial } = useTutorial();
     const { showAlert } = useAlert();
     const [deleting, setDeleting] = useState(false);
+    const [supportModalVisible, setSupportModalVisible] = useState(false);
     const [frameConfig, setFrameConfig] = useState<{
         border_color: string;
         border_width: number;
@@ -608,6 +610,14 @@ export default function ProfileScreen() {
                         />
                         <View style={styles.menuDivider} />
                         <MenuItem
+                            icon="stats-chart"
+                            label="Estatísticas"
+                            subtitle="Ver o teu desempenho"
+                            color="#8B5CF6"
+                            onPress={() => router.push('/profile/analytics' as any)}
+                        />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
                             icon="time-outline"
                             label="Horário"
                             subtitle="Ver horário escolar"
@@ -691,6 +701,14 @@ export default function ProfileScreen() {
                             label="Bloqueados"
                             onPress={() => router.push('/settings/user-blocks')}
                         />
+                        <View style={styles.menuDivider} />
+                        <MenuItem
+                            icon="heart"
+                            label="Apoiar o Projeto"
+                            subtitle="Oferece um café ao criador"
+                            color="#EC4899"
+                            onPress={() => setSupportModalVisible(true)}
+                        />
                     </View>
                 </View>
 
@@ -745,6 +763,9 @@ export default function ProfileScreen() {
 
                 <View style={{ height: 150 }} />
             </ScrollView>
+
+            {/* ========== SUPPORT MODAL ========== */}
+            <SupportModal visible={supportModalVisible} onClose={() => setSupportModalVisible(false)} />
         </View>
     );
 }

@@ -13,6 +13,7 @@ import {
     Image,
     Pressable,
     ScrollView,
+    Share,
     StyleSheet,
     Text,
     TextInput,
@@ -568,7 +569,7 @@ export default function TeamSettingsScreen() {
                         <View style={styles.qrSection}>
                             <View style={styles.qrCodeWrapper}>
                                 <QRCode
-                                    value={`escola+://team/${team.invite_code}`}
+                                    value={`escolaa://team/${team.invite_code}`}
                                     size={160}
                                     color="#000"
                                     backgroundColor="#FFF"
@@ -577,6 +578,23 @@ export default function TeamSettingsScreen() {
                             <Text style={styles.qrHint}>
                                 Partilha este QR Code para outros entrarem na equipa
                             </Text>
+
+                            {/* Botão de Partilha Viral */}
+                            <Pressable
+                                style={styles.shareInviteButton}
+                                onPress={async () => {
+                                    try {
+                                        await Share.share({
+                                            message: `🎉 Junta-te à minha Squad "${team.name}" na Escola+!\n\n👉 Abre este link: escolaa://team/${team.invite_code}\n\nOu usa o código: ${team.invite_code}`,
+                                        });
+                                    } catch (err) {
+                                        console.error('Erro ao partilhar:', err);
+                                    }
+                                }}
+                            >
+                                <Ionicons name="share-social" size={20} color={colors.text.inverse} />
+                                <Text style={styles.shareInviteButtonText}>Convidar Amigos</Text>
+                            </Pressable>
                         </View>
 
                         {/* Toggle Visibilidade */}
@@ -953,6 +971,24 @@ const styles = StyleSheet.create({
         fontSize: typography.size.sm,
         color: colors.text.secondary,
         textAlign: 'center',
+    },
+
+    // Share Invite Button
+    shareInviteButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.accent.primary,
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.xl,
+        borderRadius: borderRadius.md,
+        marginTop: spacing.lg,
+        gap: spacing.sm,
+    },
+    shareInviteButtonText: {
+        fontSize: typography.size.base,
+        fontWeight: typography.weight.semibold,
+        color: colors.text.inverse,
     },
 
     bottomSpacer: {
