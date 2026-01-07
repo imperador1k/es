@@ -1,43 +1,68 @@
 /**
- * Premium Tabs Layout
- * Custom FloatingTabBar with hidden native tab bar
+ * Premium Tabs Layout - Responsive Design
+ * Desktop: Fixed Sidebar | Mobile: Floating Tab Bar
  */
 
+import { DESKTOP_SIDEBAR_COLLAPSED_WIDTH, DESKTOP_SIDEBAR_WIDTH, DesktopSidebar } from '@/components/DesktopSidebar';
 import { FloatingTabBar } from '@/components/FloatingTabBar';
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { COLORS } from '@/lib/theme.premium';
-import { Tabs } from 'expo-router';
-import { View } from 'react-native';
-
 import { TutorialProvider } from '@/providers/TutorialProvider';
+import { Tabs } from 'expo-router';
+import { useState } from 'react';
+import { LayoutAnimation, Platform, View } from 'react-native';
 
 export default function TabsLayout() {
+  const { isDesktop, isMobile } = useBreakpoints();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const toggleSidebar = () => {
+    // Simple layout animation for smooth transition
+    if (Platform.OS !== 'web') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    setSidebarCollapsed(!sidebarCollapsed);
+  };
+
+  const currentSidebarWidth = sidebarCollapsed ? DESKTOP_SIDEBAR_COLLAPSED_WIDTH : DESKTOP_SIDEBAR_WIDTH;
+
   return (
     <TutorialProvider>
-      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-        <Tabs
-          screenOptions={{
-            headerShown: false,
-            // Hide the native tab bar completely
-            tabBarStyle: { display: 'none' },
-          }}
-        >
-          {/* Main Tabs (visible in FloatingTabBar) */}
-          <Tabs.Screen name="index" options={{ title: 'Home' }} />
-          <Tabs.Screen name="calendar" options={{ title: 'Planner' }} />
-          <Tabs.Screen name="messages" options={{ title: 'Social' }} />
+      <View style={{ flex: 1, backgroundColor: COLORS.background, flexDirection: 'row' }}>
+        {/* Desktop Sidebar */}
+        {isDesktop && <DesktopSidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />}
 
-          {/* Hidden Tabs (accessible via navigation) */}
-          <Tabs.Screen name="planner" options={{ href: null }} />
-          <Tabs.Screen name="subjects" options={{ href: null }} />
-          <Tabs.Screen name="activity" options={{ href: null }} />
-          <Tabs.Screen name="teams" options={{ href: null }} />
-          <Tabs.Screen name="schedule" options={{ href: null }} />
-          <Tabs.Screen name="profile" options={{ href: null }} />
-          <Tabs.Screen name="two" options={{ href: null }} />
-        </Tabs>
+        {/* Main Content Area */}
+        <View style={{
+          flex: 1,
+          marginLeft: isDesktop ? currentSidebarWidth : 0,
+          transition: 'margin-left 0.3s ease', // CSS transition for web
+        } as any}>
+          <Tabs
+            screenOptions={{
+              headerShown: false,
+              // Hide the native tab bar completely
+              tabBarStyle: { display: 'none' },
+            }}
+          >
+            {/* Main Tabs (visible in FloatingTabBar) */}
+            <Tabs.Screen name="index" options={{ title: 'Home' }} />
+            <Tabs.Screen name="calendar" options={{ title: 'Planner' }} />
+            <Tabs.Screen name="messages" options={{ title: 'Social' }} />
 
-        {/* Custom Floating Tab Bar */}
-        <FloatingTabBar />
+            {/* Hidden Tabs (accessible via navigation) */}
+            <Tabs.Screen name="planner" options={{ href: null }} />
+            <Tabs.Screen name="subjects" options={{ href: null }} />
+            <Tabs.Screen name="activity" options={{ href: null }} />
+            <Tabs.Screen name="teams" options={{ href: null }} />
+            <Tabs.Screen name="schedule" options={{ href: null }} />
+            <Tabs.Screen name="profile" options={{ href: null }} />
+            <Tabs.Screen name="two" options={{ href: null }} />
+          </Tabs>
+        </View>
+
+        {/* Mobile Floating Tab Bar (hidden on desktop) */}
+        {!isDesktop && <FloatingTabBar />}
       </View>
     </TutorialProvider>
   );

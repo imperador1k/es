@@ -3,6 +3,7 @@
  * Fixed layout with proper scroll and quick actions
  */
 
+import { CachedImage } from '@/components/CachedImage';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -18,7 +19,6 @@ import {
     ActivityIndicator,
     Animated,
     Dimensions,
-    Image,
     Pressable,
     RefreshControl,
     ScrollView,
@@ -150,7 +150,7 @@ export default function TeamDetailsScreen() {
                     {/* Team Info */}
                     <View style={styles.teamInfo}>
                         {team.icon_url ? (
-                            <Image source={{ uri: team.icon_url }} style={styles.teamAvatar} />
+                            <CachedImage uri={team.icon_url} style={styles.teamAvatar} />
                         ) : (
                             <LinearGradient colors={[teamColor, `${teamColor}99`]} style={styles.teamAvatarPlaceholder}>
                                 <Text style={styles.teamInitial}>{team.name.charAt(0).toUpperCase()}</Text>
@@ -305,7 +305,7 @@ function ChannelCard({ channel, teamId }: { channel: Channel; teamId: string }) 
         >
             <Animated.View style={[styles.channelCard, { transform: [{ scale }] }]}>
                 <View style={styles.channelIcon}>
-                    {channel.type === 'text' ? (
+                    {channel.type === 'chat' ? (
                         <Text style={styles.channelHash}>#</Text>
                     ) : (
                         <Ionicons name="mic-outline" size={18} color={COLORS.text.tertiary} />

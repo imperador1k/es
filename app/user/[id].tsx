@@ -5,6 +5,7 @@
  * Inclui badges reais, stats e ações sociais
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { useStartConversation } from '@/hooks/useDMs';
 import { getUserEducation } from '@/hooks/useEducation';
 import { useFriends } from '@/hooks/useFriends';
@@ -22,7 +23,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Image,
     Modal,
     Pressable,
     ScrollView,
@@ -272,7 +272,7 @@ export default function UserProfileScreen() {
                             style={styles.avatarRing}
                         >
                             {profile.avatar_url ? (
-                                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                                <CachedAvatar uri={profile.avatar_url} size={102} style={{ borderWidth: 3, borderColor: COLORS.background }} />
                             ) : (
                                 <View style={styles.avatarFallback}>
                                     <Text style={styles.avatarInitial}>

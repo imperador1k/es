@@ -3,6 +3,7 @@
  * Ecrã para entrar em equipas via código ou explorar equipas públicas
  */
 
+import { CachedImage } from '@/components/CachedImage';
 import { useAlert } from '@/providers/AlertProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -11,7 +12,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
-    Image,
     Pressable,
     RefreshControl,
     StyleSheet,
@@ -333,9 +333,8 @@ export default function JoinTeamScreen() {
 
         return (
             <View style={styles.teamCard}>
-                {/* Avatar */}
                 {item.icon_url ? (
-                    <Image source={{ uri: item.icon_url }} style={styles.teamAvatar} />
+                    <CachedImage uri={item.icon_url} style={styles.teamAvatar} />
                 ) : (
                     <View style={[styles.teamAvatarPlaceholder, { backgroundColor: item.color }]}>
                         <Text style={styles.teamAvatarText}>

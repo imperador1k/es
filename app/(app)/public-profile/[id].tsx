@@ -3,6 +3,7 @@
  * Beautiful profile view with animations and modern design
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { useStartConversation } from '@/hooks/useDMs';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
@@ -15,7 +16,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Animated,
-    Image,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -317,7 +317,7 @@ export default function PublicProfileScreen() {
                         {/* Avatar */}
                         <View style={styles.avatarContainer}>
                             {profile.avatar_url ? (
-                                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                                <CachedAvatar uri={profile.avatar_url} size={110} style={{ borderWidth: 4, borderColor: '#FFF' }} />
                             ) : (
                                 <View style={styles.avatarPlaceholder}>
                                     <Text style={styles.avatarInitial}>

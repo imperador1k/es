@@ -3,6 +3,7 @@
  * Modern friends list with animations and premium design
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
 import { supabase } from '@/lib/supabase';
@@ -17,7 +18,6 @@ import {
     ActivityIndicator,
     Animated,
     FlatList,
-    Image,
     Pressable,
     RefreshControl,
     StyleSheet,
@@ -65,10 +65,9 @@ function FriendCard({ friend, onMessage, onRemove, index }: {
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
             >
-                {/* Avatar with Status Ring */}
                 <View style={styles.avatarContainer}>
                     {profile.avatar_url ? (
-                        <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                        <CachedAvatar uri={profile.avatar_url} size={52} />
                     ) : (
                         <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatar}>
                             <Text style={styles.avatarInitial}>

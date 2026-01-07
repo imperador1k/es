@@ -4,13 +4,17 @@
  */
 
 import { SUBJECT_COLORS, useSchedule, useSubjects } from '@/hooks/useSubjects';
+import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
+import { useAuthContext } from '@/providers/AuthProvider';
 import { CLASS_TYPE_NAMES, ClassType, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -22,6 +26,20 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInRight, FadeOut } from 'react-native-reanimated';
+
+// ============================================
+// PREDEFINED SUBJECT IMAGES (Unsplash)
+// ============================================
+const SUBJECT_IMAGES = [
+    { id: 'math', label: 'Matemática', url: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=800' },
+    { id: 'science', label: 'Ciências', url: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800' },
+    { id: 'languages', label: 'Línguas', url: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800' },
+    { id: 'history', label: 'História', url: 'https://images.unsplash.com/photo-1461360370896-922624d12a74?w=800' },
+    { id: 'art', label: 'Arte', url: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800' },
+    { id: 'programming', label: 'Programação', url: 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4?w=800' },
+    { id: 'physics', label: 'Física', url: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800' },
+    { id: 'default', label: 'Geral', url: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800' },
+];
 
 // ============================================
 // TYPES
@@ -243,6 +261,9 @@ export function SubjectDetailModal({
     const [name, setName] = useState('');
     const [teacherName, setTeacherName] = useState('');
     const [room, setRoom] = useState('');
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const { user } = useAuthContext();
     const [color, setColor] = useState(SUBJECT_COLORS[0]);
 
     // Schedule slots
@@ -262,6 +283,7 @@ export function SubjectDetailModal({
                 setTeacherName(subject.teacher_name || '');
                 setRoom(subject.room || '');
                 setColor(subject.color);
+                setImageUrl((subject as any).image_url || null);
 
                 // Load existing slots for this subject
                 const subjectSlots = schedule
@@ -282,6 +304,7 @@ export function SubjectDetailModal({
                 setTeacherName('');
                 setRoom('');
                 setColor(SUBJECT_COLORS[0]);
+                setImageUrl(SUBJECT_IMAGES[7].url); // Default image
                 setSlots([]);
                 setSlotsToDelete([]);
             }
@@ -373,14 +396,16 @@ export function SubjectDetailModal({
                     teacher_name: teacherName.trim() || null,
                     room: room.trim() || null,
                     color,
-                });
+                    image_url: imageUrl,
+                } as any);
             } else {
                 const newSubject = await addSubject({
                     name: name.trim(),
                     teacher_name: teacherName.trim() || null,
                     room: room.trim() || null,
                     color,
-                });
+                    image_url: imageUrl,
+                } as any);
                 subjectId = newSubject?.id;
             }
 
@@ -546,6 +571,94 @@ export function SubjectDetailModal({
                             </Pressable>
                         ))}
                     </View>
+                </View>
+
+                {/* Image Picker */}
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Imagem de Capa</Text>
+
+                    {/* Current Image Preview */}
+                    {imageUrl && (
+                        <View style={styles.imagePreviewContainer}>
+                            <Image source={{ uri: imageUrl }} style={styles.imagePreview} />
+                            <Pressable style={styles.imageRemoveBtn} onPress={() => setImageUrl(null)}>
+                                <Ionicons name="close" size={16} color="#FFF" />
+                            </Pressable>
+                        </View>
+                    )}
+
+                    {/* Preset Images Grid */}
+                    <Text style={styles.imageSubLabel}>Imagens Predefinidas</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageGrid}>
+                        {SUBJECT_IMAGES.map((img) => (
+                            <Pressable
+                                key={img.id}
+                                style={[styles.imageOption, imageUrl === img.url && styles.imageOptionSelected]}
+                                onPress={() => setImageUrl(img.url)}
+                            >
+                                <Image source={{ uri: img.url }} style={styles.imageOptionImg} />
+                                {imageUrl === img.url && (
+                                    <View style={styles.imageCheckmark}>
+                                        <Ionicons name="checkmark" size={14} color="#FFF" />
+                                    </View>
+                                )}
+                            </Pressable>
+                        ))}
+                    </ScrollView>
+
+                    {/* Custom Upload Button */}
+                    <Pressable
+                        style={styles.uploadBtn}
+                        onPress={async () => {
+                            try {
+                                const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                                if (!permission.granted) return;
+
+                                const result = await ImagePicker.launchImageLibraryAsync({
+                                    mediaTypes: ['images'],
+                                    allowsEditing: true,
+                                    aspect: [16, 9],
+                                    quality: 0.7,
+                                });
+
+                                if (!result.canceled && result.assets[0]?.uri) {
+                                    setUploadingImage(true);
+                                    const uri = result.assets[0].uri;
+                                    const fileName = `subject_${user?.id}_${Date.now()}.jpg`;
+
+                                    const response = await fetch(uri);
+                                    const blob = await response.blob();
+
+                                    const { data, error } = await supabase.storage
+                                        .from('subject-images')
+                                        .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+
+                                    if (error) throw error;
+
+                                    const { data: urlData } = supabase.storage
+                                        .from('subject-images')
+                                        .getPublicUrl(fileName);
+
+                                    setImageUrl(urlData.publicUrl);
+                                }
+                            } catch (err) {
+                                console.error('Upload error:', err);
+                                showAlert({ title: 'Erro', message: 'Não foi possível fazer upload da imagem' });
+                            } finally {
+                                setUploadingImage(false);
+                            }
+                        }}
+                        disabled={uploadingImage}
+                    >
+                        {uploadingImage ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <>
+                                <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                                <Text style={styles.uploadBtnText}>Upload Personalizado</Text>
+                            </>
+                        )}
+                    </Pressable>
                 </View>
             </View>
 
@@ -1077,5 +1190,82 @@ const styles = StyleSheet.create({
     viewSlotRoom: {
         fontSize: TYPOGRAPHY.size.sm,
         color: COLORS.text.tertiary,
+    },
+
+    // Image Picker Styles
+    imagePreviewContainer: {
+        position: 'relative',
+        marginBottom: SPACING.md,
+        borderRadius: RADIUS.xl,
+        overflow: 'hidden',
+    },
+    imagePreview: {
+        width: '100%',
+        height: 150,
+        borderRadius: RADIUS.xl,
+    },
+    imageRemoveBtn: {
+        position: 'absolute',
+        top: SPACING.sm,
+        right: SPACING.sm,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    imageSubLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginBottom: SPACING.sm,
+        marginTop: SPACING.sm,
+    },
+    imageGrid: {
+        marginBottom: SPACING.md,
+    },
+    imageOption: {
+        width: 80,
+        height: 50,
+        borderRadius: RADIUS.md,
+        marginRight: SPACING.sm,
+        overflow: 'hidden',
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    imageOptionSelected: {
+        borderColor: '#6366F1',
+    },
+    imageOptionImg: {
+        width: '100%',
+        height: '100%',
+    },
+    imageCheckmark: {
+        position: 'absolute',
+        top: 2,
+        right: 2,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#6366F1',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    uploadBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.lg,
+        paddingVertical: SPACING.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderStyle: 'dashed',
+    },
+    uploadBtnText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.secondary,
     },
 });

@@ -3,6 +3,7 @@
  * Design épico com efeitos 3D, glows, auras por raridade e animações
  */
 
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -79,6 +80,12 @@ const RARITY_CONFIG = {
 export default function BadgesScreen() {
     const { user } = useAuthContext();
     const { showAlert } = useAlert();
+    const { isDesktop, numColumns, width: screenWidth } = useBreakpoints();
+
+    // Dynamic card size based on screen width and columns
+    const CARD_SIZE = isDesktop
+        ? (Math.min(screenWidth, 1200) - SPACING.lg * 2 - SPACING.md * (numColumns + 1)) / numColumns
+        : (screenWidth - SPACING.lg * 2 - SPACING.md * 2) / 3;
 
     const [allBadges, setAllBadges] = useState<Badge[]>([]);
     const [userBadges, setUserBadges] = useState<UserBadge[]>([]);
@@ -253,12 +260,13 @@ export default function BadgesScreen() {
 
                 {/* Badges Grid */}
                 <FlatList
+                    key={isDesktop ? 'desktop' : 'mobile'}
                     data={sortedBadges}
                     keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <BadgeCard badge={item} onPress={() => setSelectedBadge(item)} />}
-                    numColumns={3}
-                    columnWrapperStyle={styles.gridRow}
-                    contentContainerStyle={styles.gridContent}
+                    renderItem={({ item }) => <BadgeCard badge={item} onPress={() => setSelectedBadge(item)} cardSize={CARD_SIZE} />}
+                    numColumns={numColumns}
+                    columnWrapperStyle={[styles.gridRow, isDesktop && styles.gridRowDesktop]}
+                    contentContainerStyle={[styles.gridContent, isDesktop && styles.gridContentDesktop]}
                     showsVerticalScrollIndicator={false}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadBadges(); }} tintColor="#6366F1" />}
                 />
@@ -286,7 +294,7 @@ export default function BadgesScreen() {
 // BADGE CARD COMPONENT
 // ============================================
 
-function BadgeCard({ badge, onPress }: { badge: DisplayBadge; onPress: () => void }) {
+function BadgeCard({ badge, onPress, cardSize }: { badge: DisplayBadge; onPress: () => void; cardSize: number }) {
     const scale = useRef(new Animated.Value(1)).current;
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const rarity = RARITY_CONFIG[badge.rarity];
@@ -312,6 +320,7 @@ function BadgeCard({ badge, onPress }: { badge: DisplayBadge; onPress: () => voi
             <Animated.View
                 style={[
                     styles.badgeCard,
+                    { width: cardSize, height: 'auto', minHeight: cardSize * 1.3 },
                     { transform: [{ scale: Animated.multiply(scale, pulseAnim) }] },
                     badge.unlocked && { shadowColor: rarity.gradient[0], shadowOpacity: 0.4, shadowRadius: 12 },
                 ]}
@@ -322,17 +331,26 @@ function BadgeCard({ badge, onPress }: { badge: DisplayBadge; onPress: () => voi
                 {/* Icon Container */}
                 <View style={[styles.badgeIconWrap, !badge.unlocked && styles.badgeIconLocked]}>
                     {badge.unlocked ? (
-                        <LinearGradient colors={rarity.gradient} style={styles.badgeIconGradient}>
+                        <LinearGradient
+                            colors={rarity.gradient}
+                            style={[
+                                styles.badgeIconGradient,
+                                { width: cardSize - 32, height: cardSize - 32, borderRadius: (cardSize - 32) / 2 }
+                            ]}
+                        >
                             {badge.is_equipped && (
                                 <View style={styles.equippedBadgeOverlay}>
                                     <Ionicons name="checkmark-circle" size={16} color="#FFF" />
                                 </View>
                             )}
-                            <Text style={styles.badgeEmoji}>{badge.icon}</Text>
+                            <Text style={[styles.badgeEmoji, { fontSize: cardSize * 0.35 }]}>{badge.icon}</Text>
                         </LinearGradient>
                     ) : (
-                        <View style={styles.badgeIconGradientLocked}>
-                            <Text style={[styles.badgeEmoji, styles.badgeEmojiLocked]}>{badge.icon}</Text>
+                        <View style={[
+                            styles.badgeIconGradientLocked,
+                            { width: cardSize - 32, height: cardSize - 32, borderRadius: (cardSize - 32) / 2 }
+                        ]}>
+                            <Text style={[styles.badgeEmoji, styles.badgeEmojiLocked, { fontSize: cardSize * 0.35 }]}>{badge.icon}</Text>
                             <View style={styles.lockOverlay}>
                                 <Ionicons name="lock-closed" size={16} color="#FFF" />
                             </View>
@@ -504,13 +522,34 @@ const styles = StyleSheet.create({
     gridRow: { gap: SPACING.md, marginBottom: SPACING.md },
 
     // Badge Card
-    badgeCard: { width: CARD_SIZE, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['2xl'], padding: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', position: 'relative', overflow: 'hidden' },
+    // Badge Card
+    badgeCard: {
+        // Width set dynamically
+        backgroundColor: COLORS.surfaceElevated,
+        borderRadius: RADIUS['2xl'],
+        padding: SPACING.sm,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        position: 'relative',
+        overflow: 'hidden'
+    },
     badgeGlow: { position: 'absolute', top: -20, left: -20, right: -20, bottom: -20, borderRadius: 100 },
     badgeIconWrap: { marginBottom: SPACING.xs },
     equippedBadgeOverlay: { position: 'absolute', top: 0, right: 0, zIndex: 10, backgroundColor: COLORS.success, borderRadius: 8 },
     badgeIconLocked: { opacity: 0.5 },
-    badgeIconGradient: { width: CARD_SIZE - 32, height: CARD_SIZE - 32, borderRadius: (CARD_SIZE - 32) / 2, alignItems: 'center', justifyContent: 'center' },
-    badgeIconGradientLocked: { width: CARD_SIZE - 32, height: CARD_SIZE - 32, borderRadius: (CARD_SIZE - 32) / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceMuted, position: 'relative' },
+    badgeIconGradient: {
+        // Size set dynamically
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    badgeIconGradientLocked: {
+        // Size set dynamically
+        backgroundColor: COLORS.surfaceMuted,
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative'
+    },
     badgeEmoji: { fontSize: 32 },
     badgeEmojiLocked: { opacity: 0.3 },
     lockOverlay: { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
@@ -550,4 +589,19 @@ const styles = StyleSheet.create({
     actionButtonEquip: { backgroundColor: COLORS.accent.primary, borderColor: COLORS.accent.primary },
     actionButtonUnequip: { backgroundColor: 'transparent', borderColor: COLORS.error },
     actionButtonText: { fontSize: TYPOGRAPHY.size.md, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+
+    // ============================================
+    // RESPONSIVE DESKTOP STYLES
+    // ============================================
+    gridContentDesktop: {
+        paddingHorizontal: SPACING.xl,
+    },
+    gridRowDesktop: {
+        gap: SPACING.xl,
+        justifyContent: 'center',
+        maxWidth: 1200,
+        alignSelf: 'center',
+        width: '100%',
+    },
+    // Override base styles for desktop if needed
 });

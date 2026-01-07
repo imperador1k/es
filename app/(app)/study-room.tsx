@@ -14,6 +14,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premiu
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { getLiveKitToken, getRoomName } from '@/services/livekitService';
+import { SoundService } from '@/utils/SoundService';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -233,6 +234,7 @@ export default function StudyRoomScreen() {
     // V3: Floating Reactions
     const [floatingEmojis, setFloatingEmojis] = useState<Array<{ id: string; emoji: string; x: number }>>([]);
     const showChatRef = useRef(showChat);
+    const previousParticipantsRef = useRef<Participant[]>([]);
 
     useEffect(() => {
         showChatRef.current = showChat;
@@ -428,6 +430,9 @@ export default function StudyRoomScreen() {
                 setPendingRoom(null);
                 await fetchParticipants(roomId);
                 await fetchRooms();
+
+                // Play join sound
+                SoundService.playJoin();
             } else {
                 showAlert({ title: 'Erro', message: data?.error || 'Não foi possível entrar na sala' });
             }
@@ -448,6 +453,10 @@ export default function StudyRoomScreen() {
             setCurrentRoom(null);
             setParticipants([]);
             setFocusMinutes(0);
+
+            // Play leave sound
+            SoundService.playLeave();
+
             await fetchRooms();
         } catch (err: any) {
             showAlert({ title: 'Erro', message: err.message });
@@ -544,7 +553,18 @@ export default function StudyRoomScreen() {
 
         const participantsChannel = supabase
             .channel(`room-${currentRoom.id}-participants`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_participants', filter: `room_id=eq.${currentRoom.id}` }, () => fetchParticipants(currentRoom.id))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_room_participants', filter: `room_id=eq.${currentRoom.id}` }, async (payload) => {
+                const oldCount = previousParticipantsRef.current.length;
+                await fetchParticipants(currentRoom.id);
+                const newCount = participants.length;
+
+                // Play sounds based on participant changes
+                if (payload.eventType === 'INSERT' && payload.new.user_id !== user?.id) {
+                    SoundService.playJoin();
+                } else if (payload.eventType === 'DELETE' && payload.old.user_id !== user?.id) {
+                    SoundService.playLeave();
+                }
+            })
             .subscribe();
 
         const reactionsChannel = supabase
@@ -563,8 +583,13 @@ export default function StudyRoomScreen() {
             .channel(`room-${currentRoom.id}-messages`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'study_room_messages', filter: `room_id=eq.${currentRoom.id}` }, (payload) => {
                 const msg = payload.new as { user_id: string };
-                if (!showChatRef.current && msg.user_id !== user?.id) {
-                    setUnreadMessages(prev => prev + 1);
+                if (msg.user_id !== user?.id) {
+                    // Play notification sound for new messages from others
+                    SoundService.playNotification();
+
+                    if (!showChatRef.current) {
+                        setUnreadMessages(prev => prev + 1);
+                    }
                 }
             })
             .subscribe();

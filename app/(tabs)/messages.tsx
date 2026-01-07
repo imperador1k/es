@@ -3,6 +3,7 @@
  * Design inspirado em iMessage/WhatsApp/Telegram
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConversationWithUser, useConversations } from '@/hooks/useDMs';
 import { useFriends } from '@/hooks/useFriends';
@@ -16,7 +17,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
-    Image,
     Pressable,
     RefreshControl,
     StyleSheet,
@@ -84,10 +84,9 @@ function ConversationCard({
             onPressIn={() => { scale.value = withSpring(0.98); }}
             onPressOut={() => { scale.value = withSpring(1); }}
         >
-            {/* Avatar */}
             <View style={styles.avatarContainer}>
                 {other_user.avatar_url ? (
-                    <Image source={{ uri: other_user.avatar_url }} style={styles.avatar} />
+                    <CachedAvatar uri={other_user.avatar_url} size={52} />
                 ) : (
                     <LinearGradient
                         colors={[avatarColor, `${avatarColor}CC`]}
@@ -152,10 +151,9 @@ function FriendRequestCard({
 
     return (
         <Animated.View entering={FadeInRight.delay(index * 50).springify()} style={styles.requestCard}>
-            {/* Avatar */}
             <View style={styles.avatarContainer}>
                 {item.profile.avatar_url ? (
-                    <Image source={{ uri: item.profile.avatar_url }} style={styles.avatar} />
+                    <CachedAvatar uri={item.profile.avatar_url} size={52} />
                 ) : (
                     <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatarFallback}>
                         <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>

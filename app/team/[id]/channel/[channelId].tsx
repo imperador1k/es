@@ -4,7 +4,9 @@
  * Escola+ App
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { ChatInputBar } from '@/components/ChatInputBar';
+import { Message, useChannelMessages } from '@/hooks/queries/useChannelMessages';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -13,6 +15,7 @@ import { useTeam } from '@/providers/TeamsProvider';
 import { notifyNewMessage } from '@/services/teamNotifications';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -22,7 +25,6 @@ import {
     Animated,
     Dimensions,
     FlatList,
-    Image,
     Keyboard,
     KeyboardAvoidingView,
     Modal,
@@ -37,28 +39,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ============================================
-// TYPES
-// ============================================
-
-interface MessageAuthor {
-    id: string;
-    username: string | null;
-    full_name: string | null;
-    avatar_url: string | null;
-}
-
-interface Message {
-    id: string;
-    channel_id: string;
-    user_id: string;
-    content: string;
-    created_at: string;
-    author: MessageAuthor | null;
-    attachment_url?: string | null;
-    attachment_type?: 'image' | 'video' | 'file' | 'gif' | null;
-    attachment_name?: string | null;
-}
+// Types are now imported from useChannelMessages hook
+type MessageAuthor = import('@/hooks/queries/useChannelMessages').MessageAuthor;
 
 // ============================================
 // IMAGE VIEWER MODAL
@@ -172,7 +154,7 @@ function MessageItem({ message, isMe, index, showAvatar }: MessageItemProps) {
                     <View style={styles.avatarContainer}>
                         {showAvatar ? (
                             message.author?.avatar_url ? (
-                                <Image source={{ uri: message.author.avatar_url }} style={styles.avatar} />
+                                <CachedAvatar uri={message.author.avatar_url} size={32} />
                             ) : (
                                 <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatarPlaceholder}>
                                     <Text style={styles.avatarText}>
@@ -261,12 +243,14 @@ function MessageItem({ message, isMe, index, showAvatar }: MessageItemProps) {
                         </View>
                     )}
                 </View>
-            </Animated.View>
+            </Animated.View >
 
             {/* Image Viewer */}
-            {message.attachment_url && hasMedia && (
-                <ImageViewerModal visible={viewerVisible} imageUrl={message.attachment_url} onClose={() => setViewerVisible(false)} />
-            )}
+            {
+                message.attachment_url && hasMedia && (
+                    <ImageViewerModal visible={viewerVisible} imageUrl={message.attachment_url} onClose={() => setViewerVisible(false)} />
+                )
+            }
         </>
     );
 }
@@ -309,8 +293,9 @@ export default function ChannelChatScreen() {
     const insets = useSafeAreaInsets();
     const headerAnim = useRef(new Animated.Value(0)).current;
 
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [loading, setLoading] = useState(true);
+    // TanStack Query hook for messages (with caching + realtime)
+    const { messages, isLoading: loading } = useChannelMessages(channelId);
+
     const [channelName, setChannelName] = useState('');
     const [sending, setSending] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -350,31 +335,8 @@ export default function ChannelChatScreen() {
     }, []);
 
     // ============================================
-    // LOAD DATA
+    // LOAD CHANNEL INFO
     // ============================================
-
-    const loadMessages = useCallback(async () => {
-        if (!channelId) return;
-        try {
-            const { data, error } = await supabase
-                .from('messages')
-                .select(`id, channel_id, user_id, content, created_at, attachment_url, attachment_type, attachment_name, author:profiles!user_id (id, username, full_name, avatar_url)`)
-                .eq('channel_id', channelId)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            if (error) throw error;
-            const processedMessages: Message[] = (data || []).map((m: any) => ({
-                ...m,
-                author: Array.isArray(m.author) ? m.author[0] : m.author,
-            }));
-            setMessages(processedMessages);
-        } catch (err) {
-            console.error('Erro ao carregar mensagens:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [channelId]);
 
     const loadChannelInfo = useCallback(async () => {
         if (!channelId) return;
@@ -383,28 +345,8 @@ export default function ChannelChatScreen() {
     }, [channelId]);
 
     useEffect(() => {
-        loadMessages();
         loadChannelInfo();
-    }, [loadMessages, loadChannelInfo]);
-
-    // ============================================
-    // REALTIME
-    // ============================================
-
-    useEffect(() => {
-        if (!channelId) return;
-        const channel = supabase
-            .channel(`room:${channelId}`)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` }, async (payload) => {
-                const { data } = await supabase.from('messages').select(`id, channel_id, user_id, content, created_at, author:profiles!user_id (id, username, full_name, avatar_url)`).eq('id', payload.new.id).single();
-                if (data) {
-                    const newMessage: Message = { ...data, author: Array.isArray(data.author) ? data.author[0] : data.author };
-                    setMessages(prev => prev.some(m => m.id === newMessage.id) ? prev : [newMessage, ...prev]);
-                }
-            })
-            .subscribe();
-        return () => { supabase.removeChannel(channel); };
-    }, [channelId]);
+    }, [loadChannelInfo]);
 
     // ============================================
     // SEND MESSAGE

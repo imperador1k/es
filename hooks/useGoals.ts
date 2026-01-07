@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { cancelDeadlineReminders, scheduleDeadlineReminders } from '@/services/deadlineNotificationService';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 // ============================================
@@ -144,10 +145,20 @@ export function useCreateGoal() {
                 .single();
 
             if (error) throw error;
-            return data;
+            return data as UserGoal;
         },
-        onSuccess: () => {
+        onSuccess: (data: UserGoal) => {
             qc.invalidateQueries({ queryKey: goalKeys.all });
+
+            // Schedule deadline reminders if deadline exists
+            if (data.deadline) {
+                scheduleDeadlineReminders({
+                    id: data.id,
+                    title: data.title,
+                    deadline: new Date(data.deadline),
+                    type: 'goal',
+                });
+            }
         },
     });
 }
@@ -179,6 +190,11 @@ export function useUpdateGoalProgress() {
                 .eq('id', goalId);
 
             if (error) throw error;
+
+            // Cancel reminders if goal is now completed
+            if (isCompleted) {
+                cancelDeadlineReminders(goalId);
+            }
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: goalKeys.all });
@@ -201,6 +217,9 @@ export function useDeleteGoal() {
                 .eq('id', goalId);
 
             if (error) throw error;
+
+            // Cancel scheduled reminders
+            cancelDeadlineReminders(goalId);
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: goalKeys.all });

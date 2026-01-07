@@ -3,6 +3,7 @@
  * Ranking de membros por XP com design moderno
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -14,7 +15,6 @@ import {
     ActivityIndicator,
     Animated,
     Dimensions,
-    Image,
     Pressable,
     RefreshControl,
     ScrollView,
@@ -262,12 +262,8 @@ function PodiumCard({ member, position }: { member: LeaderboardMember; position:
                 {/* Icon */}
                 <Text style={styles.podiumIcon}>{config.icon}</Text>
 
-                {/* Avatar */}
                 {member.avatar_url ? (
-                    <Image
-                        source={{ uri: member.avatar_url }}
-                        style={[styles.podiumAvatar, isFirst && styles.podiumAvatarFirst, { borderColor: config.color }]}
-                    />
+                    <CachedAvatar uri={member.avatar_url} size={isFirst ? 72 : 56} style={{ borderWidth: isFirst ? 4 : 3, borderColor: config.color }} />
                 ) : (
                     <View style={[styles.podiumAvatarPlaceholder, isFirst && styles.podiumAvatarFirst, { borderColor: config.color, backgroundColor: `${config.color}20` }]}>
                         <Text style={[styles.podiumInitial, { color: config.color }]}>
@@ -314,9 +310,8 @@ function MemberCard({ member, isCurrentUser }: { member: LeaderboardMember; isCu
                     <Text style={[styles.rankText, isCurrentUser && styles.rankTextHighlight]}>#{member.rank}</Text>
                 </View>
 
-                {/* Avatar */}
                 {member.avatar_url ? (
-                    <Image source={{ uri: member.avatar_url }} style={styles.memberAvatar} />
+                    <CachedAvatar uri={member.avatar_url} size={44} style={{ marginLeft: SPACING.sm }} />
                 ) : (
                     <View style={styles.memberAvatarPlaceholder}>
                         <Text style={styles.memberInitial}>

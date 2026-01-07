@@ -38,6 +38,7 @@ import { ProfileProvider } from '@/providers/ProfileProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { SettingsProvider } from '@/providers/SettingsProvider';
 import { TeamsProvider } from '@/providers/TeamsProvider';
+import { SoundService } from '@/utils/SoundService';
 import { View } from 'react-native';
 
 export {
@@ -74,6 +75,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
+      // Pre-load Discord-style sounds for instant playback
+      SoundService.initialize();
     }
   }, [loaded]);
 

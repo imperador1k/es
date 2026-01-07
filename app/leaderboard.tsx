@@ -3,6 +3,8 @@
  * Ranking global épico com pódio 3D, animações, efeitos visuais insanos
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
@@ -14,13 +16,12 @@ import {
     ActivityIndicator,
     Animated,
     Dimensions,
-    FlatList,
-    Image,
     Pressable,
     RefreshControl,
+    ScrollView,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -83,6 +84,7 @@ const TIER_CONFIG: Record<string, { gradient: readonly [string, string]; emoji: 
 
 export default function GlobalLeaderboardScreen() {
     const { user } = useAuthContext();
+    const { isDesktop } = useBreakpoints();
 
     const [users, setUsers] = useState<RankedUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -170,87 +172,96 @@ export default function GlobalLeaderboardScreen() {
     return (
         <View style={styles.container}>
             <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-                {/* Epic Header */}
-                <Animated.View style={[styles.header, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
-                    <Pressable style={styles.backButton} onPress={() => router.back()}>
-                        <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
-                    </Pressable>
-                    <View style={styles.headerContent}>
-                        <Text style={styles.headerTitle}>🌍 Ranking Global</Text>
-                        <Text style={styles.headerSubtitle}>Top {users.length} Estudantes</Text>
-                    </View>
-                    <Pressable style={styles.refreshButton} onPress={() => { setRefreshing(true); loadLeaderboard(); }}>
-                        <Ionicons name="refresh" size={20} color={COLORS.text.tertiary} />
-                    </Pressable>
-                </Animated.View>
-
-                {/* Epic Podium */}
-                <Animated.View style={[styles.podiumSection, { opacity: podiumAnim, transform: [{ scale: podiumAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
-                    <LinearGradient colors={['rgba(99, 102, 241, 0.1)', 'transparent']} style={styles.podiumGradient}>
-                        <View style={styles.podiumRow}>
-                            {[top3[1], top3[0], top3[2]].map((u, idx) => {
-                                if (!u) return <View key={idx} style={styles.podiumSlot} />;
-                                const rank = u.rank as 1 | 2 | 3;
-                                const config = PODIUM_CONFIG[rank];
-                                const isFirst = rank === 1;
-
-                                return (
-                                    <Pressable key={u.id} style={styles.podiumSlot} onPress={() => router.push(`/user/${u.id}` as any)}>
-                                        {/* Crown/Medal */}
-                                        <Text style={[styles.podiumMedal, isFirst && styles.podiumMedalFirst]}>{config.icon}</Text>
-
-                                        {/* Avatar with glow */}
-                                        <View style={[styles.podiumAvatarWrap, { shadowColor: config.gradient[0] }]}>
-                                            {u.avatar_url ? (
-                                                <Image source={{ uri: u.avatar_url }} style={[styles.podiumAvatar, { width: config.size, height: config.size, borderRadius: config.size / 2 }]} />
-                                            ) : (
-                                                <LinearGradient colors={config.gradient} style={[styles.podiumAvatarPlaceholder, { width: config.size, height: config.size, borderRadius: config.size / 2 }]}>
-                                                    <Text style={styles.podiumAvatarText}>{(u.full_name || u.username || '?')[0].toUpperCase()}</Text>
-                                                </LinearGradient>
-                                            )}
-                                        </View>
-
-                                        {/* Name */}
-                                        <Text style={styles.podiumName} numberOfLines={1}>{u.full_name || u.username}</Text>
-
-                                        {/* XP */}
-                                        <View style={styles.podiumXPBadge}>
-                                            <Ionicons name="flash" size={12} color="#FFD700" />
-                                            <Text style={styles.podiumXPText}>{formatXP(u.current_xp)}</Text>
-                                        </View>
-
-                                        {/* Pedestal */}
-                                        <LinearGradient colors={config.gradient} style={[styles.pedestal, { height: config.pedestalH }]}>
-                                            <Text style={styles.pedestalRank}>#{rank}</Text>
-                                            <Text style={styles.pedestalLabel}>{config.label}</Text>
-                                        </LinearGradient>
-                                    </Pressable>
-                                );
-                            })}
-                        </View>
-                    </LinearGradient>
-                </Animated.View>
-
-                {/* Divider */}
-                <View style={styles.divider}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>CLASSIFICAÇÃO</Text>
-                    <View style={styles.dividerLine} />
-                </View>
-
-                {/* List */}
-                <FlatList
-                    data={rest}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <RankRow user={item} currentUserId={user?.id} />}
-                    contentContainerStyle={styles.listContent}
+                <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={[styles.scrollContent, isDesktop && styles.scrollContentDesktop]}
                     showsVerticalScrollIndicator={false}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadLeaderboard(); }} tintColor="#6366F1" />}
-                />
+                >
+                    <View style={[styles.contentWrapper, isDesktop && styles.contentWrapperDesktop]}>
+                        {/* Epic Header */}
+                        <Animated.View style={[styles.header, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
+                            <Pressable style={styles.backButton} onPress={() => router.back()}>
+                                <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+                            </Pressable>
+                            <View style={styles.headerContent}>
+                                <Text style={[styles.headerTitle, isDesktop && styles.headerTitleDesktop]}>🌍 Ranking Global</Text>
+                                <Text style={styles.headerSubtitle}>Top {users.length} Estudantes</Text>
+                            </View>
+                            <Pressable style={styles.refreshButton} onPress={() => { setRefreshing(true); loadLeaderboard(); }}>
+                                <Ionicons name="refresh" size={20} color={COLORS.text.tertiary} />
+                            </Pressable>
+                        </Animated.View>
+
+
+                        {/* Epic Podium */}
+                        <Animated.View style={[styles.podiumSection, isDesktop && styles.podiumSectionDesktop, { opacity: podiumAnim, transform: [{ scale: podiumAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
+                            <LinearGradient colors={['rgba(99, 102, 241, 0.1)', 'transparent']} style={styles.podiumGradient}>
+                                <View style={[styles.podiumRow, isDesktop && styles.podiumRowDesktop]}>
+                                    {[top3[1], top3[0], top3[2]].map((u, idx) => {
+                                        if (!u) return <View key={idx} style={styles.podiumSlot} />;
+                                        const rank = u.rank as 1 | 2 | 3;
+                                        const config = PODIUM_CONFIG[rank];
+                                        const isFirst = rank === 1;
+
+                                        return (
+                                            <Pressable key={u.id} style={styles.podiumSlot} onPress={() => router.push(`/user/${u.id}` as any)}>
+                                                {/* Crown/Medal */}
+                                                <Text style={[styles.podiumMedal, isFirst && styles.podiumMedalFirst]}>{config.icon}</Text>
+
+                                                {/* Avatar with glow */}
+                                                <View style={[styles.podiumAvatarWrap, { shadowColor: config.gradient[0] }]}>
+                                                    {u.avatar_url ? (
+                                                        <CachedAvatar uri={u.avatar_url} size={config.size} style={{ borderWidth: 3, borderColor: '#FFF' }} />
+                                                    ) : (
+                                                        <LinearGradient colors={config.gradient} style={[styles.podiumAvatarPlaceholder, { width: config.size, height: config.size, borderRadius: config.size / 2 }]}>
+                                                            <Text style={styles.podiumAvatarText}>{(u.full_name || u.username || '?')[0].toUpperCase()}</Text>
+                                                        </LinearGradient>
+                                                    )}
+                                                </View>
+
+                                                {/* Name */}
+                                                <Text style={styles.podiumName} numberOfLines={1}>{u.full_name || u.username}</Text>
+
+                                                {/* XP */}
+                                                <View style={styles.podiumXPBadge}>
+                                                    <Ionicons name="flash" size={12} color="#FFD700" />
+                                                    <Text style={styles.podiumXPText}>{formatXP(u.current_xp)}</Text>
+                                                </View>
+
+                                                {/* Pedestal */}
+                                                <LinearGradient colors={config.gradient} style={[styles.pedestal, { height: config.pedestalH }]}>
+                                                    <Text style={styles.pedestalRank}>#{rank}</Text>
+                                                    <Text style={styles.pedestalLabel}>{config.label}</Text>
+                                                </LinearGradient>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+                            </LinearGradient>
+                        </Animated.View>
+
+                        {/* Divider */}
+                        <View style={[styles.divider, isDesktop && styles.dividerDesktop]}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>CLASSIFICAÇÃO</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        {/* List - render as regular views for desktop */}
+                        <View style={[styles.listContent, isDesktop && styles.listContentDesktop]}>
+                            {rest.map((item) => (
+                                <RankRow key={item.id} user={item} currentUserId={user?.id} isDesktop={isDesktop} />
+                            ))}
+                        </View>
+                    </View>
+                </ScrollView>
+
+
 
                 {/* My Position Footer */}
                 {me && (
-                    <View style={styles.footer}>
+                    <View style={[styles.footer, isDesktop && styles.footerDesktop]}>
                         <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.footerGradient}>
                             <View style={styles.footerLeft}>
                                 <Text style={styles.footerRank}>#{myRank}</Text>
@@ -277,7 +288,7 @@ export default function GlobalLeaderboardScreen() {
 // RANK ROW COMPONENT
 // ============================================
 
-function RankRow({ user, currentUserId }: { user: RankedUser; currentUserId?: string }) {
+function RankRow({ user, currentUserId, isDesktop }: { user: RankedUser; currentUserId?: string; isDesktop?: boolean }) {
     const scale = useRef(new Animated.Value(1)).current;
     const isMe = user.id === currentUserId;
     const tier = TIER_CONFIG[user.current_tier || 'Bronze'] || TIER_CONFIG.Bronze;
@@ -297,16 +308,16 @@ function RankRow({ user, currentUserId }: { user: RankedUser; currentUserId?: st
             onPress={() => router.push(`/user/${user.id}` as any)}
             onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
             onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+            style={[styles.rankRow, isMe && styles.rankRowMe, isDesktop && styles.rankRowDesktop]}
         >
-            <Animated.View style={[styles.rankRow, isMe && styles.rankRowMe, { transform: [{ scale }] }]}>
+            <Animated.View style={{ transform: [{ scale }] }}>
                 {/* Rank Badge */}
                 <View style={[styles.rankBadge, { backgroundColor: `${getRankColor()}20` }]}>
                     <Text style={[styles.rankBadgeText, { color: getRankColor() }]}>#{user.rank}</Text>
                 </View>
 
-                {/* Avatar */}
                 {user.avatar_url ? (
-                    <Image source={{ uri: user.avatar_url }} style={styles.rowAvatar} />
+                    <CachedAvatar uri={user.avatar_url} size={48} style={{ marginLeft: SPACING.sm }} />
                 ) : (
                     <LinearGradient colors={tier.gradient} style={styles.rowAvatarPlaceholder}>
                         <Text style={styles.rowAvatarText}>{(user.full_name || user.username || '?')[0].toUpperCase()}</Text>
@@ -408,4 +419,53 @@ const styles = StyleSheet.create({
     footerRight: { alignItems: 'flex-end' },
     footerNext: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
     footerNextLabel: { fontSize: TYPOGRAPHY.size.xs, color: 'rgba(255,255,255,0.7)' },
+
+    // ============================================
+    // RESPONSIVE DESKTOP STYLES
+    // ============================================
+    scrollContent: {
+        flexGrow: 1,
+        paddingBottom: 120,
+    },
+    scrollContentDesktop: {
+        paddingHorizontal: SPACING.xl,
+    },
+    contentWrapper: {
+        flex: 1,
+    },
+    contentWrapperDesktop: {
+        maxWidth: 900,
+        alignSelf: 'center',
+        width: '100%',
+    },
+    headerTitleDesktop: {
+        fontSize: TYPOGRAPHY.size['3xl'],
+    },
+    podiumSectionDesktop: {
+        marginBottom: SPACING.xl,
+    },
+    podiumRowDesktop: {
+        gap: SPACING.xl,
+        maxWidth: 600,
+        alignSelf: 'center',
+    },
+    dividerDesktop: {
+        marginVertical: SPACING.lg,
+    },
+    listContentDesktop: {
+        gap: SPACING.sm,
+    },
+    rankRowDesktop: {
+        padding: SPACING.lg,
+    },
+    footerDesktop: {
+        maxWidth: 900,
+        alignSelf: 'center',
+        left: 'auto',
+        right: 'auto',
+        width: '100%',
+        borderRadius: RADIUS['2xl'],
+        marginBottom: SPACING.lg,
+        overflow: 'hidden',
+    },
 });

@@ -24,6 +24,8 @@ interface ImmersiveCardProps {
     time?: string;
     location?: string;
     onPress?: () => void;
+    onEdit?: () => void;
+    onSeeMore?: () => void;
     variant?: 'hero' | 'standard' | 'compact';
     style?: object;
 }
@@ -43,6 +45,8 @@ export function ImmersiveCard({
     time,
     location,
     onPress,
+    onEdit,
+    onSeeMore,
     variant = 'standard',
     style,
 }: ImmersiveCardProps) {
@@ -82,6 +86,11 @@ export function ImmersiveCard({
                     </View>
                 )}
                 <View style={{ flex: 1 }} />
+                {onEdit && (
+                    <Pressable style={styles.editButton} onPress={onEdit}>
+                        <Ionicons name="camera-outline" size={18} color="#FFF" />
+                    </Pressable>
+                )}
                 <Pressable style={styles.favoriteButton}>
                     <Ionicons name="heart-outline" size={20} color="#FFF" />
                 </Pressable>
@@ -132,10 +141,10 @@ export function ImmersiveCard({
                 {/* CTA Button (Hero only) */}
                 {variant === 'hero' && (
                     <View style={styles.ctaRow}>
-                        <Pressable style={styles.ctaButton}>
+                        <Pressable style={styles.ctaButton} onPress={onSeeMore}>
                             <Text style={styles.ctaText}>See more</Text>
                         </Pressable>
-                        <Pressable style={styles.arrowButton}>
+                        <Pressable style={styles.arrowButton} onPress={onPress}>
                             <Ionicons name="chevron-forward" size={20} color={COLORS.text.inverse} />
                         </Pressable>
                     </View>
@@ -194,6 +203,15 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.2)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    editButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(99, 102, 241, 0.8)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: SPACING.sm,
     },
 
     // Content

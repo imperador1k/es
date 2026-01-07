@@ -3,6 +3,7 @@
  * Ultra-premium design inspirado em apps de gaming/social
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { SupportModal } from '@/components/SupportModal';
 import { getUserEducation } from '@/hooks/useEducation';
 import { supabase } from '@/lib/supabase';
@@ -21,7 +22,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
-    Image,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -343,15 +343,13 @@ export default function ProfileScreen() {
 
                         {/* Avatar */}
                         {profile?.avatar_url ? (
-                            <Image
-                                source={{ uri: profile.avatar_url }}
-                                style={[
-                                    styles.avatar,
-                                    frameConfig && {
-                                        borderColor: frameConfig.border_color,
-                                        borderWidth: frameConfig.border_width,
-                                    }
-                                ]}
+                            <CachedAvatar
+                                uri={profile.avatar_url}
+                                size={120}
+                                style={frameConfig && {
+                                    borderColor: frameConfig.border_color,
+                                    borderWidth: frameConfig.border_width,
+                                }}
                             />
                         ) : (
                             <LinearGradient

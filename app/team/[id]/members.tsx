@@ -3,6 +3,7 @@
  * Gestão de membros: promover, demover, remover
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
@@ -27,7 +28,6 @@ import {
     ActivityIndicator,
     Alert,
     Animated,
-    Image,
     Modal,
     Platform,
     Pressable,
@@ -504,9 +504,8 @@ function MemberCard({
                 onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
                 style={styles.memberMainArea}
             >
-                {/* Avatar */}
                 {member.profile.avatar_url ? (
-                    <Image source={{ uri: member.profile.avatar_url }} style={styles.avatar} />
+                    <CachedAvatar uri={member.profile.avatar_url} size={48} />
                 ) : (
                     <LinearGradient colors={[roleColor, `${roleColor}80`]} style={styles.avatarPlaceholder}>
                         <Text style={styles.avatarText}>

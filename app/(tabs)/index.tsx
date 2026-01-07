@@ -60,6 +60,7 @@ interface NextClass {
   start_time: string;
   end_time: string;
   day_of_week: number;
+  image_url?: string;
 }
 
 // ============================================
@@ -111,7 +112,7 @@ export default function HomeScreen() {
           start_time,
           end_time,
           day_of_week,
-          user_subjects (name)
+          user_subjects (name, image_url)
         `)
         .eq('user_id', profile?.id)
         .eq('day_of_week', dayOfWeek)
@@ -127,6 +128,7 @@ export default function HomeScreen() {
           start_time: classData.start_time,
           end_time: classData.end_time,
           day_of_week: classData.day_of_week,
+          image_url: (classData.user_subjects as any)?.image_url || undefined,
         });
       }
     } catch (err) {
@@ -255,7 +257,7 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>Próximo</Text>
           {nextClass ? (
             <ImmersiveCard
-              image="https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800"
+              image={nextClass.image_url || "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800"}
               title={nextClass.subject_name}
               subtitle="Próxima aula"
               badge="Hoje"
@@ -264,6 +266,8 @@ export default function HomeScreen() {
               location={nextClass.room}
               variant="hero"
               onPress={() => router.push('/(tabs)/calendar')}
+              onEdit={() => router.push('/(tabs)/subjects')}
+              onSeeMore={() => router.push('/(tabs)/calendar')}
             />
           ) : (
             <View style={styles.emptyHero}>

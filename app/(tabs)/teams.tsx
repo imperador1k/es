@@ -3,6 +3,7 @@
  * With search filter and organized layout
  */
 
+import { CachedImage } from '@/components/CachedImage';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
@@ -17,7 +18,6 @@ import {
     Animated,
     Dimensions,
     FlatList,
-    Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -370,7 +370,7 @@ function SquadCard({ team }: { team: TeamWithRole }) {
                 <View style={[styles.squadAccent, { backgroundColor: color }]} />
 
                 {team.icon_url ? (
-                    <Image source={{ uri: team.icon_url }} style={styles.squadAvatar} />
+                    <CachedImage uri={team.icon_url} style={styles.squadAvatar} />
                 ) : (
                     <LinearGradient colors={[color, `${color}99`]} style={styles.squadAvatarPlaceholder}>
                         <Text style={styles.squadInitial}>{initial}</Text>

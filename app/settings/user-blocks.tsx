@@ -1,3 +1,4 @@
+import { CachedAvatar } from '@/components/CachedImage';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { BlockedUser, getBlockedUsers, unblockUser } from '@/services/userService';
@@ -7,7 +8,6 @@ import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
-    Image,
     Pressable,
     StyleSheet,
     Text,
@@ -87,7 +87,7 @@ export default function BlockedUsersScreen() {
                         <View style={styles.userCard}>
                             <View style={styles.userInfo}>
                                 {item.profile?.avatar_url ? (
-                                    <Image source={{ uri: item.profile.avatar_url }} style={styles.avatar} />
+                                    <CachedAvatar uri={item.profile.avatar_url} size={40} />
                                 ) : (
                                     <View style={styles.avatarFallback}>
                                         <Text style={styles.avatarInitial}>

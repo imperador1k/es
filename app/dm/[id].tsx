@@ -4,6 +4,7 @@
  * Escola+ App
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { ChatInputBar } from '@/components/ChatInputBar';
 import { LiveKitRoom } from '@/components/StudyRoom/LiveKitRoom';
 import { useCall } from '@/context/CallContext';
@@ -16,6 +17,7 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { Profile } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -24,7 +26,6 @@ import {
     Animated,
     Dimensions,
     FlatList,
-    Image,
     Keyboard,
     KeyboardAvoidingView,
     Platform,
@@ -274,11 +275,10 @@ function MessageItem({ message, isMe, index, showAvatar }: MessageItemProps) {
             isMe && styles.messageRowMe,
             { opacity: fadeAnim, transform: [{ translateX: slideAnim }] },
         ]}>
-            {/* Avatar (only for received messages) */}
             {!isMe && showAvatar && (
                 <View style={styles.messageAvatar}>
                     {message.sender?.avatar_url ? (
-                        <Image source={{ uri: message.sender.avatar_url }} style={styles.avatarImage} />
+                        <CachedAvatar uri={message.sender.avatar_url} size={32} />
                     ) : (
                         <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatarFallback}>
                             <Text style={styles.avatarInitial}>
@@ -562,7 +562,7 @@ export default function DMChatScreen() {
                     {/* Avatar with online indicator */}
                     <Pressable style={styles.headerAvatarWrap} onPress={() => otherUser && router.push(`/user/${otherUser.id}` as any)}>
                         {otherUser?.avatar_url ? (
-                            <Image source={{ uri: otherUser.avatar_url }} style={styles.headerAvatar} />
+                            <CachedAvatar uri={otherUser.avatar_url} size={44} />
                         ) : (
                             <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.headerAvatar}>
                                 <Text style={styles.headerAvatarText}>{displayName.charAt(0).toUpperCase()}</Text>

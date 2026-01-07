@@ -3,6 +3,7 @@
  * Smart filters: Level first → School/University → Course
  */
 
+import { CachedAvatar } from '@/components/CachedImage';
 import { useStartConversation } from '@/hooks/useDMs';
 import { useFriends, useSearchUsers } from '@/hooks/useFriends';
 import { supabase } from '@/lib/supabase';
@@ -18,7 +19,6 @@ import {
     ActivityIndicator,
     Animated,
     FlatList,
-    Image,
     Keyboard,
     KeyboardAvoidingView,
     Modal,
@@ -100,7 +100,7 @@ function UserCard({ user, isFriend, sending, onAdd, onMessage, index }: {
                 onPressOut={handlePressOut}
             >
                 {user.avatar_url ? (
-                    <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+                    <CachedAvatar uri={user.avatar_url} size={52} />
                 ) : (
                     <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatar}>
                         <Text style={styles.avatarInitial}>
