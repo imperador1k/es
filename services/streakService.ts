@@ -67,141 +67,41 @@ function getDaysDifference(date1: string, date2: string): number {
 // ============================================
 
 /**
- * Atualiza a streak do utilizador após completar uma sessão de estudo
+ * Atualiza a streak do utilizador via RPC Database (Atomic & Robust)
  * 
- * Lógica:
- * 1. Se last_activity_date === hoje: não faz nada (já contou para hoje)
- * 2. Se last_activity_date === ontem: incrementa streak
- * 3. Se last_activity_date < ontem: 
- *    - Se tem streak_freeze disponível: usa o freeze, mantém streak
- *    - Se não: reset streak para 1
- * 4. Se nunca estudou: começa streak em 1
+ * Invoca a função `update_streak()` no PostgreSQL que gere toda a lógica:
+ * - Incrementa se consecutivo
+ * - Reseta se falhou
+ * - Ignora se já atualizou hoje
  */
 export async function updateStreakOnSession(userId: string): Promise<StreakUpdateResult> {
     try {
-        // Buscar dados atuais da streak (inclui streak_freezes)
-        const { data: profile, error: fetchError } = await supabase
-            .from('profiles')
-            .select('current_streak, longest_streak, last_activity_date, streak_freezes')
-            .eq('id', userId)
-            .single();
+        console.log('🔄 A sincronizar streak via RPC...');
+        
+        // Chamar a função RPC diretamente
+        const { error } = await supabase.rpc('update_streak');
 
-        if (fetchError) {
-            console.error('❌ Erro ao buscar streak:', fetchError);
-            return {
-                success: false,
-                currentStreak: 0,
-                longestStreak: 0,
-                isNewStreak: false,
-                streakBroken: false,
-                freezeUsed: false,
-                error: fetchError.message,
-            };
+        if (error) {
+            console.error('❌ Erro RPC update_streak:', error);
+            throw error;
         }
 
-        const today = getTodayDate();
-        const yesterday = getYesterdayDate();
-
-        const currentStreak = profile?.current_streak || 0;
-        const longestStreak = profile?.longest_streak || 0;
-        const lastActivityDate = profile?.last_activity_date;
-        const streakFreezes = profile?.streak_freezes || 0;
-
-        let newStreak = currentStreak;
-        let newLongest = longestStreak;
-        let newFreezes = streakFreezes;
-        let isNewStreak = false;
-        let streakBroken = false;
-        let freezeUsed = false;
-
-        // Caso 1: Já estudou hoje - não incrementa
-        if (lastActivityDate === today) {
-            console.log('🔥 Streak: Já estudou hoje, mantém streak:', currentStreak);
-            return {
-                success: true,
-                currentStreak,
-                longestStreak,
-                isNewStreak: false,
-                streakBroken: false,
-                freezeUsed: false,
-            };
-        }
-
-        // Caso 2: Estudou ontem - incrementa
-        if (lastActivityDate === yesterday) {
-            newStreak = currentStreak + 1;
-            isNewStreak = true;
-            console.log('🔥 Streak incrementada:', currentStreak, '->', newStreak);
-        }
-        // Caso 3: Nunca estudou OU estudou há mais de 1 dia
-        else {
-            const daysMissed = lastActivityDate ? getDaysDifference(lastActivityDate, today) : 0;
-            
-            // Verificar se tem streak freeze E ia perder streak
-            if (lastActivityDate && daysMissed > 1 && currentStreak > 0) {
-                if (streakFreezes > 0) {
-                    // 🧊 USAR STREAK FREEZE!
-                    newFreezes = streakFreezes - 1;
-                    freezeUsed = true;
-                    newStreak = currentStreak; // Mantém a streak!
-                    console.log('❄️ Streak Freeze usado! Streak protegida:', currentStreak, '| Freezes restantes:', newFreezes);
-                } else {
-                    // Sem freeze - streak quebrada
-                    streakBroken = true;
-                    newStreak = 1;
-                    isNewStreak = true;
-                    console.log('💔 Streak quebrada! Era:', currentStreak);
-                }
-            } else {
-                // Primeira atividade ou sem streak anterior
-                newStreak = 1;
-                isNewStreak = true;
-                console.log('🔥 Nova streak iniciada: 1');
-            }
-        }
-
-        // Atualizar longest_streak se necessário
-        if (newStreak > longestStreak) {
-            newLongest = newStreak;
-            console.log('🏆 Novo recorde de streak:', newLongest);
-        }
-
-        // Guardar na BD
-        const { error: updateError } = await supabase
-            .from('profiles')
-            .update({
-                current_streak: newStreak,
-                longest_streak: newLongest,
-                last_activity_date: today,
-                streak_freezes: newFreezes,
-            })
-            .eq('id', userId);
-
-        if (updateError) {
-            console.error('❌ Erro ao atualizar streak:', updateError);
-            return {
-                success: false,
-                currentStreak,
-                longestStreak,
-                isNewStreak: false,
-                streakBroken: false,
-                freezeUsed: false,
-                error: updateError.message,
-            };
-        }
-
-        console.log(`✅ Streak atualizada: ${newStreak} dias (recorde: ${newLongest})${freezeUsed ? ' [FREEZE USADO]' : ''}`);
+        // Buscar dados atualizados para retornar ao frontend
+        const streakData = await getStreakData(userId);
+        
+        console.log(`✅ Streak sincronizada! Atual: ${streakData?.current_streak} (Recorde: ${streakData?.longest_streak})`);
 
         return {
             success: true,
-            currentStreak: newStreak,
-            longestStreak: newLongest,
-            isNewStreak,
-            streakBroken,
-            freezeUsed,
+            currentStreak: streakData?.current_streak || 0,
+            longestStreak: streakData?.longest_streak || 0,
+            isNewStreak: false, // A RPC não nos diz explicitamente se mudou, mas podemos inferir se necessário. Para já simplificamos.
+            streakBroken: false,
+            freezeUsed: false,
         };
+
     } catch (err: any) {
-        console.error('❌ Erro inesperado na streak:', err);
+        console.error('❌ Erro ao atualizar streak:', err);
         return {
             success: false,
             currentStreak: 0,

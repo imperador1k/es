@@ -5,6 +5,7 @@ import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { CopilotProvider, useCopilot } from 'react-native-copilot';
 
 const HAS_SEEN_PREFIX = 'tutorial_seen_';
@@ -115,7 +116,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
         <CopilotProvider
             tooltipComponent={TutorialTooltip}
             overlay="svg"
-            animated={true}
+            animated={Platform.OS !== 'web'} // Disable animation on web to prevent crash
             backdropColor="rgba(0,0,0,0.85)"
             verticalOffset={0}
             stepNumberComponent={() => null}

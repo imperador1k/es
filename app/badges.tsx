@@ -3,11 +3,12 @@
  * Design épico com efeitos 3D, glows, auras por raridade e animações
  */
 
+import { BadgeDetail, DisplayBadge } from '@/components/BadgeDetail';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
-import { Badge, checkAndAwardBadges, getAllBadges, getUserBadges, toggleBadgeEquip, UserBadge } from '@/services/badgeService';
+import { Badge, checkAndAwardBadges, getAllBadges, getUserBadges, UserBadge } from '@/services/badgeService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -31,11 +32,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // TYPES & CONSTANTS
 // ============================================
 
-interface DisplayBadge extends Badge {
-    unlocked: boolean;
-    unlocked_at?: string;
-    is_equipped?: boolean;
-}
+
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - SPACING.lg * 2 - SPACING.md * 2) / 3;
@@ -378,110 +375,7 @@ function BadgeCard({ badge, onPress, cardSize }: { badge: DisplayBadge; onPress:
 // BADGE DETAIL COMPONENT
 // ============================================
 
-function BadgeDetail({ badge, onClose, onUpdate }: { badge: DisplayBadge; onClose: () => void; onUpdate: () => void }) {
-    const rarity = RARITY_CONFIG[badge.rarity];
-    const { showAlert } = useAlert();
-    const [equipping, setEquipping] = useState(false);
 
-    const handleEquipToggle = async () => {
-        setEquipping(true);
-        const result = await toggleBadgeEquip(badge.id);
-        setEquipping(false);
-
-        if (result.success) {
-            onUpdate(); // Reload badges to update UI
-        } else {
-            showAlert({
-                title: 'Erro',
-                message: result.error || 'Não foi possível equipar a medalha.',
-            });
-        }
-    };
-
-    return (
-        <View style={styles.detailContainer}>
-            {/* Epic Icon */}
-            <View style={styles.detailIconWrap}>
-                {badge.unlocked ? (
-                    <LinearGradient colors={rarity.gradient} style={styles.detailIconGradient}>
-                        <Text style={styles.detailEmoji}>{badge.icon}</Text>
-                    </LinearGradient>
-                ) : (
-                    <View style={styles.detailIconLocked}>
-                        <Text style={[styles.detailEmoji, { opacity: 0.3 }]}>{badge.icon}</Text>
-                    </View>
-                )}
-            </View>
-
-            {/* Title */}
-            <Text style={styles.detailTitle}>{badge.name}</Text>
-
-            {/* Rarity Badge */}
-            <LinearGradient colors={rarity.gradient} style={styles.rarityBadge}>
-                <Text style={styles.rarityEmoji}>{rarity.emoji}</Text>
-                <Text style={styles.rarityLabel}>{rarity.label}</Text>
-                <View style={styles.rarityStars}>
-                    {Array.from({ length: rarity.stars }).map((_, i) => (
-                        <Ionicons key={i} name="star" size={12} color="#FFF" />
-                    ))}
-                </View>
-            </LinearGradient>
-
-            {/* Description */}
-            <Text style={styles.detailDescription}>{badge.description}</Text>
-
-            {/* XP Reward */}
-            {badge.xp_reward > 0 && (
-                <View style={styles.xpReward}>
-                    <Ionicons name="flash" size={20} color="#FFD700" />
-                    <Text style={styles.xpRewardText}>+{badge.xp_reward} XP</Text>
-                </View>
-            )}
-
-            {/* Status */}
-            <View style={[styles.statusCard, badge.unlocked ? styles.statusUnlocked : styles.statusLocked]}>
-                <Ionicons name={badge.unlocked ? 'checkmark-circle' : 'lock-closed'} size={24} color={badge.unlocked ? '#22C55E' : COLORS.text.tertiary} />
-                <View style={styles.statusContent}>
-                    <Text style={[styles.statusTitle, badge.unlocked && { color: '#22C55E' }]}>
-                        {badge.unlocked ? 'Desbloqueado!' : 'Bloqueado'}
-                    </Text>
-                    <Text style={styles.statusSubtitle}>
-                        {badge.unlocked
-                            ? new Date(badge.unlocked_at!).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })
-                            : 'Continua a progredir para desbloquear'}
-                    </Text>
-                </View>
-            </View>
-
-            {/* Equip Action */}
-            {badge.unlocked && (
-                <Pressable
-                    style={[styles.actionButton, badge.is_equipped ? styles.actionButtonUnequip : styles.actionButtonEquip]}
-                    onPress={handleEquipToggle}
-                    disabled={equipping}
-                >
-                    {equipping ? (
-                        <ActivityIndicator color={badge.is_equipped ? COLORS.error : '#FFF'} />
-                    ) : (
-                        <>
-                            <Ionicons name={badge.is_equipped ? 'close-circle' : 'shield-checkmark'} size={20} color={badge.is_equipped ? COLORS.error : '#FFF'} />
-                            <Text style={[styles.actionButtonText, badge.is_equipped && { color: COLORS.error }]}>
-                                {badge.is_equipped ? 'Desequipar' : 'Equipar'}
-                            </Text>
-                        </>
-                    )}
-                </Pressable>
-            )}
-
-            {/* Close Button */}
-            <Pressable onPress={onClose}>
-                <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.closeButton}>
-                    <Text style={styles.closeButtonText}>Fechar</Text>
-                </LinearGradient>
-            </Pressable>
-        </View>
-    );
-}
 
 // ============================================
 // STYLES

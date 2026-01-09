@@ -3,6 +3,7 @@
  * Dados reais do Supabase + Links corretos
  */
 
+import CachedAvatar from '@/components/CachedAvatar';
 import { ImmersiveCard } from '@/components/ImmersiveCard';
 import { useCalendarItems } from '@/hooks/useCalendarItems';
 import { supabase } from '@/lib/supabase';
@@ -14,7 +15,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -228,13 +228,12 @@ export default function HomeScreen() {
             style={styles.avatarContainer}
             onPress={() => router.push('/(tabs)/profile')}
           >
-            {profile?.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={24} color={COLORS.text.secondary} />
-              </View>
-            )}
+            <CachedAvatar
+              url={profile?.avatar_url}
+              size={48}
+              alt={profile?.username || undefined}
+              style={styles.avatar}
+            />
             {profile?.current_xp !== undefined && (
               <View style={styles.xpBadge}>
                 <Text style={styles.xpText}>{profile.current_xp}</Text>

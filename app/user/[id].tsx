@@ -5,7 +5,9 @@
  * Inclui badges reais, stats e ações sociais
  */
 
+import { BadgeDetail, DisplayBadge } from '@/components/BadgeDetail';
 import { CachedAvatar } from '@/components/CachedImage';
+
 import { useStartConversation } from '@/hooks/useDMs';
 import { getUserEducation } from '@/hooks/useEducation';
 import { useFriends } from '@/hooks/useFriends';
@@ -20,9 +22,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
     Modal,
     Pressable,
     ScrollView,
@@ -64,6 +67,16 @@ export default function UserProfileScreen() {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [equippedBadges, setEquippedBadges] = useState<UserBadge[]>([]);
+    const [selectedBadge, setSelectedBadge] = useState<DisplayBadge | null>(null);
+    const modalScale = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (selectedBadge) {
+            Animated.spring(modalScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }).start();
+        } else {
+            modalScale.setValue(0);
+        }
+    }, [selectedBadge]);
     const [educationData, setEducationData] = useState<{
         level: string;
         year?: number;
@@ -479,7 +492,19 @@ export default function UserProfileScreen() {
                     {badges.length > 0 ? (
                         <View style={styles.badgesGrid}>
                             {badges.map((ub) => (
-                                <View key={ub.id} style={styles.badgeCard}>
+                                <Pressable
+                                    key={ub.id}
+                                    style={styles.badgeCard}
+                                    onPress={() => {
+                                        // Convert UserBadge to DisplayBadge
+                                        setSelectedBadge({
+                                            ...ub.badge,
+                                            unlocked: true,
+                                            unlocked_at: ub.unlocked_at,
+                                            is_equipped: ub.is_equipped
+                                        });
+                                    }}
+                                >
                                     <Text style={styles.badgeEmoji}>
                                         {ub.badge?.icon || '🏅'}
                                     </Text>
@@ -492,7 +517,7 @@ export default function UserProfileScreen() {
                                             month: 'short',
                                         })}
                                     </Text>
-                                </View>
+                                </Pressable>
                             ))}
                         </View>
                     ) : (
@@ -511,7 +536,8 @@ export default function UserProfileScreen() {
 
             {/* OPTIONS MODAL */}
             <Modal transparent visible={optionsVisible} animationType="fade" onRequestClose={() => setOptionsVisible(false)}>
-                <Pressable style={styles.modalOverlay} onPress={() => setOptionsVisible(false)}>
+                <Pressable style={styles.bottomModalOverlay} onPress={() => setOptionsVisible(false)}>
+
                     <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
                     <View style={styles.optionsSheet}>
                         <Text style={styles.optionsTitle}>Opções</Text>
@@ -539,7 +565,8 @@ export default function UserProfileScreen() {
 
             {/* REPORT MODAL */}
             <Modal transparent visible={reportModalVisible} animationType="slide" onRequestClose={() => setReportModalVisible(false)}>
-                <Pressable style={styles.modalOverlay} onPress={() => setReportModalVisible(false)}>
+                <Pressable style={styles.centerModalOverlay} onPress={() => setReportModalVisible(false)}>
+
                     <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
                     <Pressable style={styles.reportModal} onPress={(e) => e.stopPropagation()}>
                         <Text style={styles.reportTitle}>Reportar {profile?.username}</Text>
@@ -573,7 +600,8 @@ export default function UserProfileScreen() {
 
             {/* BLOCK MODAL */}
             <Modal transparent visible={blockModalVisible} animationType="slide" onRequestClose={() => setBlockModalVisible(false)}>
-                <Pressable style={styles.modalOverlay} onPress={() => setBlockModalVisible(false)}>
+                <Pressable style={styles.centerModalOverlay} onPress={() => setBlockModalVisible(false)}>
+
                     <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
                     <Pressable style={styles.reportModal} onPress={(e) => e.stopPropagation()}>
                         <Text style={[styles.reportTitle, { color: '#EF4444' }]}>Bloquear Utilizador?</Text>
@@ -597,6 +625,23 @@ export default function UserProfileScreen() {
                     </Pressable>
                 </Pressable>
             </Modal>
+
+            {/* BADGE DETAIL MODAL */}
+            <Modal visible={!!selectedBadge} transparent animationType="fade" onRequestClose={() => setSelectedBadge(null)}>
+                <Pressable style={styles.centerModalOverlay} onPress={() => setSelectedBadge(null)}>
+
+                    <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+                    <Animated.View style={[styles.modalContent, { transform: [{ scale: modalScale }] }]}>
+                        {selectedBadge && (
+                            <BadgeDetail
+                                badge={selectedBadge}
+                                onClose={() => setSelectedBadge(null)}
+                                showEquipAction={false} // Disable equipping on other users' profiles
+                            />
+                        )}
+                    </Animated.View>
+                </Pressable>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -605,12 +650,20 @@ export default function UserProfileScreen() {
 // STYLES
 // ============================================
 
+// Modal
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,
     },
+    // Modal
+    // Modal
+    centerModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
+    modalContent: { backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['3xl'], width: '100%', maxWidth: 340, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    // Options sheet moved to bottomModalOverlay context
+
     loadingContainer: {
+
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
@@ -1005,7 +1058,8 @@ const styles = StyleSheet.create({
 
 
     // Modals
-    modalOverlay: {
+    // Modals
+    bottomModalOverlay: {
         flex: 1,
         justifyContent: 'flex-end',
         backgroundColor: 'rgba(0,0,0,0.5)',

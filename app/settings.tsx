@@ -14,6 +14,7 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { usePresenceContext } from '@/providers/PresenceProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { decode } from 'base64-arraybuffer';
 import * as Application from 'expo-application';
 import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
@@ -166,9 +167,39 @@ export default function SettingsScreen() {
         if (!user?.id) return;
         try {
             setUploadingAvatar(true);
-            const dataUri = `data:${mimeType};base64,${base64}`;
-            const { error } = await supabase.from('profiles').update({ avatar_url: dataUri }).eq('id', user.id);
-            if (error) throw error;
+
+            // 1. Converter base64 para ArrayBuffer
+            const fileData = decode(base64);
+
+            // 2. Gerar nome único (timestamp) para garantir que o URL muda e invalida cache antigo
+            // MAS mantemos a consistência de ser um URL público
+            const fileName = `${user.id}/${Date.now()}.png`;
+
+            // 3. Upload para o bucket 'avatars'
+            const { error: uploadError } = await supabase
+                .storage
+                .from('avatars')
+                .upload(fileName, fileData, {
+                    contentType: mimeType,
+                    upsert: true
+                });
+
+            if (uploadError) throw uploadError;
+
+            // 4. Obter URL Público
+            const { data: { publicUrl } } = supabase
+                .storage
+                .from('avatars')
+                .getPublicUrl(fileName);
+
+            // 5. Atualizar perfil com o novo URL
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({ avatar_url: publicUrl })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
             await refetchProfile();
             showToast('success', 'Foto atualizada!');
         } catch (error: any) {

@@ -3,7 +3,7 @@
  * Ultra-premium design inspirado em apps de gaming/social
  */
 
-import { CachedAvatar } from '@/components/CachedImage';
+import CachedAvatar from '@/components/CachedAvatar';
 import { SupportModal } from '@/components/SupportModal';
 import { getUserEducation } from '@/hooks/useEducation';
 import { supabase } from '@/lib/supabase';
@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -192,8 +192,13 @@ export default function ProfileScreen() {
         }
     }, [user?.id]);
 
+    useFocusEffect(
+        useCallback(() => {
+            loadEquippedBadges();
+        }, [loadEquippedBadges])
+    );
+
     useEffect(() => {
-        loadEquippedBadges();
         // Subscribe to badge changes could be added here for realtime updates
         const subscription = supabase
             .channel('public:user_badges')
@@ -342,29 +347,15 @@ export default function ProfileScreen() {
                         )}
 
                         {/* Avatar */}
-                        {profile?.avatar_url ? (
-                            <CachedAvatar
-                                uri={profile.avatar_url}
-                                size={120}
-                                style={frameConfig && {
-                                    borderColor: frameConfig.border_color,
-                                    borderWidth: frameConfig.border_width,
-                                }}
-                            />
-                        ) : (
-                            <LinearGradient
-                                colors={tierConfig.gradient}
-                                style={[
-                                    styles.avatarFallback,
-                                    frameConfig && {
-                                        borderColor: frameConfig.border_color,
-                                        borderWidth: frameConfig.border_width,
-                                    }
-                                ]}
-                            >
-                                <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
-                            </LinearGradient>
-                        )}
+                        <CachedAvatar
+                            url={profile?.avatar_url}
+                            size={120}
+                            alt={displayName}
+                            style={frameConfig && {
+                                borderColor: frameConfig.border_color,
+                                borderWidth: frameConfig.border_width,
+                            }}
+                        />
 
                         {/* Tier Badge */}
                         <View style={styles.tierBadge}>

@@ -1,7 +1,7 @@
-import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
+import 'react-native-url-polyfill/auto';
 
 // Variáveis de ambiente do Expo (Mantidas iguais)
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
@@ -38,7 +38,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         storage: ExpoStorage, // <--- AQUI MUDAMOS DE AsyncStorage PARA ExpoStorage
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,
+        detectSessionInUrl: Platform.OS === 'web',
     },
 });
 

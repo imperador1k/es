@@ -156,6 +156,31 @@ function PushNotificationsInitializer({ children }: { children: React.ReactNode 
   return <>{children}</>;
 }
 
+// --------------------------------------------------------------------------
+// 🔥 STREAK INITIALIZER
+// Deve estar dentro de AuthProvider para ter acesso ao user
+// --------------------------------------------------------------------------
+import { useAuthContext } from '@/providers/AuthProvider';
+import { updateStreakOnSession } from '@/services/streakService';
+
+function StreakInitializer({ children }: { children: React.ReactNode }) {
+  const { session } = useAuthContext();
+  const userId = session?.user.id;
+
+  useEffect(() => {
+    if (userId) {
+      // Pequeno delay para garantir que tudo carregou
+      const timer = setTimeout(() => {
+        console.log('🔥 Inicializando streak check...');
+        updateStreakOnSession(userId).catch(err => console.error('Erro streak:', err));
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [userId]);
+
+  return <>{children}</>;
+}
+
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
@@ -173,17 +198,19 @@ function RootLayoutNav() {
                         <AudioPlayerProvider>
                           <TeamInviteHandler>
                             <PushNotificationsInitializer>
-                              <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                                <View style={{ flex: 1 }}>
-                                  <OfflineBanner />
-                                  <Stack screenOptions={{ headerShown: false }}>
-                                    <Stack.Screen name="(auth)" />
-                                    <Stack.Screen name="(tabs)" />
-                                    <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-                                  </Stack>
-                                  <MiniPlayer />
-                                </View>
-                              </ThemeProvider>
+                              <StreakInitializer>
+                                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                                  <View style={{ flex: 1 }}>
+                                    <OfflineBanner />
+                                    <Stack screenOptions={{ headerShown: false }}>
+                                      <Stack.Screen name="(auth)" />
+                                      <Stack.Screen name="(tabs)" />
+                                      <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                                    </Stack>
+                                    <MiniPlayer />
+                                  </View>
+                                </ThemeProvider>
+                              </StreakInitializer>
                             </PushNotificationsInitializer>
                           </TeamInviteHandler>
                         </AudioPlayerProvider>

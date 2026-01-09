@@ -52,7 +52,12 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         }
 
         try {
-            setLoading(true);
+            // Só mostrar loading se ainda não tivermos perfil (ex: login inicial)
+            // Se já tivermos perfil, fazemos refresh silencioso "stale-while-revalidate"
+            if (!profile) {
+                setLoading(true);
+            }
+
             setError(null);
 
             const { data, error: fetchError } = await supabase
@@ -75,17 +80,17 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         } finally {
             setLoading(false);
         }
-    }, [user?.id]);
+    }, [user?.id, profile]);
 
     // Carregar perfil quando o user mudar
     useEffect(() => {
-        if (session) {
+        if (session?.user?.id) {
             fetchProfile();
-        } else {
+        } else if (!session) {
             setProfile(null);
             setLoading(false);
         }
-    }, [session, fetchProfile]);
+    }, [session?.user?.id, fetchProfile]);
 
     // Refetch manual do perfil
     const refetchProfile = useCallback(async () => {

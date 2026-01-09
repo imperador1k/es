@@ -114,6 +114,7 @@ export async function getUserBadges(userId: string): Promise<UserBadge[]> {
                 id,
                 badge_id,
                 unlocked_at,
+                is_equipped,
                 badge:badges (*)
             `)
             .eq('user_id', userId)
