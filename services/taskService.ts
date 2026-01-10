@@ -501,10 +501,12 @@ export async function getUserSubmission(
  */
 export async function getTaskSubmissions(taskId: string): Promise<TaskSubmission[]> {
     try {
-        // Buscar submissions sem embedding
-        const { data: submissions, error } = await supabase
+        const { data, error } = await supabase
             .from('task_submissions')
-            .select('*')
+            .select(`
+                *,
+                user:profiles(id, username, full_name, avatar_url)
+            `)
             .eq('task_id', taskId)
             .order('submitted_at', { ascending: false });
 
@@ -513,28 +515,10 @@ export async function getTaskSubmissions(taskId: string): Promise<TaskSubmission
             return [];
         }
 
-        if (!submissions || submissions.length === 0) {
-            return [];
-        }
-
-        // Buscar profiles separadamente
-        const userIds = [...new Set(submissions.map(s => s.user_id))];
-        const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, username, full_name, avatar_url')
-            .in('id', userIds);
-
-        const profilesMap = new Map(
-            (profiles || []).map(p => [p.id, p])
-        );
-
-        // Combinar
-        const result = submissions.map(sub => ({
+        return (data || []).map(sub => ({
             ...sub,
-            user: profilesMap.get(sub.user_id) || null,
-        }));
-
-        return result as TaskSubmission[];
+            user: Array.isArray(sub.user) ? sub.user[0] : sub.user
+        })) as TaskSubmission[];
     } catch (err) {
         console.error('❌ Unexpected error fetching submissions:', err);
         return [];

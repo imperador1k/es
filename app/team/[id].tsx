@@ -55,18 +55,20 @@ export default function TeamDetailsScreen() {
         if (!id || !user?.id) return;
 
         try {
-            const { data: channelsData } = await supabase
-                .from('channels')
-                .select('*')
-                .eq('team_id', id)
-                .order('created_at', { ascending: true });
-            setChannels((channelsData as Channel[]) || []);
+            const [channelsRes, membersRes] = await Promise.all([
+                supabase
+                    .from('channels')
+                    .select('*')
+                    .eq('team_id', id)
+                    .order('created_at', { ascending: true }),
+                supabase
+                    .from('team_members')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('team_id', id)
+            ]);
 
-            const { count } = await supabase
-                .from('team_members')
-                .select('*', { count: 'exact', head: true })
-                .eq('team_id', id);
-            setMemberCount(count || 0);
+            setChannels((channelsRes.data as Channel[]) || []);
+            setMemberCount(membersRes.count || 0);
         } catch (err) {
             console.error('Error loading data:', err);
         } finally {

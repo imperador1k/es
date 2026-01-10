@@ -70,54 +70,47 @@ export default function TaskDetailScreen() {
     useEffect(() => {
         if (taskId && teamId && user?.id) {
             loadData();
-            checkTeacherRole();
         }
     }, [taskId, teamId, user?.id]);
 
-    const loadData = async () => {
-        if (!taskId || !user?.id) return;
-        setLoading(true);
+    const loadData = async (showLoading = true) => {
+        if (!taskId || !user?.id || !teamId) return;
+        if (showLoading) setLoading(true);
+
         try {
-            const taskData = await getTask(taskId);
+            const [taskData, userSubmission, roleData] = await Promise.all([
+                getTask(taskId),
+                getUserSubmission(taskId, user.id),
+                supabase
+                    .from('team_members')
+                    .select('role')
+                    .eq('team_id', teamId)
+                    .eq('user_id', user.id)
+                    .single()
+            ]);
+
             setTask(taskData);
-            const userSubmission = await getUserSubmission(taskId, user.id);
             setSubmission(userSubmission);
-            if (isTeacher) {
+
+            const teacherRoles = ['owner', 'admin', 'moderator'];
+            const memberRole = roleData.data?.role;
+            const isTeacherRole = memberRole ? teacherRoles.includes(memberRole) : false;
+            setIsTeacher(isTeacherRole);
+
+            if (isTeacherRole) {
                 const submissions = await getTaskSubmissions(taskId);
                 setAllSubmissions(submissions);
             }
         } catch (err) {
             console.error('Error loading task:', err);
         } finally {
-            setLoading(false);
-        }
-    };
-
-    const checkTeacherRole = async () => {
-        if (!teamId || !user?.id) return;
-        try {
-            const { data } = await supabase
-                .from('team_members')
-                .select('role')
-                .eq('team_id', teamId)
-                .eq('user_id', user.id)
-                .single();
-
-            const teacherRoles = ['owner', 'admin', 'moderator'];
-            setIsTeacher(data ? teacherRoles.includes(data.role) : false);
-
-            if (data && teacherRoles.includes(data.role) && taskId) {
-                const submissions = await getTaskSubmissions(taskId);
-                setAllSubmissions(submissions);
-            }
-        } catch (err) {
-            console.error('Error checking role:', err);
+            if (showLoading) setLoading(false);
         }
     };
 
     const onRefresh = async () => {
         setRefreshing(true);
-        await loadData();
+        await loadData(false);
         setRefreshing(false);
     };
 

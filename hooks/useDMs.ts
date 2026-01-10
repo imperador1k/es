@@ -65,40 +65,32 @@ async function fetchConversations(userId: string): Promise<ConversationWithUser[
   // Buscar última mensagem de cada conversa em batch (máx 50 conversas de uma vez)
   const conversationIds = conversations.map(c => c.id);
   
-  // RPC para buscar última mensagem de cada conversa (mais eficiente)
-  // Se não existir a função, fazemos fallback
+  // RPC para buscar dados complementares
   let lastMessages: Record<string, DMMessage> = {};
   let unreadCounts: Record<string, number> = {};
   
   try {
-    // Buscar últimas mensagens em lote
-    const { data: messagesData } = await supabase
-      .from('dm_messages')
-      .select('*')
-      .in('conversation_id', conversationIds)
-      .order('created_at', { ascending: false });
+    // RPC call for last messages
+    const { data: lastMessagesData } = await supabase.rpc('get_last_messages', {
+      p_conversation_ids: conversationIds
+    });
     
-    // Agrupar por conversation_id (pega apenas a primeira/mais recente de cada)
-    if (messagesData) {
-      for (const msg of messagesData) {
-        if (!lastMessages[msg.conversation_id]) {
-          lastMessages[msg.conversation_id] = msg;
-        }
-      }
+    if (lastMessagesData) {
+      (lastMessagesData as DMMessage[]).forEach(msg => {
+        lastMessages[msg.conversation_id] = msg;
+      });
     }
-    
-    // Contar não lidas em lote
-    const { data: unreadData } = await supabase
-      .from('dm_messages')
-      .select('conversation_id')
-      .in('conversation_id', conversationIds)
-      .eq('is_read', false)
-      .neq('sender_id', userId);
+
+    // RPC call for unread counts
+    const { data: unreadData } = await supabase.rpc('get_unread_counts', {
+      p_user_id: userId,
+      p_conversation_ids: conversationIds
+    });
     
     if (unreadData) {
-      for (const item of unreadData) {
-        unreadCounts[item.conversation_id] = (unreadCounts[item.conversation_id] || 0) + 1;
-      }
+      (unreadData as { conversation_id: string; count: number }[]).forEach(item => {
+        unreadCounts[item.conversation_id] = item.count;
+      });
     }
   } catch (err) {
     console.warn('Error fetching message data:', err);
