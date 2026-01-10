@@ -6,11 +6,16 @@ import React, { createContext, ReactNode, useContext, useEffect, useState } from
 // TYPES
 // ============================================
 
+export type UiMode = 'tabs' | 'drawer';
+
 interface SettingsContextType {
     // Sound Effects
     soundEffectsEnabled: boolean;
     setSoundEffectsEnabled: (enabled: boolean) => Promise<void>;
     playSound: (soundName: SoundName) => Promise<void>;
+    // UI Mode
+    uiMode: UiMode;
+    setUiMode: (mode: UiMode) => Promise<void>;
 }
 
 // Map sound names to require() paths (mocked for now until assets exist)
@@ -33,7 +38,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 // CONSTANTS
 // ============================================
 
-const SETTINGS_STORAGE_KEY = '@escolaa_settings_v1';
+const SETTINGS_STORAGE_KEY = '@escolaa_settings_v2';
 
 // ============================================
 // PROVIDER
@@ -41,6 +46,7 @@ const SETTINGS_STORAGE_KEY = '@escolaa_settings_v1';
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
     const [soundEffectsEnabled, setSoundEffectsState] = useState(true);
+    const [uiMode, setUiModeState] = useState<UiMode>('drawer');
     const [isLoading, setIsLoading] = useState(true);
 
     // Load settings on mount
@@ -56,6 +62,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 if (typeof settings.soundEffectsEnabled === 'boolean') {
                     setSoundEffectsState(settings.soundEffectsEnabled);
                 }
+                if (settings.uiMode === 'tabs' || settings.uiMode === 'drawer') {
+                    setUiModeState(settings.uiMode);
+                }
             }
         } catch (e) {
             console.error('Failed to load settings', e);
@@ -64,7 +73,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const saveSettings = async (newSettings: { soundEffectsEnabled: boolean }) => {
+    const saveSettings = async (newSettings: { soundEffectsEnabled: boolean; uiMode: UiMode }) => {
         try {
             const jsonValue = JSON.stringify(newSettings);
             await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, jsonValue);
@@ -75,7 +84,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
     const setSoundEffectsEnabled = async (enabled: boolean) => {
         setSoundEffectsState(enabled);
-        await saveSettings({ soundEffectsEnabled: enabled });
+        await saveSettings({ soundEffectsEnabled: enabled, uiMode });
+    };
+
+    const setUiMode = async (mode: UiMode) => {
+        setUiModeState(mode);
+        await saveSettings({ soundEffectsEnabled, uiMode: mode });
     };
 
     const playSound = async (soundName: SoundName) => {
@@ -107,6 +121,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 soundEffectsEnabled,
                 setSoundEffectsEnabled,
                 playSound,
+                uiMode,
+                setUiMode,
             }}
         >
             {children}
@@ -125,3 +141,4 @@ export function useSettings() {
     }
     return context;
 }
+

@@ -13,6 +13,7 @@ import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { usePresenceContext } from '@/providers/PresenceProvider';
 import { useProfile } from '@/providers/ProfileProvider';
+import { useSettings } from '@/providers/SettingsProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
 import * as Application from 'expo-application';
@@ -129,6 +130,8 @@ export default function SettingsScreen() {
     const [saving, setSaving] = useState(false);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [soundEffects, setSoundEffects] = useState(true);
+    const [uiModeModalVisible, setUiModeModalVisible] = useState(false);
+    const { uiMode, setUiMode } = useSettings();
     const [faqModalVisible, setFaqModalVisible] = useState(false);
     const [supportModalVisible, setSupportModalVisible] = useState(false);
     const [legalModalVisible, setLegalModalVisible] = useState(false);
@@ -374,6 +377,13 @@ export default function SettingsScreen() {
                         onPress={() => router.push('/notifications')}
                     />
                     <SettingsRow
+                        icon="menu"
+                        iconColor="#6366F1"
+                        label="Navegação Mobile"
+                        value={uiMode === 'tabs' ? 'Tabs' : 'Menu Lateral'}
+                        onPress={() => setUiModeModalVisible(true)}
+                    />
+                    <SettingsRow
                         icon="volume-high"
                         iconColor="#10B981"
                         label="Efeitos Sonoros"
@@ -469,6 +479,37 @@ export default function SettingsScreen() {
                 </Pressable>
             </Modal>
 
+            {/* UI Mode Selection Modal */}
+            <Modal visible={uiModeModalVisible} transparent animationType="fade" onRequestClose={() => setUiModeModalVisible(false)}>
+                <Pressable style={styles.modalOverlay} onPress={() => setUiModeModalVisible(false)}>
+                    <View style={styles.statusSheet}>
+                        <Text style={styles.sheetTitle}>Navegação Mobile</Text>
+                        <Pressable
+                            style={[styles.statusOption, uiMode === 'tabs' && styles.statusOptionActive]}
+                            onPress={async () => { await setUiMode('tabs'); setUiModeModalVisible(false); showToast('success', 'Modo alterado para Tabs!'); }}
+                        >
+                            <View style={[styles.statusDotLg, { backgroundColor: '#6366F1' }]} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.statusLabel}>Tabs + Quick Actions</Text>
+                                <Text style={styles.statusDesc}>Barra inferior com botão central (padrão)</Text>
+                            </View>
+                            {uiMode === 'tabs' && <Ionicons name="checkmark" size={20} color="#6366F1" />}
+                        </Pressable>
+                        <Pressable
+                            style={[styles.statusOption, uiMode === 'drawer' && styles.statusOptionActive]}
+                            onPress={async () => { await setUiMode('drawer'); setUiModeModalVisible(false); showToast('success', 'Modo alterado para Menu Lateral!'); }}
+                        >
+                            <View style={[styles.statusDotLg, { backgroundColor: '#10B981' }]} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.statusLabel}>Menu Lateral</Text>
+                                <Text style={styles.statusDesc}>Hamburger button com drawer estilo Discord</Text>
+                            </View>
+                            {uiMode === 'drawer' && <Ionicons name="checkmark" size={20} color="#6366F1" />}
+                        </Pressable>
+                    </View>
+                </Pressable>
+            </Modal>
+
             {/* REUSING FAQ & LEGAL MODALS LOGIC WITH UPDATED STYLES */}
             <Modal visible={faqModalVisible} transparent animationType="slide" onRequestClose={() => setFaqModalVisible(false)}>
                 <View style={styles.sheetOverlay}>
@@ -523,99 +564,120 @@ export default function SettingsScreen() {
 // ============================================
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#000000' }, // Deepest black
+    container: { flex: 1, backgroundColor: '#0A0A0F' },
     content: { flex: 1 },
-    contentContainer: { paddingHorizontal: 20, paddingTop: 20 },
+    contentContainer: { paddingHorizontal: 16, paddingTop: 8 },
 
-    // Header
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, backgroundColor: '#000000', zIndex: 10 },
-    backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1C1C1E', alignItems: 'center', justifyContent: 'center' },
-    headerTitle: { fontSize: 22, fontWeight: '700', color: '#FFF' },
+    // Compact Header
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+        backgroundColor: '#0A0A0F',
+        zIndex: 10
+    },
+    backButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#1A1A1F',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
 
-    // Hero Card
+    // Compact Hero Card
     heroCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#1C1C1E',
-        borderRadius: 24,
-        padding: 20,
-        marginBottom: 32,
-        // Android Shadow
-        elevation: 4,
-        // iOS Shadow
+        backgroundColor: '#1A1A1F',
+        borderRadius: 16,
+        padding: 14,
+        marginBottom: 20,
+        elevation: 2,
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
     },
     heroContent: { flexDirection: 'row', alignItems: 'center', flex: 1, zIndex: 1 },
-    heroAvatarContainer: { position: 'relative', marginRight: 16 },
-    heroAvatar: { width: 72, height: 72, borderRadius: 36, borderWidth: 3, borderColor: '#6366F1' },
-    heroAvatarFallback: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#6366F1', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#1C1C1E' },
-    heroInitial: { fontSize: 28, fontWeight: '700', color: '#FFF' },
-    heroEditBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#FFF', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    heroAvatarContainer: { position: 'relative', marginRight: 12 },
+    heroAvatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: '#6366F1' },
+    heroAvatarFallback: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#6366F1', alignItems: 'center', justifyContent: 'center' },
+    heroInitial: { fontSize: 22, fontWeight: '700', color: '#FFF' },
+    heroEditBadge: { position: 'absolute', bottom: -2, right: -2, backgroundColor: '#6366F1', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0A0A0F' },
     heroInfo: { flex: 1 },
-    heroName: { fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 4 },
-    heroUsername: { fontSize: 15, color: 'rgba(255,255,255,0.6)', marginBottom: 8 },
-    heroStatusChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, alignSelf: 'flex-start' },
-    heroStatusText: { fontSize: 13, color: '#FFF', marginLeft: 6, fontWeight: '600' },
-    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    heroName: { fontSize: 16, fontWeight: '700', color: '#FFF', marginBottom: 2 },
+    heroUsername: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 4 },
+    heroStatusChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start' },
+    heroStatusText: { fontSize: 11, color: '#FFF', marginLeft: 4, fontWeight: '600' },
+    statusDot: { width: 6, height: 6, borderRadius: 3 },
 
-    // Groups
-    groupContainer: { marginBottom: 32 },
-    groupTitle: { fontSize: 13, color: '#6366F1', fontWeight: '700', marginBottom: 12, marginLeft: 16, textTransform: 'uppercase', letterSpacing: 1.2 },
-    groupCard: { backgroundColor: '#1C1C1E', borderRadius: 24, overflow: 'hidden' },
+    // Compact Groups
+    groupContainer: { marginBottom: 16 },
+    groupTitle: {
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '600',
+        marginBottom: 6,
+        marginLeft: 4,
+        textTransform: 'uppercase',
+        letterSpacing: 0.8
+    },
+    groupCard: { backgroundColor: '#1A1A1F', borderRadius: 14, overflow: 'hidden' },
     groupCardNoBg: { backgroundColor: 'transparent', borderWidth: 0 },
 
-    // Rows
-    settingsRow: { flexDirection: 'row', alignItems: 'center', padding: 18, minHeight: 64 },
-    settingsRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-    settingsRowPressed: { backgroundColor: '#2C2C2E' },
-    rowIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-    rowContent: { flex: 1, marginRight: 12 },
-    rowLabel: { fontSize: 17, color: '#FFF', fontWeight: '600', marginBottom: 2 },
-    rowSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 18 },
-    rowValue: { fontSize: 15, color: 'rgba(255,255,255,0.5)', fontWeight: '500' },
+    // Compact Rows
+    settingsRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, minHeight: 48 },
+    settingsRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+    settingsRowPressed: { backgroundColor: '#25252A' },
+    rowIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    rowContent: { flex: 1, marginRight: 8 },
+    rowLabel: { fontSize: 15, color: '#FFF', fontWeight: '500' },
+    rowSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 16, marginTop: 2 },
+    rowValue: { fontSize: 13, color: 'rgba(255,255,255,0.4)', fontWeight: '400', maxWidth: 120 },
 
-    // Footer
-    footer: { alignItems: 'center', marginTop: 20, paddingBottom: 40, opacity: 0.4 },
-    versionText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
-    userIdText: { color: '#FFF', fontSize: 11, marginTop: 4, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+    // Compact Footer
+    footer: { alignItems: 'center', marginTop: 16, paddingBottom: 32, opacity: 0.3 },
+    versionText: { color: '#FFF', fontSize: 12, fontWeight: '500' },
+    userIdText: { color: '#FFF', fontSize: 10, marginTop: 4, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
 
-    // Modals
-    modalBg: { flex: 1, backgroundColor: '#000000' },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
-    modalCancel: { color: '#FF3B30', fontSize: 17 },
-    modalSave: { color: '#6366F1', fontSize: 17, fontWeight: '700' },
-    modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
-    modalBody: { padding: 24 },
-    inputLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 10, textTransform: 'uppercase', fontWeight: '600' },
-    modalInput: { backgroundColor: '#1C1C1E', borderRadius: 16, padding: 18, color: '#FFF', fontSize: 18 },
-    inputHint: { color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 12 },
+    // Modals - Keep larger for usability
+    modalBg: { flex: 1, backgroundColor: '#0A0A0F' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+    modalCancel: { color: '#FF453A', fontSize: 15 },
+    modalSave: { color: '#6366F1', fontSize: 15, fontWeight: '600' },
+    modalTitle: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+    modalBody: { padding: 20 },
+    inputLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', fontWeight: '600' },
+    modalInput: { backgroundColor: '#1A1A1F', borderRadius: 12, padding: 14, color: '#FFF', fontSize: 16 },
+    inputHint: { color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 10 },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 24 },
-    statusSheet: { backgroundColor: '#1C1C1E', borderRadius: 28, padding: 24 },
-    sheetTitle: { color: '#FFF', fontSize: 22, fontWeight: '800', marginBottom: 24, textAlign: 'center' },
-    statusOption: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 20, marginBottom: 10, backgroundColor: 'rgba(255,255,255,0.05)' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
+    statusSheet: { backgroundColor: '#1A1A1F', borderRadius: 20, padding: 20 },
+    sheetTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', marginBottom: 16, textAlign: 'center' },
+    statusOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8, backgroundColor: 'rgba(255,255,255,0.05)' },
     statusOptionActive: { backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 1, borderColor: '#6366F1' },
-    statusDotLg: { width: 14, height: 14, borderRadius: 7, marginRight: 16 },
-    statusLabel: { color: '#FFF', fontSize: 17, fontWeight: '700' },
-    statusDesc: { color: 'rgba(255,255,255,0.6)', fontSize: 14, marginTop: 2 },
+    statusDotLg: { width: 12, height: 12, borderRadius: 6, marginRight: 12 },
+    statusLabel: { color: '#FFF', fontSize: 15, fontWeight: '600' },
+    statusDesc: { color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 2 },
 
-    // Sheets (FAQ/Legal)
+    // Bottom Sheets (FAQ/Legal)
     sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
-    sheetContent: { backgroundColor: '#1C1C1E', height: '90%', borderTopLeftRadius: 32, borderTopRightRadius: 32, overflow: 'hidden' },
-    sheetHandle: { width: 44, height: 5, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginTop: 16, borderRadius: 3 },
-    sheetHeaderTitle: { color: '#FFF', fontSize: 28, fontWeight: '800', margin: 24 },
-    faqCard: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', padding: 20, borderRadius: 20, marginBottom: 16 },
-    faqIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-    faqQuestion: { color: '#FFF', fontWeight: '700', marginBottom: 6, fontSize: 16 },
-    faqAnswer: { color: 'rgba(255,255,255,0.7)', lineHeight: 22, fontSize: 14 },
-    closeFloatBtn: { position: 'absolute', top: 24, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+    sheetContent: { backgroundColor: '#1A1A1F', height: '85%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
+    sheetHandle: { width: 36, height: 4, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'center', marginTop: 12, borderRadius: 2 },
+    sheetHeaderTitle: { color: '#FFF', fontSize: 20, fontWeight: '700', margin: 20 },
+    faqCard: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', padding: 14, borderRadius: 14, marginBottom: 12 },
+    faqIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    faqQuestion: { color: '#FFF', fontWeight: '600', marginBottom: 4, fontSize: 14 },
+    faqAnswer: { color: 'rgba(255,255,255,0.6)', lineHeight: 20, fontSize: 13 },
+    closeFloatBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
 });
 
 const mdStyles = {
-    body: { color: 'rgba(255,255,255,0.7)', fontSize: 16, lineHeight: 24 },
-    heading1: { color: '#FFF', fontSize: 24, fontWeight: '700' as const, marginVertical: 16 },
-    heading2: { color: '#FFF', fontSize: 20, fontWeight: '600' as const, marginVertical: 12 },
+    body: { color: 'rgba(255,255,255,0.7)', fontSize: 15, lineHeight: 22 },
+    heading1: { color: '#FFF', fontSize: 20, fontWeight: '700' as const, marginVertical: 12 },
+    heading2: { color: '#FFF', fontSize: 17, fontWeight: '600' as const, marginVertical: 10 },
 };

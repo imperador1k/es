@@ -1,12 +1,14 @@
 /**
  * Premium Tabs Layout - Responsive Design
- * Desktop: Fixed Sidebar | Mobile: Floating Tab Bar
+ * Desktop: Fixed Sidebar | Mobile: Floating Tab Bar OR Drawer (configurable)
  */
 
 import { DESKTOP_SIDEBAR_COLLAPSED_WIDTH, DESKTOP_SIDEBAR_WIDTH, DesktopSidebar } from '@/components/DesktopSidebar';
 import { FloatingTabBar } from '@/components/FloatingTabBar';
+import { HamburgerButton, MobileDrawer } from '@/components/MobileDrawer';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { COLORS } from '@/lib/theme.premium';
+import { useSettings } from '@/providers/SettingsProvider';
 import { TutorialProvider } from '@/providers/TutorialProvider';
 import { Tabs } from 'expo-router';
 import { useState } from 'react';
@@ -14,7 +16,9 @@ import { LayoutAnimation, Platform, View } from 'react-native';
 
 export default function TabsLayout() {
   const { isDesktop, isMobile } = useBreakpoints();
+  const { uiMode } = useSettings();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   const toggleSidebar = () => {
     // Simple layout animation for smooth transition
@@ -25,6 +29,10 @@ export default function TabsLayout() {
   };
 
   const currentSidebarWidth = sidebarCollapsed ? DESKTOP_SIDEBAR_COLLAPSED_WIDTH : DESKTOP_SIDEBAR_WIDTH;
+
+  // Determine which mobile navigation to show
+  const showBottomTabs = !isDesktop && uiMode === 'tabs';
+  const showDrawer = !isDesktop && uiMode === 'drawer';
 
   return (
     <TutorialProvider>
@@ -61,8 +69,16 @@ export default function TabsLayout() {
           </Tabs>
         </View>
 
-        {/* Mobile Floating Tab Bar (hidden on desktop) */}
-        {!isDesktop && <FloatingTabBar />}
+        {/* Mobile: Floating Tab Bar (default mode) */}
+        {showBottomTabs && <FloatingTabBar />}
+
+        {/* Mobile: Hamburger Button + Drawer (drawer mode) */}
+        {showDrawer && (
+          <>
+            <HamburgerButton onPress={() => setDrawerVisible(true)} />
+            <MobileDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
+          </>
+        )}
       </View>
     </TutorialProvider>
   );

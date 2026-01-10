@@ -39,7 +39,7 @@ import { QueryProvider } from '@/providers/QueryProvider';
 import { SettingsProvider } from '@/providers/SettingsProvider';
 import { TeamsProvider } from '@/providers/TeamsProvider';
 import { SoundService } from '@/utils/SoundService';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -185,10 +185,13 @@ function StreakInitializer({ children }: { children: React.ReactNode }) {
 // 🔄 UPDATES HELPER
 // Verifica updates OTA ao abrir a app
 // --------------------------------------------------------------------------
+import { useAlert } from '@/providers/AlertProvider';
 import * as Updates from 'expo-updates';
 import { AppState } from 'react-native';
 
 function UpdatesHelper({ children }: { children: React.ReactNode }) {
+  const { showAlert } = useAlert();
+
   useEffect(() => {
     async function checkUpdates() {
       if (__DEV__) return; // Não verificar em desenvolvimento
@@ -197,11 +200,11 @@ function UpdatesHelper({ children }: { children: React.ReactNode }) {
         const update = await Updates.checkForUpdateAsync();
         if (update.isAvailable) {
           await Updates.fetchUpdateAsync();
-          // Prompt user to reload
-          Alert.alert(
-            'Nova Versão Disponível! 🚀',
-            'Uma nova versão da Escola+ foi descarregada. Reiniciar agora?',
-            [
+          // Prompt user to reload with custom alert
+          showAlert({
+            title: 'Nova Versão Disponível! 🚀',
+            message: 'Uma nova versão da Escola+ foi descarregada. Reiniciar agora para aplicar as melhorias?',
+            buttons: [
               { text: 'Agora não', style: 'cancel' },
               {
                 text: 'Reiniciar',
@@ -211,15 +214,15 @@ function UpdatesHelper({ children }: { children: React.ReactNode }) {
                 }
               }
             ]
-          );
+          });
         }
       } catch (error) {
         console.log('Erro ao verificar updates:', error);
       }
     }
 
-    // Check on mount
-    checkUpdates();
+    // Check on mount with small delay to ensure alert is ready
+    const mountTimer = setTimeout(checkUpdates, 1000);
 
     // Check on foreground
     const subscription = AppState.addEventListener('change', (nextAppState) => {
@@ -229,9 +232,10 @@ function UpdatesHelper({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      clearTimeout(mountTimer);
       subscription.remove();
     };
-  }, []);
+  }, [showAlert]);
 
   return <>{children}</>;
 }

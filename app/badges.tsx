@@ -77,12 +77,18 @@ const RARITY_CONFIG = {
 export default function BadgesScreen() {
     const { user } = useAuthContext();
     const { showAlert } = useAlert();
-    const { isDesktop, numColumns, width: screenWidth } = useBreakpoints();
+    const { isDesktop, width: screenWidth } = useBreakpoints();
 
-    // Dynamic card size based on screen width and columns
-    const CARD_SIZE = isDesktop
-        ? (Math.min(screenWidth, 1200) - SPACING.lg * 2 - SPACING.md * (numColumns + 1)) / numColumns
-        : (screenWidth - SPACING.lg * 2 - SPACING.md * 2) / 3;
+    // MOBILE-FIRST: Always 3 columns on mobile, more on desktop
+    const MOBILE_COLUMNS = 3;
+    const DESKTOP_COLUMNS = isDesktop ? 5 : 3;
+    const numColumns = isDesktop ? DESKTOP_COLUMNS : MOBILE_COLUMNS;
+
+    // Calculate card size based on screen width and columns
+    const horizontalPadding = SPACING.md * 2; // paddingHorizontal on grid
+    const gapWidth = SPACING.sm * (numColumns - 1); // gaps between cards
+    const availableWidth = screenWidth - horizontalPadding - gapWidth;
+    const CARD_SIZE = Math.floor(availableWidth / numColumns);
 
     const [allBadges, setAllBadges] = useState<Badge[]>([]);
     const [userBadges, setUserBadges] = useState<UserBadge[]>([]);
@@ -206,46 +212,37 @@ export default function BadgesScreen() {
                     />
                 )}
 
-                {/* Epic Header */}
-                <LinearGradient colors={['rgba(99, 102, 241, 0.15)', 'transparent']} style={styles.headerGradient}>
-                    <View style={styles.header}>
-                        <Pressable style={styles.backButton} onPress={() => router.back()}>
-                            <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
-                        </Pressable>
-                        <View style={styles.headerContent}>
-                            <Text style={styles.headerTitle}>🏆 Conquistas</Text>
-                            <Text style={styles.headerSubtitle}>
-                                {unlockedCount} de {totalCount} desbloqueadas
-                            </Text>
-                        </View>
-                        <View style={styles.headerBadge}>
-                            <Text style={styles.headerBadgeText}>{Math.round(progressPercent)}%</Text>
-                        </View>
+                {/* Compact Header */}
+                <View style={styles.header}>
+                    <Pressable style={styles.backButton} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={20} color={COLORS.text.primary} />
+                    </Pressable>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>🏆 Conquistas</Text>
+                        <Text style={styles.headerSubtitle}>
+                            {unlockedCount}/{totalCount} desbloqueadas
+                        </Text>
                     </View>
-
-                    {/* Epic Progress Bar */}
-                    <View style={styles.progressContainer}>
-                        <View style={styles.progressBar}>
-                            <Animated.View
-                                style={[
-                                    styles.progressFill,
-                                    { width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) },
-                                ]}
-                            >
-                                <LinearGradient colors={['#6366F1', '#A855F7', '#EC4899']} style={styles.progressGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
-                            </Animated.View>
-                        </View>
-                        <View style={styles.progressStars}>
-                            {[25, 50, 75, 100].map((milestone) => (
-                                <View key={milestone} style={[styles.progressMilestone, progressPercent >= milestone && styles.progressMilestoneActive]}>
-                                    <Ionicons name="star" size={14} color={progressPercent >= milestone ? '#FFD700' : COLORS.text.tertiary} />
-                                </View>
-                            ))}
-                        </View>
+                    <View style={styles.headerBadge}>
+                        <Text style={styles.headerBadgeText}>{Math.round(progressPercent)}%</Text>
                     </View>
-                </LinearGradient>
+                </View>
 
-                {/* Rarity Legend */}
+                {/* Compact Progress Bar */}
+                <View style={styles.progressContainer}>
+                    <View style={styles.progressBar}>
+                        <Animated.View
+                            style={[
+                                styles.progressFill,
+                                { width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) },
+                            ]}
+                        >
+                            <LinearGradient colors={['#6366F1', '#A855F7', '#EC4899']} style={styles.progressGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+                        </Animated.View>
+                    </View>
+                </View>
+
+                {/* Compact Rarity Legend */}
                 <View style={styles.legendContainer}>
                     {(['common', 'rare', 'epic', 'legendary'] as const).map((rarity) => (
                         <View key={rarity} style={styles.legendItem}>
@@ -255,15 +252,15 @@ export default function BadgesScreen() {
                     ))}
                 </View>
 
-                {/* Badges Grid */}
+                {/* Badges Grid - Always multi-column */}
                 <FlatList
-                    key={isDesktop ? 'desktop' : 'mobile'}
+                    key={`badges-${numColumns}`}
                     data={sortedBadges}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => <BadgeCard badge={item} onPress={() => setSelectedBadge(item)} cardSize={CARD_SIZE} />}
                     numColumns={numColumns}
-                    columnWrapperStyle={numColumns > 1 ? [styles.gridRow, isDesktop && styles.gridRowDesktop] : undefined}
-                    contentContainerStyle={[styles.gridContent, isDesktop && styles.gridContentDesktop]}
+                    columnWrapperStyle={styles.gridRow}
+                    contentContainerStyle={styles.gridContent}
                     showsVerticalScrollIndicator={false}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadBadges(); }} tintColor="#6366F1" />}
                 />
@@ -288,38 +285,29 @@ export default function BadgesScreen() {
 }
 
 // ============================================
-// BADGE CARD COMPONENT
+// BADGE CARD COMPONENT - Optimized for Mobile
 // ============================================
 
 function BadgeCard({ badge, onPress, cardSize }: { badge: DisplayBadge; onPress: () => void; cardSize: number }) {
     const scale = useRef(new Animated.Value(1)).current;
-    const pulseAnim = useRef(new Animated.Value(1)).current;
     const rarity = RARITY_CONFIG[badge.rarity];
 
-    // Pulse animation for unlocked legendary/epic
-    useEffect(() => {
-        if (badge.unlocked && (badge.rarity === 'legendary' || badge.rarity === 'epic')) {
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, { toValue: 1.05, duration: 1500, useNativeDriver: true }),
-                    Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
-                ])
-            ).start();
-        }
-    }, [badge.unlocked, badge.rarity]);
+    // Smaller icon for compact cards
+    const iconSize = Math.max(cardSize * 0.55, 40);
+    const emojiSize = Math.max(cardSize * 0.3, 20);
 
     return (
         <Pressable
             onPress={onPress}
             onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start()}
             onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
+            style={{ width: cardSize, marginBottom: SPACING.sm }}
         >
             <Animated.View
                 style={[
                     styles.badgeCard,
-                    { width: cardSize, height: 'auto', minHeight: cardSize * 1.3 },
-                    { transform: [{ scale: Animated.multiply(scale, pulseAnim) }] },
-                    badge.unlocked && { shadowColor: rarity.gradient[0], shadowOpacity: 0.4, shadowRadius: 12 },
+                    { transform: [{ scale }] },
+                    badge.unlocked && { shadowColor: rarity.gradient[0], shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
                 ]}
             >
                 {/* Glow Effect */}
@@ -330,26 +318,20 @@ function BadgeCard({ badge, onPress, cardSize }: { badge: DisplayBadge; onPress:
                     {badge.unlocked ? (
                         <LinearGradient
                             colors={rarity.gradient}
-                            style={[
-                                styles.badgeIconGradient,
-                                { width: cardSize - 32, height: cardSize - 32, borderRadius: (cardSize - 32) / 2 }
-                            ]}
+                            style={[styles.badgeIconGradient, { width: iconSize, height: iconSize, borderRadius: iconSize / 2 }]}
                         >
                             {badge.is_equipped && (
                                 <View style={styles.equippedBadgeOverlay}>
-                                    <Ionicons name="checkmark-circle" size={16} color="#FFF" />
+                                    <Ionicons name="checkmark-circle" size={12} color="#FFF" />
                                 </View>
                             )}
-                            <Text style={[styles.badgeEmoji, { fontSize: cardSize * 0.35 }]}>{badge.icon}</Text>
+                            <Text style={{ fontSize: emojiSize }}>{badge.icon}</Text>
                         </LinearGradient>
                     ) : (
-                        <View style={[
-                            styles.badgeIconGradientLocked,
-                            { width: cardSize - 32, height: cardSize - 32, borderRadius: (cardSize - 32) / 2 }
-                        ]}>
-                            <Text style={[styles.badgeEmoji, styles.badgeEmojiLocked, { fontSize: cardSize * 0.35 }]}>{badge.icon}</Text>
+                        <View style={[styles.badgeIconGradientLocked, { width: iconSize, height: iconSize, borderRadius: iconSize / 2 }]}>
+                            <Text style={[{ fontSize: emojiSize, opacity: 0.3 }]}>{badge.icon}</Text>
                             <View style={styles.lockOverlay}>
-                                <Ionicons name="lock-closed" size={16} color="#FFF" />
+                                <Ionicons name="lock-closed" size={12} color="#FFF" />
                             </View>
                         </View>
                     )}
@@ -363,7 +345,7 @@ function BadgeCard({ badge, onPress, cardSize }: { badge: DisplayBadge; onPress:
                 {/* Rarity Stars */}
                 <View style={styles.starsRow}>
                     {Array.from({ length: rarity.stars }).map((_, i) => (
-                        <Ionicons key={i} name="star" size={10} color={badge.unlocked ? rarity.gradient[0] : COLORS.text.tertiary} />
+                        <Ionicons key={i} name="star" size={8} color={badge.unlocked ? rarity.gradient[0] : COLORS.text.tertiary} />
                     ))}
                 </View>
             </Animated.View>
@@ -372,13 +354,7 @@ function BadgeCard({ badge, onPress, cardSize }: { badge: DisplayBadge; onPress:
 }
 
 // ============================================
-// BADGE DETAIL COMPONENT
-// ============================================
-
-
-
-// ============================================
-// STYLES
+// STYLES - Mobile-First Design
 // ============================================
 
 const styles = StyleSheet.create({
@@ -386,116 +362,78 @@ const styles = StyleSheet.create({
     loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACING.md },
     loadingText: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary },
 
-    // Header
-    headerGradient: { paddingBottom: SPACING.lg },
-    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
-    backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
-    headerContent: { flex: 1, marginLeft: SPACING.md },
-    headerTitle: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
-    headerSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.secondary },
-    headerBadge: { backgroundColor: 'rgba(99, 102, 241, 0.2)', paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.full },
-    headerBadgeText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#6366F1' },
+    // Compact Header
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm
+    },
+    backButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.surfaceElevated,
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    headerContent: { flex: 1, marginLeft: SPACING.sm },
+    headerTitle: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary },
+    headerSubtitle: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.secondary },
+    headerBadge: {
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 4,
+        borderRadius: RADIUS.full
+    },
+    headerBadgeText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#6366F1' },
 
-    // Progress
-    progressContainer: { paddingHorizontal: SPACING.lg },
-    progressBar: { height: 12, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.full, overflow: 'hidden' },
+    // Compact Progress
+    progressContainer: { paddingHorizontal: SPACING.md, marginBottom: SPACING.sm },
+    progressBar: { height: 8, backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS.full, overflow: 'hidden' },
     progressFill: { height: '100%', borderRadius: RADIUS.full, overflow: 'hidden' },
     progressGradient: { flex: 1 },
-    progressStars: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.sm, paddingHorizontal: SPACING.sm },
-    progressMilestone: { width: 24, height: 24, borderRadius: 12, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
-    progressMilestoneActive: { backgroundColor: 'rgba(255, 215, 0, 0.2)' },
 
-    // Legend
-    legendContainer: { flexDirection: 'row', justifyContent: 'center', gap: SPACING.lg, paddingVertical: SPACING.md },
-    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    legendDot: { width: 10, height: 10, borderRadius: 5 },
-    legendText: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary },
+    // Compact Legend
+    legendContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: SPACING.md,
+        paddingVertical: SPACING.xs,
+        marginBottom: SPACING.xs
+    },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    legendDot: { width: 8, height: 8, borderRadius: 4 },
+    legendText: { fontSize: 10, color: COLORS.text.tertiary },
 
-    // Grid
-    gridContent: { paddingHorizontal: SPACING.lg, paddingBottom: 100 },
-    gridRow: { gap: SPACING.md, marginBottom: SPACING.md },
+    // Grid - Mobile First
+    gridContent: { paddingHorizontal: SPACING.md, paddingBottom: 100 },
+    gridRow: { justifyContent: 'flex-start', gap: SPACING.sm },
 
-    // Badge Card
-    // Badge Card
+    // Compact Badge Card
     badgeCard: {
-        // Width set dynamically
         backgroundColor: COLORS.surfaceElevated,
-        borderRadius: RADIUS['2xl'],
-        padding: SPACING.sm,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.xs,
         alignItems: 'center',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        minHeight: 90,
     },
-    badgeGlow: { position: 'absolute', top: -20, left: -20, right: -20, bottom: -20, borderRadius: 100 },
-    badgeIconWrap: { marginBottom: SPACING.xs },
-    equippedBadgeOverlay: { position: 'absolute', top: 0, right: 0, zIndex: 10, backgroundColor: COLORS.success, borderRadius: 8 },
+    badgeGlow: { position: 'absolute', top: -10, left: -10, right: -10, bottom: -10, borderRadius: 50 },
+    badgeIconWrap: { marginBottom: 4 },
+    equippedBadgeOverlay: { position: 'absolute', top: -2, right: -2, zIndex: 10, backgroundColor: COLORS.success, borderRadius: 6, padding: 2 },
     badgeIconLocked: { opacity: 0.5 },
-    badgeIconGradient: {
-        // Size set dynamically
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    badgeIconGradientLocked: {
-        // Size set dynamically
-        backgroundColor: COLORS.surfaceMuted,
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative'
-    },
-    badgeEmoji: { fontSize: 32 },
-    badgeEmojiLocked: { opacity: 0.3 },
-    lockOverlay: { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
-    badgeName: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium, color: COLORS.text.primary, textAlign: 'center', marginTop: 4 },
+    badgeIconGradient: { alignItems: 'center', justifyContent: 'center' },
+    badgeIconGradientLocked: { backgroundColor: COLORS.surfaceMuted, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+    lockOverlay: { position: 'absolute', bottom: 0, right: 0, width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+    badgeName: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium, color: COLORS.text.primary, textAlign: 'center', marginTop: 2, paddingHorizontal: 2 },
     badgeNameLocked: { color: COLORS.text.tertiary },
-    starsRow: { flexDirection: 'row', gap: 2, marginTop: 4 },
+    starsRow: { flexDirection: 'row', gap: 1, marginTop: 2 },
 
     // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: SPACING.xl },
-    modalContent: { backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['3xl'], width: '100%', maxWidth: 340, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-
-    // Detail
-    detailContainer: { alignItems: 'center', padding: SPACING.xl },
-    detailIconWrap: { marginBottom: SPACING.lg },
-    detailIconGradient: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', shadowColor: '#6366F1', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16 },
-    detailIconLocked: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceMuted },
-    detailEmoji: { fontSize: 56 },
-    detailTitle: { fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: COLORS.text.primary, textAlign: 'center' },
-    rarityBadge: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, marginTop: SPACING.md },
-    rarityEmoji: { fontSize: 14 },
-    rarityLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
-    rarityStars: { flexDirection: 'row', gap: 2 },
-    detailDescription: { fontSize: TYPOGRAPHY.size.base, color: COLORS.text.secondary, textAlign: 'center', marginTop: SPACING.lg, lineHeight: 24, paddingHorizontal: SPACING.md },
-    xpReward: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, backgroundColor: 'rgba(255, 215, 0, 0.15)', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, marginTop: SPACING.lg },
-    xpRewardText: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFD700' },
-    statusCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.lg, borderRadius: RADIUS.xl, marginTop: SPACING.lg, width: '100%' },
-    statusUnlocked: { backgroundColor: 'rgba(34, 197, 94, 0.1)' },
-    statusLocked: { backgroundColor: COLORS.surfaceMuted },
-    statusContent: { flex: 1 },
-    statusTitle: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.primary },
-    statusSubtitle: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.tertiary },
-    closeButton: { paddingHorizontal: SPACING['3xl'], paddingVertical: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.md },
-    closeButtonText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: '#FFF' },
-
-    // Actions
-    actionButton: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, width: '100%', padding: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.md, justifyContent: 'center', borderWidth: 1 },
-    actionButtonEquip: { backgroundColor: COLORS.accent.primary, borderColor: COLORS.accent.primary },
-    actionButtonUnequip: { backgroundColor: 'transparent', borderColor: COLORS.error },
-    actionButtonText: { fontSize: TYPOGRAPHY.size.md, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
-
-    // ============================================
-    // RESPONSIVE DESKTOP STYLES
-    // ============================================
-    gridContentDesktop: {
-        paddingHorizontal: SPACING.xl,
-    },
-    gridRowDesktop: {
-        gap: SPACING.xl,
-        justifyContent: 'center',
-        maxWidth: 1200,
-        alignSelf: 'center',
-        width: '100%',
-    },
-    // Override base styles for desktop if needed
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
+    modalContent: { backgroundColor: COLORS.surfaceElevated, borderRadius: RADIUS['2xl'], width: '100%', maxWidth: 320, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
 });
