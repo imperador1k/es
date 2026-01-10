@@ -262,7 +262,7 @@ export default function BadgesScreen() {
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => <BadgeCard badge={item} onPress={() => setSelectedBadge(item)} cardSize={CARD_SIZE} />}
                     numColumns={numColumns}
-                    columnWrapperStyle={[styles.gridRow, isDesktop && styles.gridRowDesktop]}
+                    columnWrapperStyle={numColumns > 1 ? [styles.gridRow, isDesktop && styles.gridRowDesktop] : undefined}
                     contentContainerStyle={[styles.gridContent, isDesktop && styles.gridContentDesktop]}
                     showsVerticalScrollIndicator={false}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadBadges(); }} tintColor="#6366F1" />}

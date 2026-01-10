@@ -8,12 +8,14 @@
       "distribution": "internal"
     },
     "preview": {
+      "channel": "preview",
       "android": {
         "buildType": "apk"
       }
-      // Removi as chaves daqui. O EAS vai buscá-las aos Secrets.
     },
-    "production": {}
+    "production": {
+      "channel": "production"
+    }
   },
   "submit": {
     "production": {}

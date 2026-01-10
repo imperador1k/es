@@ -39,7 +39,7 @@ import { QueryProvider } from '@/providers/QueryProvider';
 import { SettingsProvider } from '@/providers/SettingsProvider';
 import { TeamsProvider } from '@/providers/TeamsProvider';
 import { SoundService } from '@/utils/SoundService';
-import { View } from 'react-native';
+import { Alert, View } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -181,6 +181,61 @@ function StreakInitializer({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// --------------------------------------------------------------------------
+// 🔄 UPDATES HELPER
+// Verifica updates OTA ao abrir a app
+// --------------------------------------------------------------------------
+import * as Updates from 'expo-updates';
+import { AppState } from 'react-native';
+
+function UpdatesHelper({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    async function checkUpdates() {
+      if (__DEV__) return; // Não verificar em desenvolvimento
+
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          // Prompt user to reload
+          Alert.alert(
+            'Nova Versão Disponível! 🚀',
+            'Uma nova versão da Escola+ foi descarregada. Reiniciar agora?',
+            [
+              { text: 'Agora não', style: 'cancel' },
+              {
+                text: 'Reiniciar',
+                style: 'default',
+                onPress: async () => {
+                  await Updates.reloadAsync();
+                }
+              }
+            ]
+          );
+        }
+      } catch (error) {
+        console.log('Erro ao verificar updates:', error);
+      }
+    }
+
+    // Check on mount
+    checkUpdates();
+
+    // Check on foreground
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        checkUpdates();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  return <>{children}</>;
+}
+
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
@@ -199,17 +254,19 @@ function RootLayoutNav() {
                           <TeamInviteHandler>
                             <PushNotificationsInitializer>
                               <StreakInitializer>
-                                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                                  <View style={{ flex: 1 }}>
-                                    <OfflineBanner />
-                                    <Stack screenOptions={{ headerShown: false }}>
-                                      <Stack.Screen name="(auth)" />
-                                      <Stack.Screen name="(tabs)" />
-                                      <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-                                    </Stack>
-                                    <MiniPlayer />
-                                  </View>
-                                </ThemeProvider>
+                                <UpdatesHelper>
+                                  <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                                    <View style={{ flex: 1 }}>
+                                      <OfflineBanner />
+                                      <Stack screenOptions={{ headerShown: false }}>
+                                        <Stack.Screen name="(auth)" />
+                                        <Stack.Screen name="(tabs)" />
+                                        <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                                      </Stack>
+                                      <MiniPlayer />
+                                    </View>
+                                  </ThemeProvider>
+                                </UpdatesHelper>
                               </StreakInitializer>
                             </PushNotificationsInitializer>
                           </TeamInviteHandler>
