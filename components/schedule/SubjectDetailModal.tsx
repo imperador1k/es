@@ -87,8 +87,8 @@ function ScheduleSlotCard({
 }) {
     return (
         <Animated.View
-            entering={FadeInRight.delay(index * 50).springify()}
-            exiting={FadeOut}
+            entering={Platform.OS === 'web' ? undefined : FadeInRight.delay(index * 50).springify()}
+            exiting={Platform.OS === 'web' ? undefined : FadeOut}
             style={styles.slotCard}
         >
             <View style={[styles.slotColorBar, { backgroundColor: subjectColor }]} />
@@ -151,7 +151,7 @@ function EditSlotInline({
     };
 
     return (
-        <Animated.View entering={FadeInDown.springify()} style={styles.editSlotContainer}>
+        <Animated.View entering={Platform.OS === 'web' ? undefined : FadeInDown.springify()} style={styles.editSlotContainer}>
             {/* Days */}
             <View style={styles.editRow}>
                 <Text style={styles.editLabel}>Dia</Text>
@@ -627,14 +627,22 @@ export function SubjectDetailModal({
                                     setUploadingImage(true);
                                     const uri = result.assets[0].uri;
                                     const fileName = `subject_${user?.id}_${Date.now()}.jpg`;
+                                    let uploadData;
 
-                                    const base64 = await FileSystem.readAsStringAsync(uri, {
-                                        encoding: 'base64',
-                                    });
+                                    if (Platform.OS === 'web') {
+                                        const response = await fetch(uri);
+                                        const blob = await response.blob();
+                                        uploadData = blob;
+                                    } else {
+                                        const base64 = await FileSystem.readAsStringAsync(uri, {
+                                            encoding: 'base64',
+                                        });
+                                        uploadData = decode(base64);
+                                    }
 
                                     const { data, error } = await supabase.storage
                                         .from('subject-images')
-                                        .upload(fileName, decode(base64), { contentType: 'image/jpeg', upsert: true });
+                                        .upload(fileName, uploadData, { contentType: 'image/jpeg', upsert: true });
 
                                     if (error) throw error;
 
