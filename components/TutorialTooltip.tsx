@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCopilot } from 'react-native-copilot';
 import Animated, {
     FadeIn,
@@ -81,6 +81,9 @@ function LoadingTransition({ nextStep }: { nextStep: { emoji: string; title: str
 // ============================================
 
 export const TutorialTooltip = () => {
+    // Skip on web - Copilot and Reanimated animations don't work well on web
+    if (Platform.OS === 'web') return null;
+
     const { isFirstStep, isLastStep, goToNext, goToPrev, goToNth, start, stop, currentStep, totalStepsNumber } = useCopilot();
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [nextStepInfo, setNextStepInfo] = useState<{ emoji: string; title: string; color: string } | null>(null);

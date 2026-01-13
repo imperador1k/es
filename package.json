@@ -95,5 +95,8 @@
     "supabase": "^2.70.5",
     "typescript": "~5.9.2"
   },
+  "browser": {
+    "react-native-reanimated": "./lib/reanimated.web.ts"
+  },
   "private": true
 }

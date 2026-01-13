@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, usePathname } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -56,7 +56,7 @@ const QUICK_ACTIONS: NavItem[] = [
 // NAV ITEM COMPONENT
 // ============================================
 
-function SidebarItem({ item, isActive, onPress, collapsed }: { item: NavItem; isActive: boolean; onPress: () => void; collapsed: boolean }) {
+function SidebarItemNative({ item, isActive, onPress, collapsed }: { item: NavItem; isActive: boolean; onPress: () => void; collapsed: boolean }) {
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -101,6 +101,40 @@ function SidebarItem({ item, isActive, onPress, collapsed }: { item: NavItem; is
     );
 }
 
+function SidebarItemWeb({ item, isActive, onPress, collapsed }: { item: NavItem; isActive: boolean; onPress: () => void; collapsed: boolean }) {
+    return (
+        <View>
+            <Pressable
+                onPress={onPress}
+                style={[styles.navItem, isActive && styles.navItemActive, collapsed && styles.navItemCollapsed]}
+            >
+                {isActive && (
+                    <LinearGradient
+                        colors={['rgba(99, 102, 241, 0.2)', 'rgba(139, 92, 246, 0.1)']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={StyleSheet.absoluteFill}
+                    />
+                )}
+                <View style={[styles.activeIndicator, isActive && styles.activeIndicatorVisible]} />
+                <Ionicons
+                    name={isActive ? item.iconActive : item.icon}
+                    size={22}
+                    color={isActive ? '#6366F1' : COLORS.text.secondary}
+                />
+                <Text style={[styles.navLabel, isActive && styles.navLabelActive, collapsed && { display: 'none' }]}>
+                    {item.label}
+                </Text>
+            </Pressable>
+        </View>
+    );
+}
+
+function SidebarItem(props: { item: NavItem; isActive: boolean; onPress: () => void; collapsed: boolean }) {
+    if (Platform.OS === 'web') return <SidebarItemWeb {...props} />;
+    return <SidebarItemNative {...props} />;
+}
+
 // ============================================
 // MAIN COMPONENT
 // ============================================
@@ -123,8 +157,10 @@ export function DesktopSidebar({ collapsed, onToggle }: { collapsed: boolean; on
         router.push(route as any);
     };
 
+    const ContainerComponent = Platform.OS === 'web' ? View : Animated.View;
+
     return (
-        <Animated.View style={[styles.container, { width: collapsed ? DESKTOP_SIDEBAR_COLLAPSED_WIDTH : DESKTOP_SIDEBAR_WIDTH }]}>
+        <ContainerComponent style={[styles.container, { width: collapsed ? DESKTOP_SIDEBAR_COLLAPSED_WIDTH : DESKTOP_SIDEBAR_WIDTH }]}>
             <BlurView intensity={80} tint="dark" style={styles.sidebar}>
                 {/* Logo/Brand */}
                 <View style={[styles.header, collapsed && styles.headerCollapsed]}>
@@ -188,7 +224,7 @@ export function DesktopSidebar({ collapsed, onToggle }: { collapsed: boolean; on
                     </Pressable>
                 </View>
             </BlurView>
-        </Animated.View>
+        </ContainerComponent>
     );
 }
 

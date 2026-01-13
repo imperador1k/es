@@ -15,10 +15,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
     Dimensions,
     Modal,
+    Platform,
     Pressable,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import Animated, {
     Easing,
@@ -264,13 +265,18 @@ export default function DailySpinWheel({ visible, onClose, onSpinComplete }: Dai
         }
     }, [spinning, user?.id, refetchProfile, onSpinComplete]);
 
-    const animatedWheelStyle = useAnimatedStyle(() => ({
-        transform: [{ rotate: `${rotation.value}deg` }],
-    }));
+    // Use static styles on web, animated on native
+    const animatedWheelStyle = Platform.OS === 'web'
+        ? { transform: [{ rotate: `${rotation.value}deg` }] }
+        : useAnimatedStyle(() => ({
+            transform: [{ rotate: `${rotation.value}deg` }],
+        }));
 
-    const animatedButtonStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: buttonScale.value }],
-    }));
+    const animatedButtonStyle = Platform.OS === 'web'
+        ? { transform: [{ scale: buttonScale.value }] }
+        : useAnimatedStyle(() => ({
+            transform: [{ scale: buttonScale.value }],
+        }));
 
     const handlePressIn = () => {
         buttonScale.value = withSpring(0.95);
