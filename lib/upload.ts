@@ -71,13 +71,23 @@ async function compressImage(uri: string): Promise<{ uri: string; width: number;
  * @param skipCompression - Se true, não comprime (útil para avatares pequenos)
  * @returns URL pública da imagem ou null se falhar
  */
+/**
+ * Faz upload de uma imagem para o Supabase Storage
+ * AUTOMATICAMENTE comprime imagens grandes antes do upload
+ * @param uri - URI local da imagem (do ImagePicker)
+ * @param userId - ID do utilizador (para organizar por pasta)
+ * @param bucketName - Nome do bucket (default: 'chat-files')
+ * @param skipCompression - Se true, não comprime (útil para avatares pequenos)
+ * @returns URL pública da imagem ou null se falhar
+ */
 export async function uploadImage(
     uri: string, 
     userId: string, 
+    bucketName: string = 'chat-files',
     skipCompression: boolean = false
 ): Promise<string | null> {
     try {
-        console.log('📤 A fazer upload da imagem...');
+        console.log(`📤 A fazer upload para ${bucketName}...`);
 
         // 1. Comprimir imagem (se não for para saltar)
         let finalUri = uri;
@@ -111,10 +121,10 @@ export async function uploadImage(
 
         // 4. Upload para o Supabase Storage
         const { data, error } = await supabase.storage
-            .from(BUCKET_NAME)
+            .from(bucketName)
             .upload(fileName, fileBody, {
                 contentType: 'image/jpeg',
-                upsert: false
+                upsert: true
             });
 
         if (error) {
@@ -126,7 +136,7 @@ export async function uploadImage(
 
         // 5. Obter URL pública
         const { data: publicUrlData } = supabase.storage
-            .from(BUCKET_NAME)
+            .from(bucketName)
             .getPublicUrl(data.path);
 
         console.log('🔗 URL pública:', publicUrlData.publicUrl);
@@ -141,12 +151,13 @@ export async function uploadImage(
 /**
  * Apaga uma imagem do Supabase Storage
  * @param url - URL pública da imagem
+ * @param bucketName - Nome do bucket (default: 'chat-files')
  * @returns true se apagou com sucesso
  */
-export async function deleteImage(url: string): Promise<boolean> {
+export async function deleteImage(url: string, bucketName: string = 'chat-files'): Promise<boolean> {
     try {
         // Extrair o path do URL
-        const bucketUrl = supabase.storage.from(BUCKET_NAME).getPublicUrl('').data.publicUrl;
+        const bucketUrl = supabase.storage.from(bucketName).getPublicUrl('').data.publicUrl;
         const path = url.replace(bucketUrl, '');
 
         if (!path) {
@@ -155,7 +166,7 @@ export async function deleteImage(url: string): Promise<boolean> {
         }
 
         const { error } = await supabase.storage
-            .from(BUCKET_NAME)
+            .from(bucketName)
             .remove([path]);
 
         if (error) {

@@ -229,6 +229,9 @@ CREATE TABLE public.profiles (
   equipped_title text,
   equipped_frame uuid,
   current_theme text DEFAULT 'default'::text,
+  streak_current integer DEFAULT 0,
+  streak_longest integer DEFAULT 0,
+  last_streak_date date,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
@@ -550,6 +553,7 @@ CREATE TABLE public.user_subjects (
   teacher_name text,
   room text,
   created_at timestamp with time zone DEFAULT now(),
+  image_url text,
   CONSTRAINT user_subjects_pkey PRIMARY KEY (id),
   CONSTRAINT user_subjects_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );

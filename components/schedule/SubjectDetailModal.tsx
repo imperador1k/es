@@ -4,14 +4,12 @@
  */
 
 import { SUBJECT_COLORS, useSchedule, useSubjects } from '@/hooks/useSubjects';
-import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { uploadImage } from '@/lib/upload';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { CLASS_TYPE_NAMES, ClassType, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
-import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
@@ -28,6 +26,9 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInRight, FadeOut } from 'react-native-reanimated';
+
+// Wrapper to prevent Reanimated crash on Web
+const AnimatedView = Platform.OS === 'web' ? View : Animated.View;
 
 // ============================================
 // PREDEFINED SUBJECT IMAGES (Unsplash)
@@ -86,10 +87,10 @@ function ScheduleSlotCard({
     onDelete: () => void;
 }) {
     return (
-        <Animated.View
+        <AnimatedView
             entering={Platform.OS === 'web' ? undefined : FadeInRight.delay(index * 50).springify()}
             exiting={Platform.OS === 'web' ? undefined : FadeOut}
-            style={styles.slotCard}
+            style={styles.slotCard as any}
         >
             <View style={[styles.slotColorBar, { backgroundColor: subjectColor }]} />
             <View style={styles.slotContent}>
@@ -114,7 +115,7 @@ function ScheduleSlotCard({
                     <Ionicons name="trash-outline" size={16} color="#EF4444" />
                 </Pressable>
             </View>
-        </Animated.View>
+        </AnimatedView>
     );
 }
 
@@ -151,7 +152,7 @@ function EditSlotInline({
     };
 
     return (
-        <Animated.View entering={Platform.OS === 'web' ? undefined : FadeInDown.springify()} style={styles.editSlotContainer}>
+        <AnimatedView entering={Platform.OS === 'web' ? undefined : FadeInDown.springify()} style={styles.editSlotContainer as any}>
             {/* Days */}
             <View style={styles.editRow}>
                 <Text style={styles.editLabel}>Dia</Text>
@@ -236,7 +237,7 @@ function EditSlotInline({
                     <Text style={styles.editSaveText}>{slot?.id ? 'Atualizar' : 'Adicionar'}</Text>
                 </Pressable>
             </View>
-        </Animated.View>
+        </AnimatedView>
     );
 }
 
@@ -626,31 +627,14 @@ export function SubjectDetailModal({
                                 if (!result.canceled && result.assets[0]?.uri) {
                                     setUploadingImage(true);
                                     const uri = result.assets[0].uri;
-                                    const fileName = `subject_${user?.id}_${Date.now()}.jpg`;
-                                    let uploadData;
 
-                                    if (Platform.OS === 'web') {
-                                        const response = await fetch(uri);
-                                        const blob = await response.blob();
-                                        uploadData = blob;
+                                    const uploadedUrl = await uploadImage(uri, user!.id, 'subject-images', false);
+
+                                    if (uploadedUrl) {
+                                        setImageUrl(uploadedUrl);
                                     } else {
-                                        const base64 = await FileSystem.readAsStringAsync(uri, {
-                                            encoding: 'base64',
-                                        });
-                                        uploadData = decode(base64);
+                                        throw new Error('Upload failed');
                                     }
-
-                                    const { data, error } = await supabase.storage
-                                        .from('subject-images')
-                                        .upload(fileName, uploadData, { contentType: 'image/jpeg', upsert: true });
-
-                                    if (error) throw error;
-
-                                    const { data: urlData } = supabase.storage
-                                        .from('subject-images')
-                                        .getPublicUrl(fileName);
-
-                                    setImageUrl(urlData.publicUrl);
                                 }
                             } catch (err) {
                                 console.error('Upload error:', err);
