@@ -25,7 +25,7 @@ import {
     TextInput,
     View
 } from 'react-native';
-import Animated, { FadeInDown, FadeInRight, FadeOut } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 // Wrapper to prevent Reanimated crash on Web
 const AnimatedView = Platform.OS === 'web' ? View : Animated.View;
@@ -87,10 +87,8 @@ function ScheduleSlotCard({
     onDelete: () => void;
 }) {
     return (
-        <AnimatedView
-            entering={Platform.OS === 'web' ? undefined : FadeInRight.delay(index * 50).springify()}
-            exiting={Platform.OS === 'web' ? undefined : FadeOut}
-            style={styles.slotCard as any}
+        <View
+            style={styles.slotCard}
         >
             <View style={[styles.slotColorBar, { backgroundColor: subjectColor }]} />
             <View style={styles.slotContent}>
@@ -115,7 +113,7 @@ function ScheduleSlotCard({
                     <Ionicons name="trash-outline" size={16} color="#EF4444" />
                 </Pressable>
             </View>
-        </AnimatedView>
+        </View>
     );
 }
 
@@ -152,7 +150,7 @@ function EditSlotInline({
     };
 
     return (
-        <AnimatedView entering={Platform.OS === 'web' ? undefined : FadeInDown.springify()} style={styles.editSlotContainer as any}>
+        <View style={styles.editSlotContainer}>
             {/* Days */}
             <View style={styles.editRow}>
                 <Text style={styles.editLabel}>Dia</Text>
@@ -237,7 +235,7 @@ function EditSlotInline({
                     <Text style={styles.editSaveText}>{slot?.id ? 'Atualizar' : 'Adicionar'}</Text>
                 </Pressable>
             </View>
-        </AnimatedView>
+        </View>
     );
 }
 
