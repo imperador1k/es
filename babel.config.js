@@ -7,7 +7,10 @@ module.exports = function (api) {
     ],
     plugins: [
       // Reanimated DEVE ser o último plugin
-      "react-native-reanimated/plugin",
+      // Desativar plugin no web para evitar erro CSSStyleDeclaration
+      ...(api.caller((caller) => caller && caller.platform === 'web')
+        ? []
+        : ["react-native-reanimated/plugin"]),
     ],
   };
 };
