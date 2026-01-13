@@ -11,6 +11,7 @@ import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/them
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
@@ -278,6 +279,13 @@ export default function PlannerScreen() {
     }, [user?.id]);
 
     useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchTasks();
+            refreshTodos();
+        }, [fetchTasks, refreshTodos])
+    );
 
     const handleRefresh = async () => {
         setRefreshing(true);

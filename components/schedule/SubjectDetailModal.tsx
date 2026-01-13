@@ -10,6 +10,8 @@ import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { CLASS_TYPE_NAMES, ClassType, DayOfWeek, Subject } from '@/types/database.types';
 import { Ionicons } from '@expo/vector-icons';
+import { decode } from 'base64-arraybuffer';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
@@ -626,12 +628,13 @@ export function SubjectDetailModal({
                                     const uri = result.assets[0].uri;
                                     const fileName = `subject_${user?.id}_${Date.now()}.jpg`;
 
-                                    const response = await fetch(uri);
-                                    const blob = await response.blob();
+                                    const base64 = await FileSystem.readAsStringAsync(uri, {
+                                        encoding: 'base64',
+                                    });
 
                                     const { data, error } = await supabase.storage
                                         .from('subject-images')
-                                        .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+                                        .upload(fileName, decode(base64), { contentType: 'image/jpeg', upsert: true });
 
                                     if (error) throw error;
 

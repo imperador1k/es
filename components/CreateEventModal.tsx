@@ -132,14 +132,18 @@ export function CreateEventModal({
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
 
-    // Animation on open
+    // Animation on open & State Sync
     useEffect(() => {
         if (visible) {
+            // Reset state to initial props when opening
+            setStartDate(initialDate);
+            setStartTime(initialDate);
+            // Animate
             Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 10, useNativeDriver: true }).start();
         } else {
             slideAnim.setValue(0);
         }
-    }, [visible]);
+    }, [visible, initialDate]);
 
     // Reset form
     const resetForm = () => {
