@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
+    Platform,
     Pressable,
     RefreshControl,
     StyleSheet,
@@ -41,7 +42,96 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 // CONVERSATION CARD
 // ============================================
 
-function ConversationCard({
+// ============================================
+// CONVERSATION CARD WEB (Simplified)
+// ============================================
+
+function ConversationCardWeb({
+    conversation,
+    index,
+}: {
+    conversation: ConversationWithUser;
+    index: number;
+}) {
+    const { other_user, last_message, unread_count } = conversation;
+    const hasUnread = unread_count > 0;
+
+    const formatTime = (dateStr: string) => {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays === 0) return date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+        if (diffDays === 1) return 'Ontem';
+        if (diffDays < 7) return date.toLocaleDateString('pt-PT', { weekday: 'short' });
+        return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+    };
+
+    // Avatar colors based on name
+    const getAvatarColor = (name: string) => {
+        const colors = ['#6366F1', '#EC4899', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'];
+        const index = name.charCodeAt(0) % colors.length;
+        return colors[index];
+    };
+
+    const displayName = other_user.full_name || other_user.username || 'Utilizador';
+    const avatarColor = getAvatarColor(displayName);
+
+    return (
+        <Pressable
+            style={styles.conversationCard}
+            onPress={() => router.push(`/dm/${conversation.id}`)}
+        >
+            <View style={styles.avatarContainer}>
+                {other_user.avatar_url ? (
+                    <CachedAvatar uri={other_user.avatar_url} size={52} />
+                ) : (
+                    <LinearGradient
+                        colors={[avatarColor, `${avatarColor}CC`]}
+                        style={styles.avatarFallback}
+                    >
+                        <Text style={styles.avatarInitial}>
+                            {displayName.charAt(0).toUpperCase()}
+                        </Text>
+                    </LinearGradient>
+                )}
+                {/* Online indicator */}
+                {other_user.status === 'online' && <View style={styles.onlineIndicator} />}
+            </View>
+
+            {/* Content */}
+            <View style={styles.conversationContent}>
+                <View style={styles.conversationHeader}>
+                    <Text style={[styles.conversationName, hasUnread && styles.conversationNameUnread]} numberOfLines={1}>
+                        {displayName}
+                    </Text>
+                    {last_message && (
+                        <Text style={[styles.conversationTime, hasUnread && styles.conversationTimeUnread]}>
+                            {formatTime(last_message.created_at)}
+                        </Text>
+                    )}
+                </View>
+                <View style={styles.conversationFooter}>
+                    {last_message && (
+                        <Text style={[styles.conversationPreview, hasUnread && styles.conversationPreviewUnread]} numberOfLines={1}>
+                            {last_message.content}
+                        </Text>
+                    )}
+                    {hasUnread && (
+                        <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadText}>{unread_count > 9 ? '9+' : unread_count}</Text>
+                        </View>
+                    )}
+                </View>
+            </View>
+        </Pressable>
+    );
+}
+
+// ============================================
+// CONVERSATION CARD NATIVE (Animated)
+// ============================================
+
+function ConversationCardNative({
     conversation,
     index,
 }: {
@@ -128,6 +218,11 @@ function ConversationCard({
             </View>
         </AnimatedPressable>
     );
+}
+
+function ConversationCard(props: any) {
+    if (Platform.OS === 'web') return <ConversationCardWeb {...props} />;
+    return <ConversationCardNative {...props} />;
 }
 
 // ============================================

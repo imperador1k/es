@@ -2,7 +2,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premiu
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 export type ToastType = 'success' | 'error' | 'info';
@@ -109,10 +109,13 @@ export function Toast({ visible, message, type = 'info', onHide, duration = 3000
 
     const config = TOAST_CONFIG[type];
 
+    // Helper for Web
+    const Wrapper = Platform.OS === 'web' ? View : Animated.View;
+
     return (
-        <Animated.View
-            entering={FadeInUp.springify()}
-            exiting={FadeOutUp}
+        <Wrapper
+            entering={Platform.OS === 'web' ? undefined : FadeInUp.springify()}
+            exiting={Platform.OS === 'web' ? undefined : FadeOutUp}
             style={styles.container}
         >
             <BlurView intensity={80} tint="dark" style={styles.blur}>
@@ -121,7 +124,7 @@ export function Toast({ visible, message, type = 'info', onHide, duration = 3000
                     <Text style={styles.message}>{message}</Text>
                 </View>
             </BlurView>
-        </Animated.View>
+        </Wrapper>
     );
 }
 

@@ -196,15 +196,12 @@ function TabItemButton({
     );
 }
 
+
 // ============================================
-// MAIN COMPONENT
+// MAIN COMPONENT - NATIVE (With Animations)
 // ============================================
 
-
-
-// ... (existing helper functions)
-
-export function FloatingTabBar() {
+function FloatingTabBarNative() {
     const pathname = usePathname();
     const [quickActionsVisible, setQuickActionsVisible] = useState(false);
 
@@ -289,6 +286,80 @@ export function FloatingTabBar() {
             />
         </>
     );
+}
+
+// ============================================
+// MAIN COMPONENT - WEB (Simplified, No Reanimated)
+// ============================================
+
+function FloatingTabBarWeb() {
+    const pathname = usePathname();
+    const [quickActionsVisible, setQuickActionsVisible] = useState(false);
+
+    const isActive = (route: string) => {
+        if (route === '/(tabs)') {
+            return pathname === '/' || pathname === '/(tabs)' || pathname === '/index';
+        }
+        return pathname.includes(route.replace('/(tabs)', ''));
+    };
+
+    const handleTabPress = (route: string) => {
+        router.push(route as any);
+    };
+
+    return (
+        <>
+            <View style={styles.container}>
+                <View style={[styles.barBlur, { backgroundColor: '#14161C' }]}>
+                    <View style={styles.barContent}>
+                        {/* Left Tabs */}
+                        <View style={styles.tabsSection}>
+                            <Pressable style={styles.tabItem} onPress={() => handleTabPress(TABS[0].route)}>
+                                <Ionicons name={isActive(TABS[0].route) ? TABS[0].iconActive as any : TABS[0].icon as any} size={24} color={isActive(TABS[0].route) ? '#FFF' : 'rgba(255,255,255,0.5)'} />
+                            </Pressable>
+                            <Pressable style={styles.tabItem} onPress={() => handleTabPress(TABS[1].route)}>
+                                <Ionicons name={isActive(TABS[1].route) ? TABS[1].iconActive as any : TABS[1].icon as any} size={24} color={isActive(TABS[1].route) ? '#FFF' : 'rgba(255,255,255,0.5)'} />
+                            </Pressable>
+                        </View>
+
+                        {/* Center Button */}
+                        <View style={styles.centerButtonWrapper}>
+                            <Pressable style={styles.centerButton} onPress={() => setQuickActionsVisible(true)}>
+                                <LinearGradient
+                                    colors={['#6366F1', '#8B5CF6', '#A855F7']}
+                                    style={styles.centerButtonGradient}
+                                >
+                                    <View style={styles.centerButtonInner}>
+                                        <Ionicons name="add" size={28} color="#FFF" />
+                                    </View>
+                                </LinearGradient>
+                            </Pressable>
+                        </View>
+
+                        {/* Right Tabs */}
+                        <View style={styles.tabsSection}>
+                            <Pressable style={styles.tabItem} onPress={() => handleTabPress(TABS[2].route)}>
+                                <Ionicons name={isActive(TABS[2].route) ? TABS[2].iconActive as any : TABS[2].icon as any} size={24} color={isActive(TABS[2].route) ? '#FFF' : 'rgba(255,255,255,0.5)'} />
+                            </Pressable>
+                            <Pressable style={styles.tabItem} onPress={() => handleTabPress(TABS[3].route)}>
+                                <Ionicons name={isActive(TABS[3].route) ? TABS[3].iconActive as any : TABS[3].icon as any} size={24} color={isActive(TABS[3].route) ? '#FFF' : 'rgba(255,255,255,0.5)'} />
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </View>
+
+            <QuickActionsModal
+                visible={quickActionsVisible}
+                onClose={() => setQuickActionsVisible(false)}
+            />
+        </>
+    );
+}
+
+export function FloatingTabBar() {
+    if (Platform.OS === 'web') return <FloatingTabBarWeb />;
+    return <FloatingTabBarNative />;
 }
 
 // ============================================
