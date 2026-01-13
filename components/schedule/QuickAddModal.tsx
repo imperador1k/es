@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
     Modal,
+    Platform,
     Pressable,
     StyleSheet,
     Text,
@@ -77,6 +78,10 @@ interface QuickAddModalProps {
 // COMPONENT
 // ============================================
 
+// Helper to avoid Reanimated on Web
+const SheetComponent = Platform.OS === 'web' ? View : Animated.View;
+const OptionComponent = Platform.OS === 'web' ? View : Animated.View;
+
 export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAddModalProps) {
     // Early return if no valid day/hour
     if (!visible) return null;
@@ -87,7 +92,10 @@ export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAd
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
             <Pressable style={styles.overlay} onPress={onClose}>
-                <Animated.View entering={FadeInUp.springify()} style={styles.sheet}>
+                <SheetComponent
+                    entering={Platform.OS === 'web' ? undefined : FadeInUp.springify()}
+                    style={styles.sheet}
+                >
                     {/* Handle */}
                     <View style={styles.handle} />
 
@@ -109,7 +117,10 @@ export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAd
                     {/* Options */}
                     <View style={styles.options}>
                         {OPTIONS.map((option, index) => (
-                            <Animated.View key={option.type} entering={FadeInUp.delay(50 * index).springify()}>
+                            <OptionComponent
+                                key={option.type}
+                                entering={Platform.OS === 'web' ? undefined : FadeInUp.delay(50 * index).springify()}
+                            >
                                 <Pressable
                                     style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
                                     onPress={() => {
@@ -128,7 +139,7 @@ export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAd
                                     </View>
                                     <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />
                                 </Pressable>
-                            </Animated.View>
+                            </OptionComponent>
                         ))}
                     </View>
 
@@ -136,7 +147,7 @@ export function QuickAddModal({ visible, day, hour, onClose, onSelect }: QuickAd
                     <Pressable style={styles.cancelButton} onPress={onClose}>
                         <Text style={styles.cancelText}>Cancelar</Text>
                     </Pressable>
-                </Animated.View>
+                </SheetComponent>
             </Pressable>
         </Modal>
     );

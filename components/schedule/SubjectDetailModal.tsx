@@ -23,12 +23,10 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View
+    View,
 } from 'react-native';
-import Animated from 'react-native-reanimated';
 
-// Wrapper to prevent Reanimated crash on Web
-const AnimatedView = Platform.OS === 'web' ? View : Animated.View;
+const AnimatedView = View;
 
 // ============================================
 // PREDEFINED SUBJECT IMAGES (Unsplash)

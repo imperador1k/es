@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useState } from 'react';
 import {
     FlatList,
+    Platform,
     Pressable,
     RefreshControl,
     ScrollView,
@@ -35,7 +36,68 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 // SUBJECT CARD
 // ============================================
 
-function SubjectCard({
+const isWeb = Platform.OS === 'web';
+
+function SubjectCardWeb({
+    subject,
+    index,
+    sessionsCount,
+    onPress,
+    onLongPress,
+}: {
+    subject: Subject;
+    index: number;
+    sessionsCount: number;
+    onPress: () => void;
+    onLongPress: () => void;
+}) {
+    return (
+        <Pressable
+            style={styles.subjectCard}
+            onPress={onPress}
+            onLongPress={onLongPress}
+        >
+            {/* Color Bar */}
+            <View style={[styles.subjectColorBar, { backgroundColor: subject.color }]} />
+
+            {/* Content */}
+            <View style={styles.subjectContent}>
+                <View style={styles.subjectHeader}>
+                    <View style={[styles.subjectIcon, { backgroundColor: `${subject.color}20` }]}>
+                        <Ionicons name="book" size={18} color={subject.color} />
+                    </View>
+                    <View style={styles.subjectTitleArea}>
+                        <Text style={styles.subjectName}>{subject.name}</Text>
+                        {sessionsCount > 0 && (
+                            <View style={styles.sessionsBadge}>
+                                <Text style={styles.sessionsBadgeText}>{sessionsCount} aula{sessionsCount > 1 ? 's' : ''}</Text>
+                            </View>
+                        )}
+                    </View>
+                </View>
+
+                <View style={styles.subjectDetails}>
+                    {subject.teacher_name && (
+                        <View style={styles.subjectDetail}>
+                            <Ionicons name="person-outline" size={14} color={COLORS.text.tertiary} />
+                            <Text style={styles.subjectDetailText}>{subject.teacher_name}</Text>
+                        </View>
+                    )}
+                    {subject.room && (
+                        <View style={styles.subjectDetail}>
+                            <Ionicons name="location-outline" size={14} color={COLORS.text.tertiary} />
+                            <Text style={styles.subjectDetailText}>{subject.room}</Text>
+                        </View>
+                    )}
+                </View>
+            </View>
+
+            <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
+        </Pressable>
+    );
+}
+
+function SubjectCardNative({
     subject,
     index,
     sessionsCount,
@@ -100,6 +162,11 @@ function SubjectCard({
             <Ionicons name="chevron-forward" size={20} color={COLORS.text.tertiary} />
         </AnimatedPressable>
     );
+}
+
+function SubjectCard(props: any) {
+    if (isWeb) return <SubjectCardWeb {...props} />;
+    return <SubjectCardNative {...props} />;
 }
 
 // ============================================
