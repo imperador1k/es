@@ -86,13 +86,23 @@ export async function uploadImage(
             finalUri = compressed.uri;
         }
 
-        // 2. Ler o ficheiro como Base64
-        const base64 = await FileSystem.readAsStringAsync(finalUri, {
-            encoding: 'base64',
-        });
+        // 2. Ler o ficheiro (Web vs Native)
+        let fileBody;
+        if (Platform.OS === 'web') {
+            const response = await fetch(finalUri);
+            fileBody = await response.blob();
+        } else {
+            const base64 = await FileSystem.readAsStringAsync(finalUri, {
+                encoding: 'base64',
+            });
+            fileBody = decode(base64);
+        }
 
         // Log do tamanho aproximado
-        const sizeKB = Math.round((base64.length * 0.75) / 1024);
+        const sizeKB = Platform.OS === 'web' 
+            ? Math.round((fileBody as Blob).size / 1024) 
+            : Math.round(((fileBody as ArrayBuffer).byteLength) / 1024);
+            
         console.log(`📊 Tamanho do ficheiro: ~${sizeKB}KB`);
 
         // 3. Gerar nome do ficheiro (sempre .jpg após compressão)
@@ -102,7 +112,7 @@ export async function uploadImage(
         // 4. Upload para o Supabase Storage
         const { data, error } = await supabase.storage
             .from(BUCKET_NAME)
-            .upload(fileName, decode(base64), {
+            .upload(fileName, fileBody, {
                 contentType: 'image/jpeg',
                 upsert: false
             });

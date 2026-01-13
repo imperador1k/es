@@ -262,7 +262,7 @@ export default function CreateTaskScreen() {
 
                                 <View style={styles.card}>
                                     <Text style={styles.cardLabel}>Data de Entrega</Text>
-                                    <Pressable style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
+                                    <Pressable style={styles.dateButton} onPress={() => Platform.OS !== 'web' && setShowDatePicker(true)}>
                                         <LinearGradient
                                             colors={dueDate ? ['#6366F1', '#4F46E5'] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
                                             style={styles.dateIconBg}
@@ -275,12 +275,23 @@ export default function CreateTaskScreen() {
                                                 : 'Sem prazo definido'}
                                         </Text>
                                         {dueDate && (
-                                            <Pressable onPress={() => setDueDate(null)}>
+                                            <Pressable onPress={() => setDueDate(null)} style={{ zIndex: 10 }}>
                                                 <Ionicons name="close-circle" size={20} color={COLORS.text.tertiary} />
                                             </Pressable>
                                         )}
+                                        {Platform.OS === 'web' && (
+                                            <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', zIndex: 1 }}>
+                                                <DateTimePicker
+                                                    value={dueDate || new Date()}
+                                                    mode="datetime"
+                                                    onChange={(event, date) => {
+                                                        if (date) setDueDate(date);
+                                                    }}
+                                                />
+                                            </View>
+                                        )}
                                     </Pressable>
-                                    {showDatePicker && (
+                                    {showDatePicker && Platform.OS !== 'web' && (
                                         <View style={styles.datePickerWrap}>
                                             <DateTimePicker
                                                 value={dueDate || new Date()}

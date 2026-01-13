@@ -175,7 +175,7 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Quando</Text>
                             <View style={styles.dateTimeRow}>
-                                <Pressable style={styles.dateCard} onPress={() => setShowDatePicker(true)}>
+                                <Pressable style={styles.dateCard} onPress={() => Platform.OS !== 'web' && setShowDatePicker(true)}>
                                     <View style={[styles.dateIconWrap, dueDate && { backgroundColor: '#6366F120' }]}>
                                         <Ionicons name="calendar" size={20} color={dueDate ? '#6366F1' : COLORS.text.tertiary} />
                                     </View>
@@ -185,11 +185,23 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                                             {dueDate ? formatDate(dueDate) : 'Escolher'}
                                         </Text>
                                     </View>
+                                    {Platform.OS === 'web' && (
+                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
+                                            <DateTimePicker
+                                                value={dueDate || new Date()}
+                                                mode="date"
+                                                display="default"
+                                                onChange={(e, date) => {
+                                                    if (date) setDueDate(date);
+                                                }}
+                                            />
+                                        </View>
+                                    )}
                                 </Pressable>
 
                                 <Pressable
                                     style={[styles.dateCard, !dueDate && styles.dateCardDisabled]}
-                                    onPress={() => dueDate && setShowTimePicker(true)}
+                                    onPress={() => Platform.OS !== 'web' && dueDate && setShowTimePicker(true)}
                                     disabled={!dueDate}
                                 >
                                     <View style={[styles.dateIconWrap, dueDate && { backgroundColor: '#10B98120' }]}>
@@ -201,6 +213,23 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                                             {dueDate ? formatTime(dueDate) : '--:--'}
                                         </Text>
                                     </View>
+                                    {Platform.OS === 'web' && dueDate && (
+                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
+                                            <DateTimePicker
+                                                value={dueDate}
+                                                mode="time"
+                                                display="default"
+                                                onChange={(e, date) => {
+                                                    if (date) {
+                                                        const newDate = new Date(dueDate);
+                                                        newDate.setHours(date.getHours());
+                                                        newDate.setMinutes(date.getMinutes());
+                                                        setDueDate(newDate);
+                                                    }
+                                                }}
+                                            />
+                                        </View>
+                                    )}
                                 </Pressable>
 
                                 {dueDate && (
@@ -251,8 +280,8 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                         <View style={{ height: 100 }} />
                     </ScrollView>
 
-                    {/* Date Picker Modal - Platform Specific */}
-                    {showDatePicker && (
+                    {/* Date Picker Modal - Platform Specific (Mobile Only) */}
+                    {showDatePicker && Platform.OS !== 'web' && (
                         Platform.OS === 'ios' ? (
                             <Modal transparent animationType="fade">
                                 <View style={styles.pickerOverlay}>
@@ -288,8 +317,8 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                         )
                     )}
 
-                    {/* Time Picker Modal - Platform Specific */}
-                    {showTimePicker && dueDate && (
+                    {/* Time Picker Modal - Platform Specific (Mobile Only) */}
+                    {showTimePicker && dueDate && Platform.OS !== 'web' && (
                         Platform.OS === 'ios' ? (
                             <Modal transparent animationType="fade">
                                 <View style={styles.pickerOverlay}>

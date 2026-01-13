@@ -307,7 +307,7 @@ export function CreateEventModal({
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Quando</Text>
                             <View style={styles.dateTimeRow}>
-                                <Pressable style={styles.dateTimeCard} onPress={() => setShowDatePicker(true)}>
+                                <Pressable style={styles.dateTimeCard} onPress={() => Platform.OS !== 'web' && setShowDatePicker(true)}>
                                     <View style={styles.dateTimeIconWrap}>
                                         <Ionicons name="calendar" size={20} color="#6366F1" />
                                     </View>
@@ -318,9 +318,21 @@ export function CreateEventModal({
                                         </Text>
                                     </View>
                                     <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
+                                    {Platform.OS === 'web' && (
+                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
+                                            <DateTimePicker
+                                                value={startDate}
+                                                mode="date"
+                                                display="default"
+                                                onChange={(event, date) => {
+                                                    if (date) setStartDate(date);
+                                                }}
+                                            />
+                                        </View>
+                                    )}
                                 </Pressable>
 
-                                <Pressable style={styles.dateTimeCard} onPress={() => setShowTimePicker(true)}>
+                                <Pressable style={styles.dateTimeCard} onPress={() => Platform.OS !== 'web' && setShowTimePicker(true)}>
                                     <View style={[styles.dateTimeIconWrap, { backgroundColor: '#10B98120' }]}>
                                         <Ionicons name="time" size={20} color="#10B981" />
                                     </View>
@@ -331,6 +343,18 @@ export function CreateEventModal({
                                         </Text>
                                     </View>
                                     <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
+                                    {Platform.OS === 'web' && (
+                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
+                                            <DateTimePicker
+                                                value={startTime}
+                                                mode="time"
+                                                display="default"
+                                                onChange={(event, date) => {
+                                                    if (date) setStartTime(date);
+                                                }}
+                                            />
+                                        </View>
+                                    )}
                                 </Pressable>
                             </View>
                         </View>
@@ -370,8 +394,8 @@ export function CreateEventModal({
                         <View style={{ height: 100 }} />
                     </ScrollView>
 
-                    {/* Date Picker - Platform Specific */}
-                    {showDatePicker && (
+                    {/* Date Picker - Platform Specific (Mobile Only) */}
+                    {showDatePicker && Platform.OS !== 'web' && (
                         Platform.OS === 'ios' ? (
                             <Modal transparent animationType="fade">
                                 <View style={styles.pickerOverlay}>
@@ -407,8 +431,8 @@ export function CreateEventModal({
                         )
                     )}
 
-                    {/* Time Picker - Platform Specific */}
-                    {showTimePicker && (
+                    {/* Time Picker - Platform Specific (Mobile Only) */}
+                    {showTimePicker && Platform.OS !== 'web' && (
                         Platform.OS === 'ios' ? (
                             <Modal transparent animationType="fade">
                                 <View style={styles.pickerOverlay}>
