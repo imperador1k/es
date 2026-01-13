@@ -85,25 +85,30 @@ export function useAuth(): UseAuthReturn {
     const signInWithGoogle = useCallback(async (): Promise<AuthResponse> => {
         try {
             setLoading(true);
+            
+            // Define redirect URL based on platform
+            const redirectTo = Platform.select({
+                web: 'https://escolauni.vercel.app/auth/callback',
+                default: makeRedirectUri({ scheme: 'escolaa', path: 'auth/callback' })
+            });
+
             if (Platform.OS === 'web') {
-                // WEB: Full page redirect (Standard OAuth)
+                // WEB: Full page redirect to the Callback URL
                 const { data, error } = await supabase.auth.signInWithOAuth({
                     provider: 'google',
                     options: {
-                        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+                        redirectTo,
                     },
                 });
                 
                 if (error) throw error;
-                // On web, this will redirect the page, so we don't need to do anything else.
                 return { success: true };
             } else {
                 // NATIVE: In-app Browser / AuthSession
-                const redirectUrl = makeRedirectUri({ scheme: 'escolaa' });
                 const { data, error } = await supabase.auth.signInWithOAuth({
                     provider: 'google',
                     options: {
-                        redirectTo: redirectUrl,
+                        redirectTo,
                         skipBrowserRedirect: true,
                     },
                 });
@@ -111,10 +116,10 @@ export function useAuth(): UseAuthReturn {
                 if (error) return { success: false, error: { message: error.message } };
 
                 if (data.url) {
-                    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+                    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
                     
                     if (result.type === 'success' && result.url) {
-                        // Extract tokens logic (Shared or moved to helper, but keeping inline for safety)
+                        // Extract tokens
                         const urlObj = new URL(result.url);
                         const accessToken = urlObj.searchParams.get('access_token') || result.url.split('access_token=')[1]?.split('&')[0];
                         const refreshToken = urlObj.searchParams.get('refresh_token') || result.url.split('refresh_token=')[1]?.split('&')[0];
@@ -144,25 +149,30 @@ export function useAuth(): UseAuthReturn {
     const signInWithDiscord = useCallback(async (): Promise<AuthResponse> => {
         try {
             setLoading(true);
+            
+            // Define redirect URL based on platform
+            const redirectTo = Platform.select({
+                web: 'https://escolauni.vercel.app/auth/callback',
+                default: makeRedirectUri({ scheme: 'escolaa', path: 'auth/callback' })
+            });
+
             if (Platform.OS === 'web') {
-                // WEB: Full page redirect (Standard OAuth)
+                // WEB: Full page redirect
                 const { data, error } = await supabase.auth.signInWithOAuth({
                     provider: 'discord',
                     options: {
-                        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+                        redirectTo,
                     },
                 });
                 
                 if (error) throw error;
-                // On web, this will redirect the page, so we don't need to do anything else.
                 return { success: true };
             } else {
                 // NATIVE: In-app Browser / AuthSession
-                const redirectUrl = makeRedirectUri({ scheme: 'escolaa' });
                 const { data, error } = await supabase.auth.signInWithOAuth({
                     provider: 'discord',
                     options: {
-                        redirectTo: redirectUrl,
+                        redirectTo,
                         skipBrowserRedirect: true,
                     },
                 });
@@ -170,16 +180,13 @@ export function useAuth(): UseAuthReturn {
                 if (error) return { success: false, error: { message: error.message } };
 
                 if (data.url) {
-                    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+                    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
                     
                     if (result.type === 'success' && result.url) {
-                        // Extract tokens logic (Simplified for Native)
                         const urlObj = new URL(result.url);
-                        // Try query params first (traditional) or fragment (sometimes different providers)
                         let accessToken = urlObj.searchParams.get('access_token');
                         let refreshToken = urlObj.searchParams.get('refresh_token');
 
-                        // Fallback to fragment parsing if not in query
                         if (!accessToken && result.url.includes('#')) {
                             const hashParams = new URLSearchParams(result.url.split('#')[1]);
                             accessToken = hashParams.get('access_token');
