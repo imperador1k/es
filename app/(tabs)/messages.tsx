@@ -229,7 +229,65 @@ function ConversationCard(props: any) {
 // FRIEND REQUEST CARD
 // ============================================
 
-function FriendRequestCard({
+// ============================================
+// FRIEND REQUEST CARD WEB (Static)
+// ============================================
+
+function FriendRequestCardWeb({
+    item,
+    index,
+    onAccept,
+    onReject,
+    processing,
+}: {
+    item: any;
+    index: number;
+    onAccept: () => void;
+    onReject: () => void;
+    processing: boolean;
+}) {
+    const displayName = item.profile.full_name || item.profile.username || 'Utilizador';
+
+    return (
+        <View style={styles.requestCard}>
+            <View style={styles.avatarContainer}>
+                {item.profile.avatar_url ? (
+                    <CachedAvatar uri={item.profile.avatar_url} size={52} />
+                ) : (
+                    <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.avatarFallback}>
+                        <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
+                    </LinearGradient>
+                )}
+            </View>
+
+            {/* Content */}
+            <View style={styles.requestContent}>
+                <Text style={styles.requestName}>{displayName}</Text>
+                <Text style={styles.requestUsername}>@{item.profile.username}</Text>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.requestActions}>
+                <Pressable style={styles.acceptButton} onPress={onAccept} disabled={processing}>
+                    {processing ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                        <Ionicons name="checkmark" size={20} color="#FFF" />
+                    )}
+                </Pressable>
+                <Pressable style={styles.rejectButton} onPress={onReject} disabled={processing}>
+                    <Ionicons name="close" size={20} color={COLORS.text.tertiary} />
+                </Pressable>
+            </View>
+        </View>
+    );
+}
+
+// ============================================
+// FRIEND REQUEST CARD NATIVE (Animated)
+// ============================================
+
+function FriendRequestCardNative({
     item,
     index,
     onAccept,
@@ -277,6 +335,11 @@ function FriendRequestCard({
             </View>
         </Animated.View>
     );
+}
+
+function FriendRequestCard(props: any) {
+    if (Platform.OS === 'web') return <FriendRequestCardWeb {...props} />;
+    return <FriendRequestCardNative {...props} />;
 }
 
 // ============================================
