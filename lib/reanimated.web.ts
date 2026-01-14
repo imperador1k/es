@@ -9,6 +9,10 @@
  * setNativeProps or any native animation APIs on web.
  */
 
+// Debug: Verify mock is being loaded
+console.log('✅ [REANIMATED MOCK] Web mock loaded successfully');
+
+
 import React from 'react';
 import { FlatList, Image, Pressable, ScrollView, Text, View } from 'react-native';
 

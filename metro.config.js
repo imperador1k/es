@@ -12,6 +12,13 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
             type: 'sourceFile',
         };
     }
+    // Alias react-native-copilot to our mock on web (prevents SvgMask crash)
+    if (platform === 'web' && moduleName === 'react-native-copilot') {
+        return {
+            filePath: path.resolve(__dirname, 'lib/copilot.web.tsx'),
+            type: 'sourceFile',
+        };
+    }
     // Fall back to the default resolver
     return context.resolveRequest(context, moduleName, platform);
 };
