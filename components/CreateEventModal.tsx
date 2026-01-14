@@ -8,8 +8,6 @@ import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -17,7 +15,6 @@ import {
     Animated,
     Keyboard,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -27,6 +24,7 @@ import {
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DatePicker, UniversalTimePicker } from './ui/DateTimePicker';
 
 // ============================================
 // TYPES
@@ -124,13 +122,9 @@ export function CreateEventModal({
     const [mainCategory, setMainCategory] = useState<MainCategory>('escola');
     const [schoolCategory, setSchoolCategory] = useState<SchoolSubCategory>('exame');
     const [personalCategory, setPersonalCategory] = useState<PersonalSubCategory>('lembrete');
-    const [startDate, setStartDate] = useState(initialDate);
-    const [startTime, setStartTime] = useState(initialDate);
+    const [startDate, setStartDate] = useState<Date>(initialDate);
+    const [startTime, setStartTime] = useState<Date>(initialDate);
     const [saving, setSaving] = useState(false);
-
-    // Picker visibility
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [showTimePicker, setShowTimePicker] = useState(false);
 
     // Animation on open & State Sync
     useEffect(() => {
@@ -307,55 +301,17 @@ export function CreateEventModal({
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Quando</Text>
                             <View style={styles.dateTimeRow}>
-                                <Pressable style={styles.dateTimeCard} onPress={() => Platform.OS !== 'web' && setShowDatePicker(true)}>
-                                    <View style={styles.dateTimeIconWrap}>
-                                        <Ionicons name="calendar" size={20} color="#6366F1" />
-                                    </View>
-                                    <View style={styles.dateTimeInfo}>
-                                        <Text style={styles.dateTimeLabel}>Data</Text>
-                                        <Text style={styles.dateTimeValue}>
-                                            {startDate.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' })}
-                                        </Text>
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
-                                    {Platform.OS === 'web' && (
-                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
-                                            <DateTimePicker
-                                                value={startDate}
-                                                mode="date"
-                                                display="default"
-                                                onChange={(event, date) => {
-                                                    if (date) setStartDate(date);
-                                                }}
-                                            />
-                                        </View>
-                                    )}
-                                </Pressable>
+                                <DatePicker
+                                    value={startDate}
+                                    onChange={(date) => { if (date) setStartDate(date); }}
+                                    placeholder="Escolher data"
+                                />
 
-                                <Pressable style={styles.dateTimeCard} onPress={() => Platform.OS !== 'web' && setShowTimePicker(true)}>
-                                    <View style={[styles.dateTimeIconWrap, { backgroundColor: '#10B98120' }]}>
-                                        <Ionicons name="time" size={20} color="#10B981" />
-                                    </View>
-                                    <View style={styles.dateTimeInfo}>
-                                        <Text style={styles.dateTimeLabel}>Hora</Text>
-                                        <Text style={styles.dateTimeValue}>
-                                            {startTime.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
-                                        </Text>
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
-                                    {Platform.OS === 'web' && (
-                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
-                                            <DateTimePicker
-                                                value={startTime}
-                                                mode="time"
-                                                display="default"
-                                                onChange={(event, date) => {
-                                                    if (date) setStartTime(date);
-                                                }}
-                                            />
-                                        </View>
-                                    )}
-                                </Pressable>
+                                <UniversalTimePicker
+                                    value={startTime}
+                                    onChange={(date) => setStartTime(date)}
+                                    placeholder="Hora"
+                                />
                             </View>
                         </View>
 
@@ -394,79 +350,7 @@ export function CreateEventModal({
                         <View style={{ height: 100 }} />
                     </ScrollView>
 
-                    {/* Date Picker - Platform Specific (Mobile Only) */}
-                    {showDatePicker && Platform.OS !== 'web' && (
-                        Platform.OS === 'ios' ? (
-                            <Modal transparent animationType="fade">
-                                <View style={styles.pickerOverlay}>
-                                    <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
-                                        <View style={styles.pickerHeader}>
-                                            <Text style={styles.pickerTitle}>Escolher Data</Text>
-                                            <Pressable onPress={() => setShowDatePicker(false)}>
-                                                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
-                                            </Pressable>
-                                        </View>
-                                        <DateTimePicker
-                                            value={startDate}
-                                            mode="date"
-                                            display="spinner"
-                                            onChange={(event, date) => {
-                                                if (date) setStartDate(date);
-                                            }}
-                                            textColor="#FFF"
-                                        />
-                                    </BlurView>
-                                </View>
-                            </Modal>
-                        ) : (
-                            <DateTimePicker
-                                value={startDate}
-                                mode="date"
-                                display="default"
-                                onChange={(event, date) => {
-                                    setShowDatePicker(false);
-                                    if (event.type === 'set' && date) setStartDate(date);
-                                }}
-                            />
-                        )
-                    )}
 
-                    {/* Time Picker - Platform Specific (Mobile Only) */}
-                    {showTimePicker && Platform.OS !== 'web' && (
-                        Platform.OS === 'ios' ? (
-                            <Modal transparent animationType="fade">
-                                <View style={styles.pickerOverlay}>
-                                    <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
-                                        <View style={styles.pickerHeader}>
-                                            <Text style={styles.pickerTitle}>Escolher Hora</Text>
-                                            <Pressable onPress={() => setShowTimePicker(false)}>
-                                                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
-                                            </Pressable>
-                                        </View>
-                                        <DateTimePicker
-                                            value={startTime}
-                                            mode="time"
-                                            display="spinner"
-                                            onChange={(event, date) => {
-                                                if (date) setStartTime(date);
-                                            }}
-                                            textColor="#FFF"
-                                        />
-                                    </BlurView>
-                                </View>
-                            </Modal>
-                        ) : (
-                            <DateTimePicker
-                                value={startTime}
-                                mode="time"
-                                display="default"
-                                onChange={(event, date) => {
-                                    setShowTimePicker(false);
-                                    if (event.type === 'set' && date) setStartTime(date);
-                                }}
-                            />
-                        )
-                    )}
                 </View>
             </TouchableWithoutFeedback>
         </Modal>

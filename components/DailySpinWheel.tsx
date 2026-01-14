@@ -379,6 +379,25 @@ export default function DailySpinWheel({ visible, onClose, onSpinComplete }: Dai
 
 // Simple confetti piece component
 function ConfettiPiece({ index }: { index: number }) {
+    const confettiColors = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899'];
+    const color = confettiColors[index % confettiColors.length];
+
+    // On web, just show static confetti (no animation to avoid reanimated issues)
+    if (Platform.OS === 'web') {
+        return (
+            <View
+                style={[
+                    styles.confettiPiece,
+                    {
+                        backgroundColor: color,
+                        left: `${(index / 20) * 100}%`,
+                        top: `${Math.random() * 100}%`,
+                    },
+                ]}
+            />
+        );
+    }
+
     const translateY = useSharedValue(-50);
     const translateX = useSharedValue((Math.random() - 0.5) * Dimensions.get('window').width);
     const rotate = useSharedValue(0);
@@ -400,9 +419,6 @@ function ConfettiPiece({ index }: { index: number }) {
             { rotate: `${rotate.value}deg` },
         ],
     }));
-
-    const confettiColors = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899'];
-    const color = confettiColors[index % confettiColors.length];
 
     return (
         <Animated.View

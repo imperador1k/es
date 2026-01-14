@@ -4,12 +4,12 @@
  * Passo 1: Detalhes | Passo 2: Configuração | Passo 3: Atribuição
  */
 
+import { DatePicker, UniversalTimePicker } from '@/components/ui/DateTimePicker';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -70,8 +70,6 @@ export default function CreateTaskScreen() {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [dueDate, setDueDate] = useState<Date | null>(null);
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [showTimePicker, setShowTimePicker] = useState(false);
     const [xpReward, setXpReward] = useState('50');
 
     // Step 2
@@ -262,72 +260,25 @@ export default function CreateTaskScreen() {
 
                                 <View style={styles.card}>
                                     <Text style={styles.cardLabel}>Data de Entrega</Text>
-                                    <Pressable style={styles.dateButton} onPress={() => Platform.OS !== 'web' && setShowDatePicker(true)}>
-                                        <LinearGradient
-                                            colors={dueDate ? ['#6366F1', '#4F46E5'] : [COLORS.surfaceMuted, COLORS.surfaceMuted]}
-                                            style={styles.dateIconBg}
-                                        >
-                                            <Ionicons name="calendar" size={20} color={dueDate ? '#FFF' : COLORS.text.tertiary} />
-                                        </LinearGradient>
-                                        <Text style={[styles.dateText, dueDate && styles.dateTextActive]}>
-                                            {dueDate
-                                                ? dueDate.toLocaleDateString('pt-PT', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-                                                : 'Sem prazo definido'}
-                                        </Text>
+                                    <View style={styles.dateTimeRow}>
+                                        <DatePicker
+                                            value={dueDate}
+                                            onChange={(date) => setDueDate(date)}
+                                            placeholder="Escolher data"
+                                            minimumDate={new Date()}
+                                        />
+                                        <UniversalTimePicker
+                                            value={dueDate}
+                                            onChange={(date) => setDueDate(date)}
+                                            placeholder="Hora"
+                                            disabled={!dueDate}
+                                        />
                                         {dueDate && (
-                                            <Pressable onPress={() => setDueDate(null)} style={{ zIndex: 10 }}>
-                                                <Ionicons name="close-circle" size={20} color={COLORS.text.tertiary} />
+                                            <Pressable onPress={() => setDueDate(null)} style={styles.clearDateBtn}>
+                                                <Ionicons name="close-circle" size={24} color={COLORS.text.tertiary} />
                                             </Pressable>
                                         )}
-                                        {Platform.OS === 'web' && (
-                                            <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', zIndex: 1 }}>
-                                                <DateTimePicker
-                                                    value={dueDate || new Date()}
-                                                    mode="datetime"
-                                                    onChange={(event, date) => {
-                                                        if (date) setDueDate(date);
-                                                    }}
-                                                />
-                                            </View>
-                                        )}
-                                    </Pressable>
-                                    {showDatePicker && Platform.OS !== 'web' && (
-                                        <View style={styles.datePickerWrap}>
-                                            <DateTimePicker
-                                                value={dueDate || new Date()}
-                                                mode={Platform.OS === 'ios' ? 'datetime' : 'date'}
-                                                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-                                                minimumDate={new Date()}
-                                                onChange={(event, date) => {
-                                                    if (Platform.OS === 'android') {
-                                                        setShowDatePicker(false);
-                                                        if (event.type === 'set' && date) {
-                                                            setDueDate(date);
-                                                            setShowTimePicker(true);
-                                                        }
-                                                    } else if (date) {
-                                                        setDueDate(date);
-                                                    }
-                                                }}
-                                            />
-                                            {Platform.OS === 'ios' && (
-                                                <Pressable style={styles.datePickerDone} onPress={() => setShowDatePicker(false)}>
-                                                    <Text style={styles.datePickerDoneText}>Confirmar</Text>
-                                                </Pressable>
-                                            )}
-                                        </View>
-                                    )}
-                                    {showTimePicker && Platform.OS === 'android' && (
-                                        <DateTimePicker
-                                            value={dueDate || new Date()}
-                                            mode="time"
-                                            display="clock"
-                                            onChange={(event, date) => {
-                                                setShowTimePicker(false);
-                                                if (event.type === 'set' && date) setDueDate(date);
-                                            }}
-                                        />
-                                    )}
+                                    </View>
                                 </View>
 
                                 <View style={styles.card}>
@@ -727,6 +678,14 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.base,
         fontWeight: TYPOGRAPHY.weight.semibold,
         color: '#6366F1',
+    },
+    dateTimeRow: {
+        flexDirection: 'row',
+        gap: SPACING.sm,
+        alignItems: 'center',
+    },
+    clearDateBtn: {
+        padding: SPACING.xs,
     },
 
     // XP

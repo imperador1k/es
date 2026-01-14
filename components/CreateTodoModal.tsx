@@ -6,14 +6,11 @@
 import { CreateTodoInput } from '@/hooks/usePersonalTodos';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
     Keyboard,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -23,6 +20,7 @@ import {
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DatePicker, UniversalTimePicker } from './ui/DateTimePicker';
 
 interface CreateTodoModalProps {
     visible: boolean;
@@ -41,8 +39,6 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [dueDate, setDueDate] = useState<Date | null>(null);
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [showTimePicker, setShowTimePicker] = useState(false);
     const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
     const [steps, setSteps] = useState<string[]>([]);
     const [newStep, setNewStep] = useState('');
@@ -175,62 +171,19 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Quando</Text>
                             <View style={styles.dateTimeRow}>
-                                <Pressable style={styles.dateCard} onPress={() => Platform.OS !== 'web' && setShowDatePicker(true)}>
-                                    <View style={[styles.dateIconWrap, dueDate && { backgroundColor: '#6366F120' }]}>
-                                        <Ionicons name="calendar" size={20} color={dueDate ? '#6366F1' : COLORS.text.tertiary} />
-                                    </View>
-                                    <View style={styles.dateInfo}>
-                                        <Text style={styles.dateLabel}>Data</Text>
-                                        <Text style={[styles.dateValue, dueDate && styles.dateValueActive]}>
-                                            {dueDate ? formatDate(dueDate) : 'Escolher'}
-                                        </Text>
-                                    </View>
-                                    {Platform.OS === 'web' && (
-                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
-                                            <DateTimePicker
-                                                value={dueDate || new Date()}
-                                                mode="date"
-                                                display="default"
-                                                onChange={(e, date) => {
-                                                    if (date) setDueDate(date);
-                                                }}
-                                            />
-                                        </View>
-                                    )}
-                                </Pressable>
+                                <DatePicker
+                                    value={dueDate}
+                                    onChange={(date) => setDueDate(date)}
+                                    placeholder="Escolher"
+                                    minimumDate={new Date()}
+                                />
 
-                                <Pressable
-                                    style={[styles.dateCard, !dueDate && styles.dateCardDisabled]}
-                                    onPress={() => Platform.OS !== 'web' && dueDate && setShowTimePicker(true)}
+                                <UniversalTimePicker
+                                    value={dueDate}
+                                    onChange={(date) => setDueDate(date)}
+                                    placeholder="--:--"
                                     disabled={!dueDate}
-                                >
-                                    <View style={[styles.dateIconWrap, dueDate && { backgroundColor: '#10B98120' }]}>
-                                        <Ionicons name="time" size={20} color={dueDate ? '#10B981' : COLORS.text.muted} />
-                                    </View>
-                                    <View style={styles.dateInfo}>
-                                        <Text style={styles.dateLabel}>Hora</Text>
-                                        <Text style={[styles.dateValue, dueDate && styles.dateValueActive]}>
-                                            {dueDate ? formatTime(dueDate) : '--:--'}
-                                        </Text>
-                                    </View>
-                                    {Platform.OS === 'web' && dueDate && (
-                                        <View style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%' }}>
-                                            <DateTimePicker
-                                                value={dueDate}
-                                                mode="time"
-                                                display="default"
-                                                onChange={(e, date) => {
-                                                    if (date) {
-                                                        const newDate = new Date(dueDate);
-                                                        newDate.setHours(date.getHours());
-                                                        newDate.setMinutes(date.getMinutes());
-                                                        setDueDate(newDate);
-                                                    }
-                                                }}
-                                            />
-                                        </View>
-                                    )}
-                                </Pressable>
+                                />
 
                                 {dueDate && (
                                     <Pressable style={styles.clearDateBtn} onPress={() => setDueDate(null)}>
@@ -280,77 +233,7 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                         <View style={{ height: 100 }} />
                     </ScrollView>
 
-                    {/* Date Picker Modal - Platform Specific (Mobile Only) */}
-                    {showDatePicker && Platform.OS !== 'web' && (
-                        Platform.OS === 'ios' ? (
-                            <Modal transparent animationType="fade">
-                                <View style={styles.pickerOverlay}>
-                                    <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
-                                        <View style={styles.pickerHeader}>
-                                            <Text style={styles.pickerTitle}>Escolher Data</Text>
-                                            <Pressable onPress={() => setShowDatePicker(false)}>
-                                                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
-                                            </Pressable>
-                                        </View>
-                                        <DateTimePicker
-                                            value={dueDate || new Date()}
-                                            mode="date"
-                                            display="spinner"
-                                            onChange={(e, date) => { if (date) setDueDate(date); }}
-                                            minimumDate={new Date()}
-                                            textColor="#FFF"
-                                        />
-                                    </BlurView>
-                                </View>
-                            </Modal>
-                        ) : (
-                            <DateTimePicker
-                                value={dueDate || new Date()}
-                                mode="date"
-                                display="default"
-                                onChange={(e, date) => {
-                                    setShowDatePicker(false);
-                                    if (e.type === 'set' && date) setDueDate(date);
-                                }}
-                                minimumDate={new Date()}
-                            />
-                        )
-                    )}
 
-                    {/* Time Picker Modal - Platform Specific (Mobile Only) */}
-                    {showTimePicker && dueDate && Platform.OS !== 'web' && (
-                        Platform.OS === 'ios' ? (
-                            <Modal transparent animationType="fade">
-                                <View style={styles.pickerOverlay}>
-                                    <BlurView intensity={100} tint="dark" style={styles.pickerModal}>
-                                        <View style={styles.pickerHeader}>
-                                            <Text style={styles.pickerTitle}>Escolher Hora</Text>
-                                            <Pressable onPress={() => setShowTimePicker(false)}>
-                                                <Ionicons name="checkmark-circle" size={28} color="#10B981" />
-                                            </Pressable>
-                                        </View>
-                                        <DateTimePicker
-                                            value={dueDate}
-                                            mode="time"
-                                            display="spinner"
-                                            onChange={(e, date) => { if (date) setDueDate(date); }}
-                                            textColor="#FFF"
-                                        />
-                                    </BlurView>
-                                </View>
-                            </Modal>
-                        ) : (
-                            <DateTimePicker
-                                value={dueDate}
-                                mode="time"
-                                display="default"
-                                onChange={(e, date) => {
-                                    setShowTimePicker(false);
-                                    if (e.type === 'set' && date) setDueDate(date);
-                                }}
-                            />
-                        )
-                    )}
                 </View>
             </TouchableWithoutFeedback>
         </Modal>
