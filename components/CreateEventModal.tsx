@@ -15,6 +15,7 @@ import {
     Animated,
     Keyboard,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -199,7 +200,7 @@ export function CreateEventModal({
 
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <TouchableWithoutFeedback onPress={Platform.OS !== 'web' ? Keyboard.dismiss : undefined}>
                 <View style={[styles.container, { paddingTop: insets.top }]}>
                     {/* Premium Header */}
                     <Animated.View style={[styles.header, {

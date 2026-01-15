@@ -162,7 +162,7 @@ export default function ForgotPasswordScreen() {
             </View>
 
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <TouchableWithoutFeedback onPress={Platform.OS !== 'web' ? Keyboard.dismiss : undefined}>
                     <View style={[styles.content, { paddingTop: insets.top + 20 }]}>
 
                         {/* Back Button */}

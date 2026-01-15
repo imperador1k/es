@@ -27,6 +27,7 @@ import {
     Image,
     Keyboard,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -1005,7 +1006,7 @@ export default function StudyRoomScreen() {
 
             {/* Create Room Modal */}
             <Modal visible={showCreateModal} animationType="slide" transparent onRequestClose={() => setShowCreateModal(false)}>
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <TouchableWithoutFeedback onPress={Platform.OS !== 'web' ? Keyboard.dismiss : undefined}>
                     <View style={styles.modalOverlay}>
                         <BlurView intensity={100} tint="dark" style={styles.createModal}>
                             <View style={styles.modalHandle} />
@@ -1054,7 +1055,7 @@ export default function StudyRoomScreen() {
 
             {/* Password Modal */}
             <Modal visible={showPasswordModal} animationType="fade" transparent onRequestClose={() => setShowPasswordModal(false)}>
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <TouchableWithoutFeedback onPress={Platform.OS !== 'web' ? Keyboard.dismiss : undefined}>
                     <View style={styles.modalOverlayCentered}>
                         <BlurView intensity={100} tint="dark" style={styles.passwordModal}>
                             <Text style={styles.passwordTitle}>🔒 Sala Privada</Text>

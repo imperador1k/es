@@ -27,6 +27,7 @@ import { MiniPlayer } from '@/components/MiniPlayer';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { TeamInviteHandler } from '@/components/TeamInviteHandler';
 import { ToastProvider } from '@/components/ui/Toast';
+import { UpdateChecker } from '@/components/UpdateChecker';
 import { useColorScheme } from '@/components/useColorScheme';
 import { CallProvider } from '@/context/CallContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -81,19 +82,19 @@ export default function RootLayout() {
   }, [loaded]);
 
   // Handle Deep Linking (Password Reset)
+  // Handle Deep Linking (Password Reset & OAuth Callback)
   useEffect(() => {
     const handleDeepLink = async (url: string | null) => {
       if (!url) return;
+      console.log('🔗 Deep link recebido:', url);
 
-      // Check for password reset URL
+      // --- TRATAMENTO 1: Reset de Senha ---
       if (url.includes('reset-password')) {
         try {
-          // Extract tokens from hash
           // URL format: escolaa://reset-password#access_token=...&refresh_token=...&type=recovery
           const hashIndex = url.indexOf('#');
           if (hashIndex !== -1) {
             const fragment = url.substring(hashIndex + 1);
-            // Simple parser to avoid URLSearchParams issues in some environments/versions if not fully polyfilled
             const params: Record<string, string> = {};
             fragment.split('&').forEach(part => {
               const [key, value] = part.split('=');
@@ -112,7 +113,6 @@ export default function RootLayout() {
               });
 
               if (!error) {
-                // Navigate to reset password screen
                 setTimeout(() => {
                   router.replace('/(auth)/reset-password');
                 }, 500);
@@ -122,7 +122,55 @@ export default function RootLayout() {
             }
           }
         } catch (err) {
-          console.error('Erro ao processar Deep Link:', err);
+          console.error('Erro ao processar Deep Link de reset:', err);
+        }
+      }
+
+      // --- TRATAMENTO 2: OAuth Callback (Google/Discord no Electron) ---
+      // O URL vem geralmente como: escolaa://auth/callback#access_token=...&refresh_token=...
+      // Ou as vezes como query params dependendo do provider. Vamos checar ambos.
+      else if (url.includes('auth/callback') && (url.includes('access_token') || url.includes('refresh_token'))) {
+        try {
+          console.log('🔑 Tokens de OAuth detetados via Deep Link...');
+
+          // Tenta extrair do hash (#) primeiro, que é o padrão do Supabase para Implicit Grant
+          let fragment = '';
+          if (url.includes('#')) {
+            fragment = url.split('#')[1];
+          } else if (url.includes('?')) {
+            fragment = url.split('?')[1];
+          }
+
+          if (fragment) {
+            const params: Record<string, string> = {};
+            fragment.split('&').forEach(part => {
+              const [key, value] = part.split('=');
+              if (key && value) params[key] = decodeURIComponent(value);
+            });
+
+            const accessToken = params['access_token'];
+            const refreshToken = params['refresh_token'];
+
+            if (accessToken && refreshToken) {
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+
+              if (!error) {
+                console.log('✅ Sessão OAuth iniciada com sucesso!');
+                // O AuthProvider vai detectar a mudança de estado e redirecionar
+                // Mas podemos forçar o redirecionamento para garantir
+                setTimeout(() => {
+                  router.replace('/(tabs)');
+                }, 500);
+              } else {
+                console.error('Erro ao definir sessão OAuth:', error);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Erro ao processar tokens de OAuth:', err);
         }
       }
     };
@@ -261,6 +309,8 @@ function RootLayoutNav() {
                                 <UpdatesHelper>
                                   <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
                                     <View style={{ flex: 1 }}>
+                                      {/* 🔄 Desktop Update Checker - Only shows on web/Electron */}
+                                      <UpdateChecker />
                                       <OfflineBanner />
                                       <Stack screenOptions={{ headerShown: false }}>
                                         <Stack.Screen name="(auth)" />

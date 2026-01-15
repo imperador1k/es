@@ -392,7 +392,7 @@ export default function SearchFriendsScreen() {
     const isFriend = (userId: string) => friends.some(f => f.friend_id === userId);
 
     return (
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <TouchableWithoutFeedback onPress={Platform.OS !== 'web' ? Keyboard.dismiss : undefined}>
             <SafeAreaView style={styles.container} edges={['top']}>
                 {/* Header */}
                 <Animated.View style={[styles.header, {

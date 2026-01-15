@@ -11,6 +11,7 @@ import { useState } from 'react';
 import {
     Keyboard,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -91,7 +92,7 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
 
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <TouchableWithoutFeedback onPress={Platform.OS !== 'web' ? Keyboard.dismiss : undefined}>
                 <View style={[styles.container, { paddingTop: insets.top }]}>
                     {/* Header */}
                     <View style={styles.header}>
