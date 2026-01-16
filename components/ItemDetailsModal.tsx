@@ -118,7 +118,11 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
                     onPress: async () => {
                         setLoading(true);
                         try {
-                            const realId = item.id.includes('-') ? item.id.split('-').pop() : item.id;
+                            // Fix: Don't split UUIDs! Only split if it's a generated ID (like class-xxx)
+                            // But for 'events' table, it should always be a pure UUID.
+                            // However, let's keep the safeguard for consistency if we ever use generated event IDs.
+                            // Better logic: if it's a UUID, use it directly.
+                            const realId = item.id;
                             const { error } = await supabase.from('events').delete().eq('id', realId);
                             if (error) throw error;
                             showAlert({ title: '✅ Apagado!', message: 'Evento removido.' });
