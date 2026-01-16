@@ -338,8 +338,8 @@ export function UniversalTimePicker({
                 <Pressable
                     style={[styles.picker, disabled && styles.pickerDisabled]}
                     onPress={() => {
-                        if (!disabled && value) {
-                            setTempDate(value);
+                        if (!disabled) {
+                            setTempDate(value || new Date());
                             setShowPicker(true);
                         }
                     }}
