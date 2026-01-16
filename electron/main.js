@@ -19,8 +19,10 @@ let mainWindow = null;
 
 async function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
+        width: 1400,
+        height: 900,
+        minWidth: 1024,
+        minHeight: 700,
         title: 'Escola+',
         icon: path.join(__dirname, '../assets/images/icon.png'),
         webPreferences: {
@@ -28,9 +30,13 @@ async function createWindow() {
             contextIsolation: true,
         },
         backgroundColor: '#0A0A0F',
-        show: true, 
+        show: false, // Não mostrar até estar pronto
         autoHideMenuBar: true,
     });
+
+    // Maximiza a janela ao abrir
+    mainWindow.maximize();
+    mainWindow.show();
 
     Menu.setApplicationMenu(null);
 
@@ -69,7 +75,7 @@ if (!gotTheLock) {
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
-            
+
             // Encontra o URL mágico
             const url = commandLine.find(arg => arg.startsWith('escolaa://'));
             if (url) {

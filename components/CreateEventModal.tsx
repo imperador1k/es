@@ -13,15 +13,12 @@ import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Animated,
-    Keyboard,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    TouchableWithoutFeedback,
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -123,22 +120,32 @@ export function CreateEventModal({
     const [mainCategory, setMainCategory] = useState<MainCategory>('escola');
     const [schoolCategory, setSchoolCategory] = useState<SchoolSubCategory>('exame');
     const [personalCategory, setPersonalCategory] = useState<PersonalSubCategory>('lembrete');
-    const [startDate, setStartDate] = useState<Date>(initialDate);
-    const [startTime, setStartTime] = useState<Date>(initialDate);
+    const [startDate, setStartDate] = useState<Date | null>(null);
+    const [startTime, setStartTime] = useState<Date | null>(null);
     const [saving, setSaving] = useState(false);
+
+    // Track previous visibility to detect when modal opens
+    const wasVisible = useRef(false);
 
     // Animation on open & State Sync
     useEffect(() => {
-        if (visible) {
-            // Reset state to initial props when opening
-            setStartDate(initialDate);
-            setStartTime(initialDate);
+        console.log('🔍 CreateEventModal useEffect - visible:', visible, 'wasVisible:', wasVisible.current);
+        if (visible && !wasVisible.current) {
+            // Modal just opened - reset to no selection
+            console.log('🔍 Modal opened - resetting startDate/startTime to null');
+            setStartDate(null);
+            setStartTime(null);
+            setTitle(''); // Also reset title
+            setDescription('');
+            setLocation('');
             // Animate
             Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 10, useNativeDriver: true }).start();
-        } else {
+        } else if (!visible) {
             slideAnim.setValue(0);
         }
-    }, [visible, initialDate]);
+        wasVisible.current = visible;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible]); // Only depend on visible - initialDate is read when modal opens
 
     // Reset form
     const resetForm = () => {
@@ -148,18 +155,18 @@ export function CreateEventModal({
         setMainCategory('escola');
         setSchoolCategory('exame');
         setPersonalCategory('lembrete');
-        setStartDate(initialDate);
-        setStartTime(initialDate);
+        setStartDate(null);
+        setStartTime(null);
     };
 
     // Handle save
     const handleSave = async () => {
-        if (!title.trim() || !user?.id) return;
+        if (!title.trim() || !user?.id || !startDate || !startTime) return;
         setSaving(true);
 
         try {
-            const combinedDate = new Date(startDate);
-            combinedDate.setHours(startTime.getHours(), startTime.getMinutes(), 0, 0);
+            const combinedDate = new Date(startDate!);
+            combinedDate.setHours(startTime!.getHours(), startTime!.getMinutes(), 0, 0);
 
             if (mainCategory === 'escola') {
                 const { error } = await supabase.from('events').insert({
@@ -200,160 +207,158 @@ export function CreateEventModal({
 
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-            <TouchableWithoutFeedback onPress={Platform.OS !== 'web' ? Keyboard.dismiss : undefined}>
-                <View style={[styles.container, { paddingTop: insets.top }]}>
-                    {/* Premium Header */}
-                    <Animated.View style={[styles.header, {
-                        opacity: slideAnim,
-                        transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }]
-                    }]}>
-                        <Pressable onPress={onClose} style={styles.closeBtn}>
-                            <Ionicons name="close" size={24} color={COLORS.text.primary} />
-                        </Pressable>
+            <View style={[styles.container, { paddingTop: insets.top }]}>
+                {/* Premium Header */}
+                <Animated.View style={[styles.header, {
+                    opacity: slideAnim,
+                    transform: [{ translateY: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }]
+                }]}>
+                    <Pressable onPress={onClose} style={styles.closeBtn}>
+                        <Ionicons name="close" size={24} color={COLORS.text.primary} />
+                    </Pressable>
 
-                        <View style={styles.headerCenter}>
-                            <Text style={styles.headerEmoji}>📅</Text>
-                            <Text style={styles.headerTitle}>Novo Evento</Text>
-                        </View>
+                    <View style={styles.headerCenter}>
+                        <Text style={styles.headerEmoji}>📅</Text>
+                        <Text style={styles.headerTitle}>Novo Evento</Text>
+                    </View>
 
-                        <Pressable
-                            onPress={handleSave}
-                            disabled={!title.trim() || saving}
-                            style={[styles.saveBtn, !title.trim() && styles.saveBtnDisabled]}
-                        >
-                            {saving ? (
-                                <ActivityIndicator size="small" color="#FFF" />
-                            ) : (
-                                <LinearGradient colors={currentCat?.gradient || ['#6366F1', '#8B5CF6']} style={styles.saveBtnGradient}>
-                                    <Text style={styles.saveBtnText}>Guardar</Text>
-                                </LinearGradient>
-                            )}
-                        </Pressable>
-                    </Animated.View>
+                    <Pressable
+                        onPress={handleSave}
+                        disabled={!title.trim() || !startDate || saving}
+                        style={[styles.saveBtn, (!title.trim() || !startDate) && styles.saveBtnDisabled]}
+                    >
+                        {saving ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <LinearGradient colors={currentCat?.gradient || ['#6366F1', '#8B5CF6']} style={styles.saveBtnGradient}>
+                                <Text style={styles.saveBtnText}>Guardar</Text>
+                            </LinearGradient>
+                        )}
+                    </Pressable>
+                </Animated.View>
 
-                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                        {/* Title Input - Hero Style */}
-                        <View style={styles.titleSection}>
-                            <TextInput
-                                style={styles.titleInput}
-                                placeholder="Título do evento..."
-                                placeholderTextColor={COLORS.text.tertiary}
-                                value={title}
-                                onChangeText={setTitle}
-                                autoFocus
-                            />
-                            {title.length > 0 && (
-                                <View style={[styles.charCount, title.length > 40 && { backgroundColor: '#F59E0B20' }]}>
-                                    <Text style={[styles.charCountText, title.length > 40 && { color: '#F59E0B' }]}>{title.length}/50</Text>
-                                </View>
-                            )}
-                        </View>
-
-                        {/* Main Category Toggle - Pills */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Tipo</Text>
-                            <View style={styles.togglePills}>
-                                <Pressable
-                                    style={[styles.togglePill, mainCategory === 'escola' && styles.togglePillActive]}
-                                    onPress={() => setMainCategory('escola')}
-                                >
-                                    <Ionicons name="school" size={18} color={mainCategory === 'escola' ? '#FFF' : COLORS.text.secondary} />
-                                    <Text style={[styles.togglePillText, mainCategory === 'escola' && styles.togglePillTextActive]}>
-                                        Escola
-                                    </Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[styles.togglePill, mainCategory === 'pessoal' && styles.togglePillActivePersonal]}
-                                    onPress={() => setMainCategory('pessoal')}
-                                >
-                                    <Ionicons name="person" size={18} color={mainCategory === 'pessoal' ? '#FFF' : COLORS.text.secondary} />
-                                    <Text style={[styles.togglePillText, mainCategory === 'pessoal' && styles.togglePillTextActive]}>
-                                        Pessoal
-                                    </Text>
-                                </Pressable>
-                            </View>
-                        </View>
-
-                        {/* Sub Categories - Grid Cards */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Categoria</Text>
-                            <View style={styles.categoryGrid}>
-                                {mainCategory === 'escola'
-                                    ? SCHOOL_CATEGORIES.map(cat => (
-                                        <CategoryCard
-                                            key={cat.id}
-                                            cat={cat}
-                                            isSelected={schoolCategory === cat.id}
-                                            onPress={() => setSchoolCategory(cat.id)}
-                                        />
-                                    ))
-                                    : PERSONAL_CATEGORIES.map(cat => (
-                                        <CategoryCard
-                                            key={cat.id}
-                                            cat={cat}
-                                            isSelected={personalCategory === cat.id}
-                                            onPress={() => setPersonalCategory(cat.id)}
-                                        />
-                                    ))}
-                            </View>
-                        </View>
-
-                        {/* Date & Time - Modern Cards */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Quando</Text>
-                            <View style={styles.dateTimeRow}>
-                                <DatePicker
-                                    value={startDate}
-                                    onChange={(date) => { if (date) setStartDate(date); }}
-                                    placeholder="Escolher data"
-                                />
-
-                                <UniversalTimePicker
-                                    value={startTime}
-                                    onChange={(date) => setStartTime(date)}
-                                    placeholder="Hora"
-                                />
-                            </View>
-                        </View>
-
-                        {/* Location (only for school) */}
-                        {mainCategory === 'escola' && (
-                            <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Localização</Text>
-                                <View style={styles.inputCard}>
-                                    <Ionicons name="location" size={20} color={COLORS.text.tertiary} />
-                                    <TextInput
-                                        style={styles.inputCardText}
-                                        placeholder="Sala 101, Anfiteatro B..."
-                                        placeholderTextColor={COLORS.text.tertiary}
-                                        value={location}
-                                        onChangeText={setLocation}
-                                    />
-                                </View>
+                <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                    {/* Title Input - Hero Style */}
+                    <View style={styles.titleSection}>
+                        <TextInput
+                            style={styles.titleInput}
+                            placeholder="Título do evento..."
+                            placeholderTextColor={COLORS.text.tertiary}
+                            value={title}
+                            onChangeText={setTitle}
+                            autoFocus
+                        />
+                        {title.length > 0 && (
+                            <View style={[styles.charCount, title.length > 40 && { backgroundColor: '#F59E0B20' }]}>
+                                <Text style={[styles.charCountText, title.length > 40 && { color: '#F59E0B' }]}>{title.length}/50</Text>
                             </View>
                         )}
+                    </View>
 
-                        {/* Description */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Notas</Text>
-                            <TextInput
-                                style={styles.textArea}
-                                placeholder="Adiciona detalhes, links, matéria..."
-                                placeholderTextColor={COLORS.text.tertiary}
-                                value={description}
-                                onChangeText={setDescription}
-                                multiline
-                                numberOfLines={4}
-                                textAlignVertical="top"
+                    {/* Main Category Toggle - Pills */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Tipo</Text>
+                        <View style={styles.togglePills}>
+                            <Pressable
+                                style={[styles.togglePill, mainCategory === 'escola' && styles.togglePillActive]}
+                                onPress={() => setMainCategory('escola')}
+                            >
+                                <Ionicons name="school" size={18} color={mainCategory === 'escola' ? '#FFF' : COLORS.text.secondary} />
+                                <Text style={[styles.togglePillText, mainCategory === 'escola' && styles.togglePillTextActive]}>
+                                    Escola
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.togglePill, mainCategory === 'pessoal' && styles.togglePillActivePersonal]}
+                                onPress={() => setMainCategory('pessoal')}
+                            >
+                                <Ionicons name="person" size={18} color={mainCategory === 'pessoal' ? '#FFF' : COLORS.text.secondary} />
+                                <Text style={[styles.togglePillText, mainCategory === 'pessoal' && styles.togglePillTextActive]}>
+                                    Pessoal
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+
+                    {/* Sub Categories - Grid Cards */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Categoria</Text>
+                        <View style={styles.categoryGrid}>
+                            {mainCategory === 'escola'
+                                ? SCHOOL_CATEGORIES.map(cat => (
+                                    <CategoryCard
+                                        key={cat.id}
+                                        cat={cat}
+                                        isSelected={schoolCategory === cat.id}
+                                        onPress={() => setSchoolCategory(cat.id)}
+                                    />
+                                ))
+                                : PERSONAL_CATEGORIES.map(cat => (
+                                    <CategoryCard
+                                        key={cat.id}
+                                        cat={cat}
+                                        isSelected={personalCategory === cat.id}
+                                        onPress={() => setPersonalCategory(cat.id)}
+                                    />
+                                ))}
+                        </View>
+                    </View>
+
+                    {/* Date & Time - Modern Cards */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Quando</Text>
+                        <View style={styles.dateTimeRow}>
+                            <DatePicker
+                                value={startDate}
+                                onChange={(date) => { if (date) setStartDate(date); }}
+                                placeholder="Escolher data"
+                            />
+
+                            <UniversalTimePicker
+                                value={startTime}
+                                onChange={(date) => setStartTime(date)}
+                                placeholder="Hora"
                             />
                         </View>
+                    </View>
 
-                        <View style={{ height: 100 }} />
-                    </ScrollView>
+                    {/* Location (only for school) */}
+                    {mainCategory === 'escola' && (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Localização</Text>
+                            <View style={styles.inputCard}>
+                                <Ionicons name="location" size={20} color={COLORS.text.tertiary} />
+                                <TextInput
+                                    style={styles.inputCardText}
+                                    placeholder="Sala 101, Anfiteatro B..."
+                                    placeholderTextColor={COLORS.text.tertiary}
+                                    value={location}
+                                    onChangeText={setLocation}
+                                />
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Description */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Notas</Text>
+                        <TextInput
+                            style={styles.textArea}
+                            placeholder="Adiciona detalhes, links, matéria..."
+                            placeholderTextColor={COLORS.text.tertiary}
+                            value={description}
+                            onChangeText={setDescription}
+                            multiline
+                            numberOfLines={4}
+                            textAlignVertical="top"
+                        />
+                    </View>
+
+                    <View style={{ height: 100 }} />
+                </ScrollView>
 
 
-                </View>
-            </TouchableWithoutFeedback>
+            </View>
         </Modal>
     );
 }

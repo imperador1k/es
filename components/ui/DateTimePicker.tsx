@@ -93,17 +93,37 @@ export function DatePicker({
         setShowPicker(false);
     };
 
-    // Web: Use native HTML date input
+    // Web/Electron: Custom modal picker (no HTML input to avoid hydration issues)
     if (Platform.OS === 'web') {
+        const handleWebConfirm = () => {
+            const newDate = new Date(tempDate);
+            if (value) {
+                newDate.setHours(value.getHours(), value.getMinutes(), 0, 0);
+            }
+            onChange(newDate);
+            setShowPicker(false);
+        };
+
+        const changeDay = (delta: number) => {
+            const newDate = new Date(tempDate);
+            newDate.setDate(newDate.getDate() + delta);
+            setTempDate(newDate);
+        };
+
+        const changeMonth = (delta: number) => {
+            const newDate = new Date(tempDate);
+            newDate.setMonth(newDate.getMonth() + delta);
+            setTempDate(newDate);
+        };
+
         return (
             <View style={styles.container}>
                 {label && <Text style={styles.label}>{label}</Text>}
                 <Pressable
                     style={styles.picker}
                     onPress={() => {
-                        // Trigger the hidden input
-                        const input = document.querySelector(`#date-picker-${label?.replace(/\s/g, '-') || 'default'}`) as HTMLInputElement;
-                        if (input) input.showPicker?.();
+                        setTempDate(value || new Date());
+                        setShowPicker(true);
                     }}
                 >
                     <View style={[styles.iconWrap, value && styles.iconWrapActive]}>
@@ -112,22 +132,57 @@ export function DatePicker({
                     <Text style={[styles.valueText, value && styles.valueTextActive]}>
                         {value ? formatDate(value) : placeholder}
                     </Text>
-                    <input
-                        id={`date-picker-${label?.replace(/\s/g, '-') || 'default'}`}
-                        type="date"
-                        value={value ? formatDateForInput(value) : ''}
-                        onChange={(e) => handleWebChange(e.target.value)}
-                        min={minimumDate ? formatDateForInput(minimumDate) : undefined}
-                        max={maximumDate ? formatDateForInput(maximumDate) : undefined}
-                        style={{
-                            position: 'absolute',
-                            opacity: 0,
-                            pointerEvents: 'none',
-                            width: 0,
-                            height: 0,
-                        }}
-                    />
                 </Pressable>
+
+                {/* Custom Web Modal */}
+                <Modal visible={showPicker} transparent animationType="fade" onRequestClose={() => setShowPicker(false)}>
+                    <Pressable style={styles.overlay} onPress={() => setShowPicker(false)}>
+                        <View style={styles.webModal}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Escolher Data</Text>
+                                <Pressable onPress={() => setShowPicker(false)}>
+                                    <Ionicons name="close" size={24} color={COLORS.text.secondary} />
+                                </Pressable>
+                            </View>
+
+                            {/* Month Row */}
+                            <View style={styles.webDateDisplay}>
+                                <Pressable style={styles.webArrowBtn} onPress={() => changeMonth(-1)}>
+                                    <Ionicons name="chevron-back" size={28} color="#6366F1" />
+                                </Pressable>
+                                <View style={styles.webDateCenter}>
+                                    <Text style={styles.webDateMonth}>
+                                        {tempDate.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}
+                                    </Text>
+                                </View>
+                                <Pressable style={styles.webArrowBtn} onPress={() => changeMonth(1)}>
+                                    <Ionicons name="chevron-forward" size={28} color="#6366F1" />
+                                </Pressable>
+                            </View>
+
+                            {/* Day Row */}
+                            <View style={styles.webDayRow}>
+                                <Pressable style={styles.webArrowBtn} onPress={() => changeDay(-1)}>
+                                    <Ionicons name="remove-circle" size={36} color="#6366F1" />
+                                </Pressable>
+                                <View style={styles.webDayDisplay}>
+                                    <Text style={styles.webDayText}>{tempDate.getDate()}</Text>
+                                    <Text style={styles.webDayLabel}>
+                                        {tempDate.toLocaleDateString('pt-PT', { weekday: 'long' })}
+                                    </Text>
+                                </View>
+                                <Pressable style={styles.webArrowBtn} onPress={() => changeDay(1)}>
+                                    <Ionicons name="add-circle" size={36} color="#6366F1" />
+                                </Pressable>
+                            </View>
+
+                            {/* Confirm Button */}
+                            <Pressable style={styles.webConfirmBtn} onPress={handleWebConfirm}>
+                                <Text style={styles.webConfirmText}>Confirmar</Text>
+                            </Pressable>
+                        </View>
+                    </Pressable>
+                </Modal>
             </View>
         );
     }
@@ -254,19 +309,41 @@ export function UniversalTimePicker({
         return `${hours}:${minutes}`;
     };
 
-    // Web: Use native HTML time input
+    // Web: Custom modal time picker (no HTML input)
     if (Platform.OS === 'web') {
+        const handleWebTimeConfirm = () => {
+            if (value) {
+                const newDate = new Date(value);
+                newDate.setHours(tempDate.getHours(), tempDate.getMinutes(), 0, 0);
+                onChange(newDate);
+            }
+            setShowPicker(false);
+        };
+
+        const changeHour = (delta: number) => {
+            const newDate = new Date(tempDate);
+            newDate.setHours(newDate.getHours() + delta);
+            setTempDate(newDate);
+        };
+
+        const changeMinute = (delta: number) => {
+            const newDate = new Date(tempDate);
+            newDate.setMinutes(newDate.getMinutes() + delta);
+            setTempDate(newDate);
+        };
+
         return (
             <View style={styles.container}>
                 {label && <Text style={styles.label}>{label}</Text>}
                 <Pressable
                     style={[styles.picker, disabled && styles.pickerDisabled]}
                     onPress={() => {
-                        if (!disabled) {
-                            const input = document.querySelector(`#time-picker-${label?.replace(/\s/g, '-') || 'default'}`) as HTMLInputElement;
-                            if (input) input.showPicker?.();
+                        if (!disabled && value) {
+                            setTempDate(value);
+                            setShowPicker(true);
                         }
                     }}
+                    disabled={disabled}
                 >
                     <View style={[styles.iconWrap, value && styles.iconWrapActiveTime]}>
                         <Ionicons name="time" size={20} color={value && !disabled ? '#10B981' : COLORS.text.tertiary} />
@@ -274,21 +351,57 @@ export function UniversalTimePicker({
                     <Text style={[styles.valueText, value && !disabled && styles.valueTextActive]}>
                         {value && !disabled ? formatTime(value) : placeholder}
                     </Text>
-                    <input
-                        id={`time-picker-${label?.replace(/\s/g, '-') || 'default'}`}
-                        type="time"
-                        value={getTimeInputValue()}
-                        onChange={(e) => handleWebChange(e.target.value)}
-                        disabled={disabled}
-                        style={{
-                            position: 'absolute',
-                            opacity: 0,
-                            pointerEvents: 'none',
-                            width: 0,
-                            height: 0,
-                        }}
-                    />
                 </Pressable>
+
+                {/* Custom Web Time Modal */}
+                <Modal visible={showPicker} transparent animationType="fade" onRequestClose={() => setShowPicker(false)}>
+                    <Pressable style={styles.overlay} onPress={() => setShowPicker(false)}>
+                        <View style={styles.webModal}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Escolher Hora</Text>
+                                <Pressable onPress={() => setShowPicker(false)}>
+                                    <Ionicons name="close" size={24} color={COLORS.text.secondary} />
+                                </Pressable>
+                            </View>
+
+                            {/* Time Display */}
+                            <View style={styles.webTimeRow}>
+                                {/* Hours */}
+                                <View style={styles.webTimeColumn}>
+                                    <Pressable style={styles.webTimeBtn} onPress={() => changeHour(1)}>
+                                        <Ionicons name="chevron-up" size={28} color="#10B981" />
+                                    </Pressable>
+                                    <Text style={styles.webTimeValue}>
+                                        {String(tempDate.getHours()).padStart(2, '0')}
+                                    </Text>
+                                    <Pressable style={styles.webTimeBtn} onPress={() => changeHour(-1)}>
+                                        <Ionicons name="chevron-down" size={28} color="#10B981" />
+                                    </Pressable>
+                                </View>
+
+                                <Text style={styles.webTimeSeparator}>:</Text>
+
+                                {/* Minutes */}
+                                <View style={styles.webTimeColumn}>
+                                    <Pressable style={styles.webTimeBtn} onPress={() => changeMinute(5)}>
+                                        <Ionicons name="chevron-up" size={28} color="#10B981" />
+                                    </Pressable>
+                                    <Text style={styles.webTimeValue}>
+                                        {String(tempDate.getMinutes()).padStart(2, '0')}
+                                    </Text>
+                                    <Pressable style={styles.webTimeBtn} onPress={() => changeMinute(-5)}>
+                                        <Ionicons name="chevron-down" size={28} color="#10B981" />
+                                    </Pressable>
+                                </View>
+                            </View>
+
+                            {/* Confirm Button */}
+                            <Pressable style={[styles.webConfirmBtn, { backgroundColor: '#10B981' }]} onPress={handleWebTimeConfirm}>
+                                <Text style={styles.webConfirmText}>Confirmar</Text>
+                            </Pressable>
+                        </View>
+                    </Pressable>
+                </Modal>
             </View>
         );
     }
@@ -421,5 +534,102 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.lg,
         fontWeight: '700',
         color: '#FFF',
+    },
+
+    // Web Modal Styles
+    webModal: {
+        width: '85%',
+        maxWidth: 340,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.lg,
+    },
+    webDateDisplay: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: SPACING.lg,
+    },
+    webArrowBtn: {
+        width: 48,
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    webDateCenter: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    webDateMonth: {
+        fontSize: TYPOGRAPHY.size.lg,
+        fontWeight: '600',
+        color: COLORS.text.primary,
+        textTransform: 'capitalize',
+    },
+    webDayRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: SPACING.xl,
+    },
+    webDayDisplay: {
+        flex: 1,
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        paddingVertical: SPACING.lg,
+        borderRadius: RADIUS.lg,
+        marginHorizontal: SPACING.md,
+    },
+    webDayText: {
+        fontSize: 48,
+        fontWeight: '700',
+        color: '#6366F1',
+    },
+    webDayLabel: {
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
+        textTransform: 'capitalize',
+        marginTop: SPACING.xs,
+    },
+    webConfirmBtn: {
+        backgroundColor: '#6366F1',
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.lg,
+        alignItems: 'center',
+    },
+    webConfirmText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: '600',
+        color: '#FFF',
+    },
+
+    // Web Time Picker Styles
+    webTimeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: SPACING.xl,
+        gap: SPACING.lg,
+    },
+    webTimeColumn: {
+        alignItems: 'center',
+    },
+    webTimeBtn: {
+        width: 48,
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    webTimeValue: {
+        fontSize: 48,
+        fontWeight: '700',
+        color: '#10B981',
+        minWidth: 80,
+        textAlign: 'center',
+    },
+    webTimeSeparator: {
+        fontSize: 48,
+        fontWeight: '700',
+        color: COLORS.text.secondary,
     },
 });
