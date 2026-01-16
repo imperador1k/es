@@ -124,28 +124,16 @@ export function CreateEventModal({
     const [startTime, setStartTime] = useState<Date | null>(null);
     const [saving, setSaving] = useState(false);
 
-    // Track previous visibility to detect when modal opens
-    const wasVisible = useRef(false);
 
     // Animation on open & State Sync
+    // Animation on open
     useEffect(() => {
-        console.log('🔍 CreateEventModal useEffect - visible:', visible, 'wasVisible:', wasVisible.current);
-        if (visible && !wasVisible.current) {
-            // Modal just opened - reset to no selection
-            console.log('🔍 Modal opened - resetting startDate/startTime to null');
-            setStartDate(null);
-            setStartTime(null);
-            setTitle(''); // Also reset title
-            setDescription('');
-            setLocation('');
-            // Animate
+        if (visible) {
             Animated.spring(slideAnim, { toValue: 1, tension: 65, friction: 10, useNativeDriver: true }).start();
-        } else if (!visible) {
+        } else {
             slideAnim.setValue(0);
         }
-        wasVisible.current = visible;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible]); // Only depend on visible - initialDate is read when modal opens
+    }, [visible]);
 
     // Reset form
     const resetForm = () => {

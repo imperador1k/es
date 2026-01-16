@@ -421,7 +421,6 @@ export default function CalendarScreen() {
             {/* ========== MODALS ========== */}
             {modalVisible && (
                 <CreateEventModal
-                    key={`event-modal-${Date.now()}`}
                     visible={modalVisible}
                     onClose={() => setModalVisible(false)}
                     onSuccess={() => refetch()}
