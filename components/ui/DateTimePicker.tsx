@@ -312,11 +312,9 @@ export function UniversalTimePicker({
     // Web: Custom modal time picker (no HTML input)
     if (Platform.OS === 'web') {
         const handleWebTimeConfirm = () => {
-            if (value) {
-                const newDate = new Date(value);
-                newDate.setHours(tempDate.getHours(), tempDate.getMinutes(), 0, 0);
-                onChange(newDate);
-            }
+            const baseDate = value ? new Date(value) : new Date();
+            baseDate.setHours(tempDate.getHours(), tempDate.getMinutes(), 0, 0);
+            onChange(baseDate);
             setShowPicker(false);
         };
 
