@@ -3,7 +3,7 @@
  * Design TripGlide: Dark, Rounded, Elegant
  */
 
-import { CreateEventModalV2 } from '@/components/CreateEventModalV2';
+import CreateEventModal from '@/components/CreateEventModal';
 import { CreateTodoModal } from '@/components/CreateTodoModal';
 import ItemDetailsModal from '@/components/ItemDetailsModal';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -19,7 +19,6 @@ import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/them
 import { useProfile } from '@/providers/ProfileProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
@@ -262,12 +261,6 @@ export default function CalendarScreen() {
 
     return (
         <View style={styles.container}>
-            <View style={{ backgroundColor: 'red', padding: 20, zIndex: 9999 }}><Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>DEBUG: EDITING CORRECT FILE</Text></View>
-            {/* Assuming Stack.Screen is a component that renders nothing or is handled by expo-router */}
-            {/* If it's meant to be a component, it should be imported and used correctly. */}
-            {/* For now, placing it as a sibling to the ScrollView as per the instruction's placement. */}
-            {/* If this causes a syntax error, it means Stack.Screen is not a renderable component here. */}
-            <Stack.Screen options={{ headerShown: false }} />
             <ScrollView
                 style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
@@ -427,10 +420,12 @@ export default function CalendarScreen() {
 
             {/* ========== MODALS ========== */}
             {modalVisible && (
-                <CreateEventModalV2
+                <CreateEventModal
+                    key={`event-modal-${Date.now()}`}
                     visible={modalVisible}
                     onClose={() => setModalVisible(false)}
                     onSuccess={() => refetch()}
+                    initialDate={modalInitialDate}
                 />
             )}
 
