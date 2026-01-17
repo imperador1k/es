@@ -117,7 +117,9 @@
     },
     "files": [
       "dist/**/*",
-      "electron/main.js"
+      "electron/main.js",
+      "!node_modules/**/*",
+      "node_modules/electron-serve/**/*"
     ],
     "win": {
       "target": "nsis",
