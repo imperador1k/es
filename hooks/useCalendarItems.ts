@@ -27,20 +27,6 @@ export interface CalendarItem {
     subject_name?: string;
 }
 
-export interface ClassSchedule {
-    id: string;
-    day_of_week: number; // 0=Domingo, 1=Segunda, etc.
-    start_time: string; // "09:00:00"
-    end_time: string; // "10:30:00"
-    subject_id: string;
-    room?: string;
-    type?: string;
-    subject?: {
-        name: string;
-        color: string;
-    };
-}
-
 export interface PersonalTodo {
     id: string;
     title: string;
@@ -111,26 +97,6 @@ async function fetchCalendarItems(userId: string, startDate: string, endDate: st
     });
 }
 
-async function fetchClassSchedule(userId: string): Promise<ClassSchedule[]> {
-    const { data, error } = await supabase
-        .from('class_schedule')
-        .select(`
-            id, day_of_week, start_time, end_time, room, type,
-            subject:user_subjects(name, color)
-        `)
-        .eq('user_id', userId);
-
-    if (error) {
-        console.error('❌ Schedule error:', error);
-        return [];
-    }
-
-    return (data || []).map((s: any) => ({
-        ...s,
-        subject: Array.isArray(s.subject) ? s.subject[0] : s.subject,
-    }));
-}
-
 async function fetchPersonalTodos(userId: string, startDate: string, endDate: string): Promise<PersonalTodo[]> {
     const { data, error } = await supabase
         .from('personal_todos')
@@ -188,23 +154,7 @@ export function useCalendarItems(focusedDate: Date) {
         placeholderData: (previousData) => previousData, // Mostra cache enquanto recarrega
     });
 
-    // ============================================
-    // QUERY 2: Class Schedule - OFFLINE-FIRST
-    // ============================================
-    const {
-        data: classSchedule = [],
-        isLoading: scheduleLoading,
-        isRefetching: scheduleRefetching,
-        error: scheduleError,
-        refetch: refetchSchedule,
-    } = useQuery<ClassSchedule[]>({
-        queryKey: ['calendar', 'schedule', user?.id],
-        queryFn: () => fetchClassSchedule(user!.id),
-        enabled: !!user?.id,
-        staleTime: 1000 * 60 * 30, // 30 minutos (muda menos frequentemente)
-        gcTime: 1000 * 60 * 60 * 24, // 24 horas
-        placeholderData: (previousData) => previousData,
-    });
+
 
     // ============================================
     // QUERY 3: Personal Todos - OFFLINE-FIRST
@@ -223,46 +173,6 @@ export function useCalendarItems(focusedDate: Date) {
         gcTime: 1000 * 60 * 60 * 24, // 24 horas
         placeholderData: (previousData) => previousData,
     });
-
-    // ============================================
-    // PROJECT CLASSES TO SPECIFIC DATES
-    // ============================================
-
-    const projectedClasses = useMemo(() => {
-        const items: CalendarItem[] = [];
-
-        if (classSchedule.length === 0) return items;
-
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const currentDate = new Date(year, month, day);
-            const dayOfWeek = currentDate.getDay();
-            const dateString = currentDate.toISOString().split('T')[0];
-
-            const classesForDay = classSchedule.filter(c => c.day_of_week === dayOfWeek);
-
-            classesForDay.forEach(cls => {
-                const startDateTime = `${dateString}T${cls.start_time}`;
-                const endDateTime = `${dateString}T${cls.end_time}`;
-
-                items.push({
-                    id: `class-${cls.id}-${dateString}`,
-                    title: cls.subject?.name || 'Aula',
-                    description: cls.type || undefined,
-                    start_at: startDateTime,
-                    end_at: endDateTime,
-                    item_type: 'class',
-                    category: 'aula',
-                    color: cls.subject?.color || ITEM_COLORS.class,
-                    room: cls.room,
-                    subject_name: cls.subject?.name,
-                });
-            });
-        }
-
-        return items;
-    }, [classSchedule, year, month]);
 
     // ============================================
     // MERGE ALL ITEMS
@@ -288,7 +198,7 @@ export function useCalendarItems(focusedDate: Date) {
     }, [personalTodos]);
 
     const allItems = useMemo(() => {
-        const combined = [...rpcItems, ...projectedClasses, ...personalTodosItems];
+        const combined = [...rpcItems, ...personalTodosItems];
         // Deduplicate by ID to prevent React key errors
         const seen = new Set<string>();
         return combined.filter(item => {
@@ -296,7 +206,7 @@ export function useCalendarItems(focusedDate: Date) {
             seen.add(item.id);
             return true;
         });
-    }, [rpcItems, projectedClasses, personalTodosItems]);
+    }, [rpcItems, personalTodosItems]);
 
     // ============================================
     // FORMAT FOR AGENDA COMPONENT
@@ -366,17 +276,17 @@ export function useCalendarItems(focusedDate: Date) {
     // ============================================
 
     const refetch = async () => {
-        await Promise.all([refetchRpc(), refetchSchedule(), refetchTodos()]);
+        await Promise.all([refetchRpc(), refetchTodos()]);
     };
 
     // ============================================
     // COMBINED LOADING STATE
     // ============================================
 
-    const loading = rpcLoading || scheduleLoading || todosLoading;
-    const isRefetching = rpcRefetching || scheduleRefetching || todosRefetching;
-    const error = rpcError || scheduleError || todosError
-        ? (rpcError?.message || scheduleError?.message || todosError?.message || 'Erro ao carregar calendário')
+    const loading = rpcLoading || todosLoading;
+    const isRefetching = rpcRefetching || todosRefetching;
+    const error = rpcError || todosError
+        ? (rpcError?.message || todosError?.message || 'Erro ao carregar calendário')
         : null;
 
     return {

@@ -59,7 +59,6 @@ type FilterType = 'all' | 'class' | 'event' | 'task' | 'todo';
 
 const FILTERS: { id: FilterType; label: string; icon: string }[] = [
     { id: 'all', label: 'Tudo', icon: 'apps' },
-    { id: 'class', label: 'Aulas', icon: 'school' },
     { id: 'event', label: 'Eventos', icon: 'calendar' },
     { id: 'task', label: 'Tarefas', icon: 'checkbox' },
 ];
