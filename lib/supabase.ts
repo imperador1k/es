@@ -15,13 +15,16 @@ const ExpoStorage = {
     getItem: (key: string) => {
         if (Platform.OS === 'web') {
             if (typeof window === 'undefined') return Promise.resolve(null);
-            return Promise.resolve(localStorage.getItem(key));
+            const val = localStorage.getItem(key);
+            console.log('💾 [Supabase Storage] GET', key, val ? '(found)' : '(null)');
+            return Promise.resolve(val);
         }
         return AsyncStorage.getItem(key);
     },
     setItem: (key: string, value: string) => {
         if (Platform.OS === 'web') {
             if (typeof window === 'undefined') return Promise.resolve();
+            console.log('💾 [Supabase Storage] SET', key, value.substring(0, 20) + '...');
             localStorage.setItem(key, value);
             return Promise.resolve();
         }
@@ -30,6 +33,7 @@ const ExpoStorage = {
     removeItem: (key: string) => {
         if (Platform.OS === 'web') {
             if (typeof window === 'undefined') return Promise.resolve();
+            console.log('💾 [Supabase Storage] REMOVE', key);
             localStorage.removeItem(key);
             return Promise.resolve();
         }

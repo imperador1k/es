@@ -2,7 +2,7 @@
  * Electron Main Process - VERSÃO FINAL COM DEEP LINKING
  */
 
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
 
 // Correção de compatibilidade do serve
@@ -37,6 +37,24 @@ async function createWindow() {
     // Maximiza a janela ao abrir
     mainWindow.maximize();
     mainWindow.show();
+
+    // 🔗 Interceptar links externos e abrir no browser padrão (Chrome/Edge)
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.startsWith('https:') || url.startsWith('http:')) {
+            shell.openExternal(url);
+            return { action: 'deny' }; // Bloqueia a navegação dentro da Electron
+        }
+        return { action: 'allow' };
+    });
+
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        // Permitir navegação local (app) mas bloquear externas
+        const isLocal = url.includes('localhost') || url.startsWith('file://') || url.includes('app://');
+        if (!isLocal && (url.startsWith('http:') || url.startsWith('https:'))) {
+            event.preventDefault();
+            shell.openExternal(url);
+        }
+    });
 
     Menu.setApplicationMenu(null);
 
@@ -80,9 +98,12 @@ if (!gotTheLock) {
             const url = commandLine.find(arg => arg.startsWith('escolaa://'));
             if (url) {
                 console.log('🔗 Login recebido:', url);
-                // Manda o URL para o site lidar com o token
-                // Nota: O Supabase no frontend geralmente apanha isto sozinho se o URL mudar,
-                // mas isto garante que a janela ganha foco.
+                // Injeta o URL diretamente no frontend para o Expo Linking apanhar
+                mainWindow.webContents.executeJavaScript(`
+                    window.dispatchEvent(new CustomEvent('expo-linking-url', { detail: '${url}' }));
+                    // Fallback para garantir
+                    window.location.href = '${url}'; 
+                `).catch(e => console.error('Erro ao injetar URL:', e));
             }
         }
     });

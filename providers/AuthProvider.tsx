@@ -46,8 +46,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     // Verificar sessão inicial e escutar mudanças
     useEffect(() => {
+        console.log('🔄 [AuthProvider] Checking initial session...');
         // Obter sessão atual
         supabase.auth.getSession().then(({ data: { session } }) => {
+            console.log('✅ [AuthProvider] Initial session:', session ? 'FOUND' : 'NULL');
             setSession(session);
             setUser(session?.user ?? null);
             setIsLoading(false);
@@ -56,7 +58,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Escutar mudanças de autenticação
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                console.log('🔐 Auth event:', event);
+                console.log('🔐 [AuthProvider] Auth event:', event);
                 setSession(session);
                 setUser(session?.user ?? null);
                 setIsLoading(false);

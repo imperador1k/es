@@ -173,7 +173,7 @@ export default function LoginScreen() {
             <RNImage
                 source={require('@/assets/images/auth-bg-pattern.png')}
                 style={[StyleSheet.absoluteFill, { opacity: 0.05 }]}
-                resizeMode="repeat"
+                resizeMode="cover"
             />
 
             <KeyboardAvoidingView
