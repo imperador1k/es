@@ -71,13 +71,14 @@ interface AddClassModalProps {
     onClose: () => void;
     onSuccess?: () => void;
     initialData?: ClassSession | null;
+    onCreateSubject?: () => void;
 }
 
 // ============================================
 // MAIN COMPONENT
 // ============================================
 
-export function AddClassModal({ visible, onClose, onSuccess, initialData }: AddClassModalProps) {
+export function AddClassModal({ visible, onClose, onSuccess, initialData, onCreateSubject }: AddClassModalProps) {
     const { subjects, fetchSubjects, loading: loadingSubjects } = useSubjects();
     const { addClassSession, updateClassSession } = useSchedule();
     const [saving, setSaving] = useState(false);
@@ -115,6 +116,11 @@ export function AddClassModal({ visible, onClose, onSuccess, initialData }: AddC
     const handleClose = () => {
         reset();
         onClose();
+    };
+
+    const handleCreateSubject = () => {
+        handleClose();
+        onCreateSubject?.();
     };
 
     const onSubmit = async (data: ClassFormData) => {
@@ -194,9 +200,17 @@ export function AddClassModal({ visible, onClose, onSuccess, initialData }: AddC
                                                 <Text style={styles.loadingText}>A carregar disciplinas...</Text>
                                             </View>
                                         ) : subjects.length === 0 ? (
-                                            <Text style={styles.noSubjectsText}>
-                                                Cria primeiro uma disciplina no ecrã "Aulas"
-                                            </Text>
+                                            <View style={styles.emptySubjectsContainer}>
+                                                <Text style={styles.noSubjectsText}>
+                                                    Sem disciplinas criadas.
+                                                </Text>
+                                                <Pressable
+                                                    style={styles.createSubjectButton}
+                                                    onPress={handleCreateSubject}
+                                                >
+                                                    <Text style={styles.createSubjectButtonText}>Criar Disciplina</Text>
+                                                </Pressable>
+                                            </View>
                                         ) : (
                                             subjects.map((subject) => (
                                                 <Pressable
@@ -581,5 +595,23 @@ const styles = StyleSheet.create({
         fontSize: typography.size.sm,
         color: colors.text.secondary,
         marginTop: spacing.xs,
+    },
+
+    // Empty State
+    emptySubjectsContainer: {
+        alignItems: 'center',
+        padding: spacing.md,
+        gap: spacing.md,
+    },
+    createSubjectButton: {
+        backgroundColor: colors.accent.primary,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.sm,
+        borderRadius: borderRadius.full,
+    },
+    createSubjectButtonText: {
+        fontSize: typography.size.sm,
+        fontWeight: typography.weight.semibold,
+        color: colors.text.inverse,
     },
 });

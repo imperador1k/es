@@ -195,8 +195,10 @@ export default function SubjectsScreen() {
     const [selectedSlot, setSelectedSlot] = useState<{ day: DayOfWeek; hour: number } | null>(null);
     const [eventModalVisible, setEventModalVisible] = useState(false);
     const [eventType, setEventType] = useState<EventType>('study');
+    const [showAddOptions, setShowAddOptions] = useState(false);
 
     const handleRefresh = useCallback(async () => {
+
         setRefreshing(true);
         await Promise.all([fetchSubjects(), fetchSchedule()]);
         setRefreshing(false);
@@ -292,9 +294,40 @@ export default function SubjectsScreen() {
                         <Text style={styles.headerTitle}>Disciplinas</Text>
                     </WalkthroughableView>
                 </CopilotStep>
-                <Pressable style={styles.addButton} onPress={handleAddNew}>
-                    <Ionicons name="add" size={24} color="#FFF" />
-                </Pressable>
+
+                {/* Dropdown Options or Add Button */}
+                <View style={{ zIndex: 100 }}>
+                    {showAddOptions && (
+                        <View style={styles.dropdownContainer}>
+                            <Pressable
+                                style={styles.dropdownItem}
+                                onPress={() => {
+                                    setShowAddOptions(false);
+                                    handleAddNew();
+                                }}
+                            >
+                                <Ionicons name="book-outline" size={20} color={COLORS.text.primary} />
+                                <Text style={styles.dropdownText}>Nova Disciplina</Text>
+                            </Pressable>
+                            <Pressable
+                                style={styles.dropdownItem}
+                                onPress={() => {
+                                    setShowAddOptions(false);
+                                    setClassModalVisible(true);
+                                }}
+                            >
+                                <Ionicons name="school-outline" size={20} color={COLORS.text.primary} />
+                                <Text style={styles.dropdownText}>Nova Aula</Text>
+                            </Pressable>
+                        </View>
+                    )}
+                    <Pressable
+                        style={styles.addButton}
+                        onPress={() => setShowAddOptions(!showAddOptions)}
+                    >
+                        <Ionicons name={showAddOptions ? "close" : "add"} size={24} color="#FFF" />
+                    </Pressable>
+                </View>
             </View>
 
             {/* ========== TABS ========== */}
@@ -389,6 +422,11 @@ export default function SubjectsScreen() {
                 onClose={() => { setClassModalVisible(false); setSelectedSession(null); }}
                 onSuccess={handleRefresh}
                 initialData={selectedSession}
+                onCreateSubject={() => {
+                    setClassModalVisible(false);
+                    // Small delay to allow modal transition
+                    setTimeout(() => handleAddNew(), 100);
+                }}
             />
 
             <QuickAddModal
@@ -608,5 +646,29 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.sm,
         fontWeight: TYPOGRAPHY.weight.semibold,
         color: '#FFF',
+    },
+
+    // Dropdown
+    dropdownContainer: {
+        position: 'absolute',
+        top: 60,
+        right: LAYOUT.screenPadding,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.sm,
+        ...SHADOWS.lg,
+        minWidth: 180,
+    },
+    dropdownItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.md,
+    },
+    dropdownText: {
+        fontSize: TYPOGRAPHY.size.base,
+        color: COLORS.text.primary,
+        fontWeight: TYPOGRAPHY.weight.medium,
     },
 });
