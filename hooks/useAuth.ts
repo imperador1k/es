@@ -86,10 +86,9 @@ export function useAuth(): UseAuthReturn {
             let redirectTo = '';
             
             if (isElectron) {
-                // Electron: Usa o mesmo redirect da web!
-                // Google/Discord OAuth NÃO suportam protocolos customizados (escolaa://)
-                // A página de callback vai detetar o Electron e oferecer "Abrir na App"
-                redirectTo = 'https://escolauni.vercel.app/auth/callback';
+                // Electron: Usa Deep Link direto para a app
+                // O main.js já está configurado para injetar o URL no Expo Linking
+                redirectTo = makeRedirectUri({ scheme: 'escolaa', path: 'auth/callback' });
             } else if (Platform.OS === 'web') {
                 // Web Normal (Vercel): Usa HTTPS
                 redirectTo = 'https://escolauni.vercel.app/auth/callback';

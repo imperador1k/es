@@ -172,7 +172,7 @@ export default function LoginScreen() {
             {/* Background Pattern */}
             <RNImage
                 source={require('@/assets/images/auth-bg-pattern.png')}
-                style={[StyleSheet.absoluteFill, { opacity: 0.05 }]}
+                style={[StyleSheet.absoluteFill, { width: '100%', height: '100%', opacity: 0.05 }]}
                 resizeMode="cover"
             />
 
