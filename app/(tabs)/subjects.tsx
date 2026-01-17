@@ -467,6 +467,7 @@ const styles = StyleSheet.create({
         paddingTop: 50,
         paddingHorizontal: LAYOUT.screenPadding,
         paddingBottom: SPACING.lg,
+        zIndex: 10,
     },
     headerTitle: {
         fontSize: TYPOGRAPHY.size['3xl'],
