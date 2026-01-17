@@ -13,19 +13,24 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 // Se estivermos no telemóvel ou browser, usamos o AsyncStorage normal.
 const ExpoStorage = {
     getItem: (key: string) => {
-        if (Platform.OS === 'web' && typeof window === 'undefined') {
-            return Promise.resolve(null);
+        if (Platform.OS === 'web') {
+            if (typeof window === 'undefined') return Promise.resolve(null);
+            return Promise.resolve(localStorage.getItem(key));
         }
         return AsyncStorage.getItem(key);
     },
     setItem: (key: string, value: string) => {
-        if (Platform.OS === 'web' && typeof window === 'undefined') {
+        if (Platform.OS === 'web') {
+            if (typeof window === 'undefined') return Promise.resolve();
+            localStorage.setItem(key, value);
             return Promise.resolve();
         }
         return AsyncStorage.setItem(key, value);
     },
     removeItem: (key: string) => {
-        if (Platform.OS === 'web' && typeof window === 'undefined') {
+        if (Platform.OS === 'web') {
+            if (typeof window === 'undefined') return Promise.resolve();
+            localStorage.removeItem(key);
             return Promise.resolve();
         }
         return AsyncStorage.removeItem(key);
