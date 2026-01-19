@@ -170,10 +170,15 @@ export default function RootLayout() {
           // --- CASO B: Implicit Flow (access_token) ---
           // Tenta extrair do hash (#) primeiro, que é o padrão do Supabase para Implicit Grant
           let fragment = '';
-          if (url.includes('#')) {
-            fragment = url.split('#')[1];
-          } else if (url.includes('?')) {
-            fragment = url.split('?')[1];
+
+          // Correção para URL com triples barras (escolaa:///#access_token...) ou hashes normais
+          const hashIndex = url.lastIndexOf('#');
+          const questionIndex = url.indexOf('?');
+
+          if (hashIndex !== -1) {
+            fragment = url.substring(hashIndex + 1);
+          } else if (questionIndex !== -1) {
+            fragment = url.substring(questionIndex + 1);
           }
 
           console.log('🔍 Fragmento extraído:', fragment);
@@ -217,12 +222,18 @@ export default function RootLayout() {
       const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
 
       // 🔌 ESCUTA ROBUSTA VIA IPC (Electron)
-      if (typeof window !== 'undefined' && (window as any).electronAPI) {
-        console.log('🔌 Electron API detetada. A escutar deep links...');
-        (window as any).electronAPI.onDeepLink((url: string) => {
-          console.log('⚡ IPC Deep Link recebido:', url);
-          handleDeepLink(url);
-        });
+      if (typeof window !== 'undefined') {
+        if ((window as any).electronAPI) {
+          console.log('🔌 Electron API detetada. A escutar deep links...');
+          (window as any).electronAPI.onDeepLink((url: string) => {
+            console.log('⚡ IPC Deep Link recebido:', url);
+            handleDeepLink(url);
+          });
+        } else if (Platform.OS === 'web' && navigator.userAgent.includes('Electron')) {
+          // Se estamos no Electron mas sem API, algo falhou no preload
+          console.error('❌ electronAPI não encontrada no window!');
+          // alert('ERRO: electronAPI não detetada. Preload falhou?');
+        }
       }
 
       return () => {

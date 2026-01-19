@@ -281,10 +281,10 @@ export function UniversalTimePicker({
         if (Platform.OS === 'android') {
             setShowPicker(false);
             // On Android, event.type is 'set' for confirm, 'dismissed' for cancel
-            if (event.type === 'set' && selectedDate && value) {
-                const newDate = new Date(value);
-                newDate.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
-                onChange(newDate);
+            if (event.type === 'set' && selectedDate) {
+                const baseDate = value ? new Date(value) : new Date();
+                baseDate.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+                onChange(baseDate);
             }
         } else if (Platform.OS === 'ios') {
             if (selectedDate) {
@@ -298,6 +298,9 @@ export function UniversalTimePicker({
             const newDate = new Date(value);
             newDate.setHours(tempDate.getHours(), tempDate.getMinutes(), 0, 0);
             onChange(newDate);
+        } else {
+            // If null, use tempDate (which defaults to now)
+            onChange(tempDate);
         }
         setShowPicker(false);
     };
@@ -410,8 +413,8 @@ export function UniversalTimePicker({
             <Pressable
                 style={[styles.picker, disabled && styles.pickerDisabled]}
                 onPress={() => {
-                    if (!disabled && value) {
-                        setTempDate(value);
+                    if (!disabled) {
+                        setTempDate(value || new Date());
                         setShowPicker(true);
                     }
                 }}
@@ -426,7 +429,7 @@ export function UniversalTimePicker({
             </Pressable>
 
             {/* iOS Modal with Spinner */}
-            {showPicker && Platform.OS === 'ios' && value && (
+            {showPicker && Platform.OS === 'ios' && (
                 <Modal transparent animationType="fade">
                     <View style={styles.overlay}>
                         <BlurView intensity={100} tint="dark" style={styles.modal}>
@@ -449,7 +452,7 @@ export function UniversalTimePicker({
             )}
 
             {/* Android Picker */}
-            {showPicker && Platform.OS === 'android' && value && (
+            {showPicker && Platform.OS === 'android' && (
                 <DateTimePicker
                     value={tempDate}
                     mode="time"
