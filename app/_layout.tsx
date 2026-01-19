@@ -128,13 +128,46 @@ export default function RootLayout() {
         }
       }
 
-      // --- TRATAMENTO 2: OAuth Callback (Google/Discord no Electron) ---
-      // O URL vem geralmente como: escolaa://auth/callback#access_token=...&refresh_token=...
-      // Ou as vezes como query params dependendo do provider. Vamos checar ambos.
-      else if (url.includes('auth/callback') && (url.includes('access_token') || url.includes('refresh_token'))) {
+      // --- TRATAMENTO 2: OAuth Callback (Google/Discord no Electron/Native) ---
+      // Suporta tanto Implicit Grant (access_token no hash) como PKCE (code na query)
+      else if (url.includes('access_token') || url.includes('refresh_token') || url.includes('code=')) {
         try {
-          console.log('🔑 Tokens de OAuth detetados via Deep Link...');
+          console.log('🔑 OAuth Callback detetado via Deep Link...');
 
+          // --- CASO A: PKCE Flow (code) ---
+          if (url.includes('code=')) {
+            let code = '';
+            // Tenta extrair da query (?) ou hash (#)
+            const parts = url.split(/[?#]/);
+            for (const part of parts) {
+              if (part.includes('code=')) {
+                const params = part.split('&');
+                for (const param of params) {
+                  if (param.startsWith('code=')) {
+                    code = param.split('=')[1];
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (code) {
+              code = decodeURIComponent(code);
+              console.log('🔄 Trocando código PKCE por sessão...');
+              const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+              if (!error) {
+                console.log('✅ Sessão PKCE estabelecida com sucesso!');
+                setTimeout(() => router.replace('/(tabs)'), 500);
+                return;
+              } else {
+                console.error('Erro ao trocar code por sessão:', error);
+                // Falha no PKCE, tenta Implicit como fallback se existir
+              }
+            }
+          }
+
+          // --- CASO B: Implicit Flow (access_token) ---
           // Tenta extrair do hash (#) primeiro, que é o padrão do Supabase para Implicit Grant
           let fragment = '';
           if (url.includes('#')) {
@@ -142,6 +175,8 @@ export default function RootLayout() {
           } else if (url.includes('?')) {
             fragment = url.split('?')[1];
           }
+
+          console.log('🔍 Fragmento extraído:', fragment);
 
           if (fragment) {
             const params: Record<string, string> = {};
@@ -154,6 +189,7 @@ export default function RootLayout() {
             const refreshToken = params['refresh_token'];
 
             if (accessToken && refreshToken) {
+              console.log('✅ Tokens encontrados (Implicit)! Definindo sessão...');
               const { error } = await supabase.auth.setSession({
                 access_token: accessToken,
                 refresh_token: refreshToken,
@@ -161,8 +197,6 @@ export default function RootLayout() {
 
               if (!error) {
                 console.log('✅ Sessão OAuth iniciada com sucesso!');
-                // O AuthProvider vai detectar a mudança de estado e redirecionar
-                // Mas podemos forçar o redirecionamento para garantir
                 setTimeout(() => {
                   router.replace('/(tabs)');
                 }, 500);
@@ -181,7 +215,19 @@ export default function RootLayout() {
     import('expo-linking').then((Linking) => {
       Linking.getInitialURL().then(handleDeepLink);
       const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
-      return () => sub.remove();
+
+      // 🔌 ESCUTA ROBUSTA VIA IPC (Electron)
+      if (typeof window !== 'undefined' && (window as any).electronAPI) {
+        console.log('🔌 Electron API detetada. A escutar deep links...');
+        (window as any).electronAPI.onDeepLink((url: string) => {
+          console.log('⚡ IPC Deep Link recebido:', url);
+          handleDeepLink(url);
+        });
+      }
+
+      return () => {
+        sub.remove();
+      };
     });
   }, []);
 

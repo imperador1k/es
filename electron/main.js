@@ -28,6 +28,7 @@ async function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js'),
         },
         backgroundColor: '#0A0A0F',
         show: false, // Não mostrar até estar pronto
@@ -98,12 +99,8 @@ if (!gotTheLock) {
             const url = commandLine.find(arg => arg.startsWith('escolaa://'));
             if (url) {
                 console.log('🔗 Login recebido:', url);
-                // Injeta o URL diretamente no frontend para o Expo Linking apanhar
-                mainWindow.webContents.executeJavaScript(`
-                    window.dispatchEvent(new CustomEvent('expo-linking-url', { detail: '${url}' }));
-                    // Fallback para garantir
-                    window.location.href = '${url}'; 
-                `).catch(e => console.error('Erro ao injetar URL:', e));
+                // Envia via IPC para o renderer
+                mainWindow.webContents.send('deep-link', url);
             }
         }
     });
