@@ -7,6 +7,7 @@
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { NotificationService } from '@/services/NotificationService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
@@ -167,6 +168,13 @@ export function CreateEventModal({
                     type: schoolCategory === 'exame' || schoolCategory === 'teste' ? 'exam' : 'study',
                 });
                 if (error) throw error;
+
+                // 🔔 Agendar notificações se for um Exame/Teste
+                if (schoolCategory === 'exame' || schoolCategory === 'teste') {
+                    NotificationService.scheduleExamCountdown(title.trim(), combinedDate).catch((err: any) =>
+                        console.error('Falha ao agendar notificações:', err)
+                    );
+                }
             } else {
                 const { error } = await supabase.from('personal_todos').insert({
                     user_id: user.id,
