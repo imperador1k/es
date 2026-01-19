@@ -133,6 +133,36 @@ export class NotificationService {
                 }
             }
         }
+
+        // --- NOVO: Notificações baseadas na HORA DO EVENTO ---
+        // 1. 1 Hora antes
+        const oneHourBefore = new Date(eventDate.getTime() - 60 * 60 * 1000);
+        if (oneHourBefore.getTime() > Date.now()) {
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: `⏳ 1 Hora para o início`,
+                    body: `O evento ${title} começa dentro de 1 hora. Prepara-te!`,
+                    sound: 'default',
+                    data: { eventTitle: title, eventDate: eventDate.toISOString() }
+                },
+                trigger: oneHourBefore as any,
+            });
+            console.log(`✅ Agendado: "1 Hora antes" para ${oneHourBefore.toLocaleString()}`);
+        }
+
+        // 2. Na hora exata
+        if (eventDate.getTime() > Date.now()) {
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: `🔔 Começou: ${title}`,
+                    body: `O evento ${title} está marcado para agora.`,
+                    sound: 'default',
+                    data: { eventTitle: title, eventDate: eventDate.toISOString() }
+                },
+                trigger: eventDate as any,
+            });
+            console.log(`✅ Agendado: "Na hora exata" para ${eventDate.toLocaleString()}`);
+        }
     }
 
     /**
