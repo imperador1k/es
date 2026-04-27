@@ -1,11 +1,8 @@
 -- ===============================================
 -- Premium Presence System - Heartbeat & Cleanup
 -- ===============================================
--- Comportamento tipo WhatsApp/Discord:
--- - Utilizadores são marcados offline após 60s de inatividade
--- - pg_cron verifica a cada 1 minuto
+CREATE EXTENSION IF NOT EXISTS pg_cron;
 
--- ===============================================
 -- 1. Função RPC para marcar utilizadores inativos como offline
 -- ===============================================
 CREATE OR REPLACE FUNCTION public.check_stale_presence()

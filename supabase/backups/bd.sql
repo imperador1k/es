@@ -202,7 +202,7 @@ CREATE TABLE public.personal_todos (
   is_completed boolean DEFAULT false,
   completed_at timestamp with time zone,
   priority text DEFAULT 'medium'::text CHECK (priority = ANY (ARRAY['low'::text, 'medium'::text, 'high'::text])),
-  tags ARRAY DEFAULT '{}'::text[],
+  tags text[] DEFAULT '{}'::text[],
   subject_id uuid,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),

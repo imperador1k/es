@@ -1,12 +1,22 @@
 import fs from 'fs';
 import { parse } from 'csv-parse/sync';
 import { createClient } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
 
-// --- CONFIGURAÇÃO ---
-const SUPABASE_URL = 'https://oyeilbfycrkdcqvnkctr.supabase.co'; // Mantém as tuas chaves!
-const SUPABASE_KEY = 'sb_publishable_-CiEWJBZKUTdeLrs-P3PzQ_ibpoXIjC';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Carregar variáveis do ficheiro .env
+dotenv.config();
 
+// --- CONFIGURAÇÃO SEGURA ---
+// Usa as variáveis de ambiente. Se não existirem, o script avisa.
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('❌ Erro: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não encontradas no .env');
+    process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const CSV_FILENAME = 'Livro1.csv'; 
 
 // Mapa de Distritos
@@ -31,10 +41,15 @@ async function seed() {
     console.log(`🚀 A ler o ficheiro: ${CSV_FILENAME}...`);
     
     try {
+        if (!fs.existsSync(CSV_FILENAME)) {
+            console.error(`❌ Erro: Ficheiro ${CSV_FILENAME} não encontrado.`);
+            return;
+        }
+
         const fileContent = fs.readFileSync(CSV_FILENAME, 'utf-8');
         const records = parse(fileContent, { 
             columns: true, 
-            delimiter: ';', // Mantemos o ; para o teu Excel PT
+            delimiter: ';', 
             bom: true, 
             skip_empty_lines: true,
             trim: true,
@@ -71,18 +86,14 @@ async function seed() {
             await supabase.from('universities').upsert(unisArray.slice(i, i + 100));
         }
 
-        // --- 2. CURSOS (Com Deduplicação Inteligente) ---
+        // --- 2. CURSOS ---
         console.log('📚 A processar Cursos...');
-        
-        // Criamos um Map para garantir que não enviamos 2 linhas iguais
         const uniqueCoursesMap = new Map();
 
         records.forEach((row: any) => {
             const uniId = row.CodigoEstabelecimento?.toString();
             const code = row.CodigoCurso?.toString();
-            const unit = row.UnidadeOrganica || ''; // Se vazio, fica string vazia
-            
-            // Criamos uma chave única para identificar o curso
+            const unit = row.UnidadeOrganica || ''; 
             const uniqueKey = `${uniId}-${code}-${unit}`;
 
             if (uniId && code && !uniqueCoursesMap.has(uniqueKey)) {
@@ -99,11 +110,10 @@ async function seed() {
         const courses = Array.from(uniqueCoursesMap.values());
         console.log(`✅ Cursos únicos identificados: ${courses.length}`);
 
-        // Enviar para o Supabase
         for (let i = 0; i < courses.length; i += 100) {
             const chunk = courses.slice(i, i + 100);
             const { error } = await supabase.from('degrees').upsert(chunk, { 
-                onConflict: 'university_id, code, organic_unit' // Nova regra SQL
+                onConflict: 'university_id, code, organic_unit'
             });
             
             if (error) {
@@ -111,7 +121,7 @@ async function seed() {
             }
         }
 
-        console.log('🎉 Importação Finalizada!');
+        console.log('🎉 Importação Finalizada com Segurança!');
 
     } catch (err) {
         console.error('❌ Erro Fatal:', err);
