@@ -15,7 +15,6 @@ import { usePresenceContext } from '@/providers/PresenceProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { useSettings } from '@/providers/SettingsProvider';
 import { Ionicons } from '@expo/vector-icons';
-import { decode } from 'base64-arraybuffer';
 import * as Application from 'expo-application';
 import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
@@ -163,11 +162,10 @@ export default function SettingsScreen() {
                 mediaTypes: ['images'],
                 allowsEditing: true,
                 aspect: [1, 1],
-                quality: 0.5,
-                base64: true,
+                quality: 0.3,
             });
-            if (!result.canceled && result.assets[0]?.base64) {
-                await saveAvatarAsDataUri(result.assets[0].base64, result.assets[0].mimeType || 'image/jpeg');
+            if (!result.canceled && result.assets[0]) {
+                await saveAvatarFromUri(result.assets[0].uri, result.assets[0].mimeType || 'image/jpeg');
             }
         } catch (error: any) {
             console.error('Erro ao selecionar imagem:', error);
@@ -175,13 +173,23 @@ export default function SettingsScreen() {
         }
     };
 
-    const saveAvatarAsDataUri = async (base64: string, mimeType: string) => {
+    const saveAvatarFromUri = async (uri: string, mimeType: string) => {
         if (!user?.id) return;
         try {
             setUploadingAvatar(true);
-            const fileData = decode(base64);
+            
+            // Método ultra-robusto: Fetch Blob direto da URI
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            
             const fileName = `${user.id}/${Date.now()}.png`;
-            const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, fileData, { contentType: mimeType, upsert: true });
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(fileName, blob, { 
+                    contentType: mimeType, 
+                    upsert: true 
+                });
+            
             if (uploadError) throw uploadError;
             const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
             const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);

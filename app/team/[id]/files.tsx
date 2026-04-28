@@ -11,7 +11,6 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { TeamRole } from '@/types/database.types';
 import { canUser } from '@/utils/permissions';
 import { Ionicons } from '@expo/vector-icons';
-import { decode } from 'base64-arraybuffer';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -147,6 +146,16 @@ export default function TeamFilesScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+    const [renameModalVisible, setRenameModalVisible] = useState(false);
+    const [itemToRename, setItemToRename] = useState<TeamFile | null>(null);
+    const [newFileName, setNewFileName] = useState('');
+    const [renaming, setRenaming] = useState(false);
+
+    const isImageFile = (type: string) => {
+        return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type.toLowerCase());
+    };
 
     // ============================================
     // LOAD DATA
@@ -281,22 +290,33 @@ export default function TeamFilesScreen() {
         }
 
         try {
-            const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+            const result = await DocumentPicker.getDocumentAsync({ 
+                type: '*/*', 
+                copyToCacheDirectory: true 
+            });
+            
             if (result.canceled || !result.assets?.[0]) return;
 
             const file = result.assets[0];
             setUploading(true);
+            
+            console.log(`📤 A iniciar upload de ficheiro: ${file.name}`);
 
             const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'file';
-            const uniqueName = `${teamId}/${Date.now()}_${file.name}`;
-            const base64Data = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
-            const arrayBuffer = decode(base64Data);
+            const uniqueName = `${teamId}/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+            
+            const response = await fetch(file.uri);
+            const blob = await response.blob();
 
             const { error: uploadError } = await supabase.storage
                 .from('team-files')
-                .upload(uniqueName, arrayBuffer, { contentType: file.mimeType || 'application/octet-stream' });
+                .upload(uniqueName, blob, { 
+                    contentType: file.mimeType || 'application/octet-stream',
+                    cacheControl: '3600',
+                    upsert: true
+                });
 
-            if (uploadError) throw uploadError;
+            if (uploadError) throw new Error(uploadError.message);
 
             const { error: dbError } = await supabase.from('team_files').insert({
                 team_id: teamId,
@@ -310,13 +330,38 @@ export default function TeamFilesScreen() {
             });
 
             if (dbError) throw dbError;
+            
             showAlert({ title: '✅ Sucesso', message: 'Ficheiro carregado!' });
             loadFiles();
-        } catch (err) {
-            console.error('Error uploading:', err);
-            showAlert({ title: 'Erro', message: 'Não foi possível carregar o ficheiro.' });
+        } catch (err: any) {
+            console.error('❌ Erro no upload:', err);
+            showAlert({ title: 'Erro de Upload', message: err.message || 'Erro inesperado' });
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleRename = async () => {
+        if (!itemToRename || !newFileName.trim()) return;
+        
+        setRenaming(true);
+        try {
+            const { error } = await supabase
+                .from('team_files')
+                .update({ name: newFileName.trim() })
+                .eq('id', itemToRename.id);
+
+            if (error) throw error;
+            
+            setRenameModalVisible(false);
+            setItemToRename(null);
+            setNewFileName('');
+            loadFiles();
+        } catch (err: any) {
+            console.error('Error renaming:', err);
+            showAlert({ title: 'Erro', message: 'Não foi possível renomear o item.' });
+        } finally {
+            setRenaming(false);
         }
     };
 
@@ -330,9 +375,17 @@ export default function TeamFilesScreen() {
             return;
         }
 
+        // Se for imagem, mostrar preview direto
+        if (isImageFile(file.file_type) && imageUrls[file.id]) {
+            setPreviewImage(imageUrls[file.id]);
+            return;
+        }
+
         try {
             setDownloadingId(file.id);
-            const localUri = `${(FileSystem as any).cacheDirectory}${file.name}`;
+            // Garantir que o nome local tem a extensão correta
+            const fileName = file.name.includes('.') ? file.name : `${file.name}.${file.file_type}`;
+            const localUri = `${FileSystem.cacheDirectory}${fileName}`;
             const fileInfo = await FileSystem.getInfoAsync(localUri);
 
             if (!fileInfo.exists) {
@@ -344,7 +397,11 @@ export default function TeamFilesScreen() {
 
             if (Platform.OS === 'android') {
                 const contentUri = await FileSystem.getContentUriAsync(localUri);
-                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: contentUri, flags: 1 });
+                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { 
+                    data: contentUri, 
+                    flags: 1,
+                    type: file.file_type === 'pdf' ? 'application/pdf' : undefined
+                });
             } else {
                 const canShare = await Sharing.isAvailableAsync();
                 if (canShare) await Sharing.shareAsync(localUri);
@@ -539,7 +596,11 @@ export default function TeamFilesScreen() {
                                         onDelete={() => handleDelete(folder)}
                                         imageUrl={null}
                                         isDownloading={false}
-                                        canModify={canUser(userRole, 'DELETE_FILES') || folder.uploader_id === user?.id}
+                                        user={user}
+                                        userRole={userRole}
+                                        setItemToRename={setItemToRename}
+                                        setNewFileName={setNewFileName}
+                                        setRenameModalVisible={setRenameModalVisible}
                                     />
                                 ))}
                             </View>
@@ -558,9 +619,13 @@ export default function TeamFilesScreen() {
                                         viewMode={viewMode}
                                         onPress={() => handleOpenFile(file)}
                                         onDelete={() => handleDelete(file)}
-                                        imageUrl={imageUrls[file.id]}
+                                        imageUrl={imageUrls[file.id] || null}
                                         isDownloading={downloadingId === file.id}
-                                        canModify={canUser(userRole, 'DELETE_FILES') || file.uploader_id === user?.id}
+                                        user={user}
+                                        userRole={userRole}
+                                        setItemToRename={setItemToRename}
+                                        setNewFileName={setNewFileName}
+                                        setRenameModalVisible={setRenameModalVisible}
                                     />
                                 ))}
                             </View>
@@ -613,6 +678,51 @@ export default function TeamFilesScreen() {
                         </View>
                     </KeyboardAvoidingView>
                 </Modal>
+
+                {/* Rename Modal */}
+                <Modal visible={renameModalVisible} animationType="slide" transparent onRequestClose={() => setRenameModalVisible(false)}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalWrapper}>
+                        <Pressable style={styles.modalBackdrop} onPress={() => setRenameModalVisible(false)} />
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHandle} />
+                            <Text style={styles.modalTitle}>Renomear {itemToRename?.is_folder ? 'Pasta' : 'Ficheiro'}</Text>
+
+                            <TextInput
+                                style={styles.modalInput}
+                                value={newFileName}
+                                onChangeText={setNewFileName}
+                                placeholder="Novo nome"
+                                placeholderTextColor={COLORS.text.tertiary}
+                                autoFocus
+                            />
+
+                            <View style={styles.modalButtons}>
+                                <Pressable style={styles.modalBtnCancel} onPress={() => setRenameModalVisible(false)}>
+                                    <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+                                </Pressable>
+                                <Pressable style={styles.modalBtnConfirm} onPress={handleRename} disabled={renaming}>
+                                    {renaming ? (
+                                        <ActivityIndicator color="#FFF" size="small" />
+                                    ) : (
+                                        <Text style={styles.modalBtnConfirmText}>Guardar</Text>
+                                    )}
+                                </Pressable>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
+
+                {/* Image Preview Modal */}
+                <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
+                    <View style={styles.previewBackdrop}>
+                        <Pressable style={styles.previewClose} onPress={() => setPreviewImage(null)}>
+                            <Ionicons name="close" size={32} color="#FFF" />
+                        </Pressable>
+                        {previewImage && (
+                            <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="contain" />
+                        )}
+                    </View>
+                </Modal>
             </SafeAreaView>
         </View>
     );
@@ -629,7 +739,11 @@ function FileCard({
     onDelete,
     imageUrl,
     isDownloading,
-    canModify,
+    user,
+    userRole,
+    setItemToRename,
+    setNewFileName,
+    setRenameModalVisible,
 }: {
     file: TeamFile;
     viewMode: 'list' | 'grid';
@@ -637,7 +751,11 @@ function FileCard({
     onDelete: () => void;
     imageUrl: string | null;
     isDownloading: boolean;
-    canModify: boolean;
+    user: any;
+    userRole: string | null;
+    setItemToRename: (file: TeamFile) => void;
+    setNewFileName: (name: string) => void;
+    setRenameModalVisible: (visible: boolean) => void;
 }) {
     const scale = useRef(new Animated.Value(1)).current;
     const config = getFileConfig(file);
@@ -645,14 +763,30 @@ function FileCard({
     const { showAlert } = useAlert();
 
     const showMenu = () => {
-        if (!canModify) return;
+        const canRename = canUser(userRole, 'RENAME_FILES') || (file.uploader_id === user?.id && canUser(userRole, 'RENAME_OWN_FILES'));
+        const canDelete = canUser(userRole, 'DELETE_FILES') || (file.uploader_id === user?.id && canUser(userRole, 'DELETE_OWN_FILES'));
+
+        const buttons: any[] = [{ text: 'Cancelar', style: 'cancel' }];
+
+        if (canRename) {
+            buttons.push({ 
+                text: 'Renomear', 
+                onPress: () => {
+                    setItemToRename(file);
+                    setNewFileName(file.name);
+                    setRenameModalVisible(true);
+                } 
+            });
+        }
+
+        if (canDelete) {
+            buttons.push({ text: 'Apagar', style: 'destructive', onPress: onDelete });
+        }
+
         showAlert({
             title: file.name,
             message: file.is_folder ? 'Pasta' : formatFileSize(file.size_bytes),
-            buttons: [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Apagar', style: 'destructive', onPress: onDelete },
-            ]
+            buttons
         });
     };
 
@@ -666,6 +800,9 @@ function FileCard({
                 style={styles.gridCardWrapper}
             >
                 <Animated.View style={[styles.gridCard, { transform: [{ scale }] }]}>
+                    <Pressable style={styles.cardMenuBtn} onPress={showMenu}>
+                        <Ionicons name="ellipsis-vertical" size={18} color={COLORS.text.tertiary} />
+                    </Pressable>
                     {isImage ? (
                         <Image source={{ uri: imageUrl }} style={styles.gridThumbnail} resizeMode="cover" />
                     ) : (
@@ -710,11 +847,19 @@ function FileCard({
                     </Text>
                 </View>
 
-                <Ionicons
-                    name={file.is_folder ? 'chevron-forward' : 'ellipsis-horizontal'}
-                    size={18}
-                    color={COLORS.text.tertiary}
-                />
+                <Pressable 
+                    onPress={(e) => {
+                        e.stopPropagation();
+                        showMenu();
+                    }}
+                    style={styles.listMenuBtn}
+                >
+                    <Ionicons
+                        name="ellipsis-vertical"
+                        size={20}
+                        color={COLORS.text.tertiary}
+                    />
+                </Pressable>
             </Animated.View>
         </Pressable>
     );
@@ -799,8 +944,29 @@ const styles = StyleSheet.create({
     },
     searchInput: {
         flex: 1,
-        fontSize: TYPOGRAPHY.size.base,
         color: COLORS.text.primary,
+        fontSize: TYPOGRAPHY.size.base,
+        padding: 0,
+    },
+    previewBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    previewClose: {
+        position: 'absolute',
+        top: 50,
+        right: 20,
+        zIndex: 10,
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    previewImage: {
+        width: SCREEN_WIDTH,
+        height: SCREEN_WIDTH * 1.5,
     },
 
     // Breadcrumbs
@@ -870,6 +1036,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
+        position: 'relative',
+    },
+    cardMenuBtn: {
+        position: 'absolute',
+        top: 8,
+        right: 4,
+        padding: 4,
+        zIndex: 5,
+    },
+    listMenuBtn: {
+        padding: 8,
+        marginLeft: SPACING.xs,
     },
     gridIconBg: {
         width: 56,

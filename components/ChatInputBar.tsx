@@ -9,9 +9,7 @@ import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
-import { decode } from 'base64-arraybuffer';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -359,19 +357,36 @@ export function ChatInputBar({
         setShowMentionPopup(false);
     };
 
-    const uploadToStorage = async (uri: string, fileName: string, mimeType: string): Promise<string | null> => {
-        if (!user?.id) return null;
+    const uploadToStorage = async (uri: string, fileName: string, mimeType: string): Promise<{ url: string | null; error?: string }> => {
+        if (!user?.id) return { url: null, error: 'Utilizador não autenticado' };
         try {
-            const base64Data = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+            console.log(`📤 A iniciar upload: ${fileName} (${mimeType})`);
+            
+            // Método ultra-robusto: Fetch Blob direto da URI
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            
             const ext = fileName.split('.').pop() || 'jpg';
             const path = `${user.id}/${Date.now()}.${ext}`;
-            const { error } = await supabase.storage.from('chat-files').upload(path, decode(base64Data), { contentType: mimeType, cacheControl: '3600' });
-            if (error) throw error;
+            
+            const { error: storageError } = await supabase.storage
+                .from('chat-files')
+                .upload(path, blob, { 
+                    contentType: mimeType, 
+                    cacheControl: '3600',
+                    upsert: true
+                });
+                
+            if (storageError) {
+                console.error('❌ Erro no Supabase Storage:', storageError);
+                return { url: null, error: storageError.message };
+            }
+
             const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
-            return urlData.publicUrl;
-        } catch (err) {
-            console.error('Upload error:', err);
-            return null;
+            return { url: urlData.publicUrl };
+        } catch (err: any) {
+            console.error('❌ Erro inesperado no upload:', err);
+            return { url: null, error: err.message || 'Erro desconhecido' };
         }
     };
 
@@ -382,15 +397,19 @@ export function ChatInputBar({
             showAlert({ title: 'Permissão necessária', message: 'Precisamos de acesso à câmara' });
             return;
         }
-        const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true });
+        const result = await ImagePicker.launchCameraAsync({ 
+            mediaTypes: ['images'], 
+            quality: 0.4, // Qualidade reduzida para evitar erros de tamanho
+            allowsEditing: true 
+        });
         if (!result.canceled && result.assets[0]) {
             setUploading(true);
             const asset = result.assets[0];
             const fileName = asset.uri.split('/').pop() || 'photo.jpg';
-            const url = await uploadToStorage(asset.uri, fileName, 'image/jpeg');
+            const { url, error } = await uploadToStorage(asset.uri, fileName, 'image/jpeg');
             setUploading(false);
             if (url) onSend('📷', { url, type: 'image', name: fileName });
-            else showAlert({ title: 'Erro', message: 'Não foi possível enviar a imagem' });
+            else showAlert({ title: 'Erro de Upload', message: error || 'Não foi possível enviar a imagem' });
         }
     };
 
@@ -401,16 +420,20 @@ export function ChatInputBar({
             showAlert({ title: 'Permissão necessária', message: 'Precisamos de acesso à galeria' });
             return;
         }
-        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsMultipleSelection: false });
+        const result = await ImagePicker.launchImageLibraryAsync({ 
+            mediaTypes: ['images'], 
+            quality: 0.4, // Qualidade reduzida
+            allowsMultipleSelection: false 
+        });
         if (!result.canceled && result.assets[0]) {
             setUploading(true);
             const asset = result.assets[0];
             const fileName = asset.uri.split('/').pop() || 'image.jpg';
             const mimeType = asset.mimeType || 'image/jpeg';
-            const url = await uploadToStorage(asset.uri, fileName, mimeType);
+            const { url, error } = await uploadToStorage(asset.uri, fileName, mimeType);
             setUploading(false);
             if (url) onSend('📷', { url, type: 'image', name: fileName });
-            else showAlert({ title: 'Erro', message: 'Não foi possível enviar a imagem' });
+            else showAlert({ title: 'Erro de Upload', message: error || 'Não foi possível enviar a imagem' });
         }
     };
 
@@ -424,10 +447,10 @@ export function ChatInputBar({
             if (!result.canceled && result.assets[0]) {
                 setUploading(true);
                 const asset = result.assets[0];
-                const url = await uploadToStorage(asset.uri, asset.name, asset.mimeType || 'application/pdf');
+                const { url, error } = await uploadToStorage(asset.uri, asset.name, asset.mimeType || 'application/pdf');
                 setUploading(false);
                 if (url) onSend('📎', { url, type: 'file', name: asset.name });
-                else showAlert({ title: 'Erro', message: 'Não foi possível enviar o ficheiro' });
+                else showAlert({ title: 'Erro de Upload', message: error || 'Não foi possível enviar o ficheiro' });
             }
         } catch (err) {
             console.error('Document picker error:', err);

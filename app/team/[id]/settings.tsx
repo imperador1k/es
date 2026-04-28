@@ -5,6 +5,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { decode } from 'base64-arraybuffer';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -268,18 +269,11 @@ export default function TeamSettingsScreen() {
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.7,
-            base64: true, // Pedir base64 diretamente
+            quality: 0.3, // Qualidade mais baixa para garantir que o ficheiro é pequeno
         });
 
         if (!result.canceled && result.assets[0]) {
             const asset = result.assets[0];
-
-            if (!asset.base64) {
-                showAlert({ title: 'Erro', message: 'Não foi possível processar a imagem.' });
-                return;
-            }
-
             setUploadingAvatar(true);
 
             try {
@@ -288,18 +282,14 @@ export default function TeamSettingsScreen() {
                 const fileName = `${team.id}/avatar.${fileExt}`;
                 const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
 
-                // Converter base64 para ArrayBuffer
-                const base64Data = asset.base64;
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
+                // Método ultra-robusto: Fetch Blob direto da URI (evita erros de Content-Type)
+                const response = await fetch(asset.uri);
+                const blob = await response.blob();
 
                 // Fazer upload para Supabase Storage
                 const { data: uploadData, error: uploadError } = await supabase.storage
                     .from('team-avatars')
-                    .upload(fileName, bytes, {
+                    .upload(fileName, blob, {
                         contentType,
                         upsert: true,
                     });

@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { useAuthContext } from '@/providers/AuthProvider';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 
 // ============================================
@@ -55,6 +56,7 @@ export interface CreateTodoInput {
 
 export function usePersonalTodos() {
     const { user } = useAuthContext();
+    const queryClient = useQueryClient();
     const [todos, setTodos] = useState<PersonalTodo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -132,8 +134,9 @@ export function usePersonalTodos() {
                     .insert(stepsToInsert);
             }
 
-            // Refresh and return
+            // Refresh local state and global calendar cache
             await fetchTodos();
+            queryClient.invalidateQueries({ queryKey: ['calendar'] });
             return todo;
         } catch (err: any) {
             console.error('Error creating todo:', err);
@@ -163,6 +166,9 @@ export function usePersonalTodos() {
                     ? { ...t, is_completed: data, completed_at: data ? new Date().toISOString() : null }
                     : t
             ));
+
+            // Sync with global calendar cache
+            queryClient.invalidateQueries({ queryKey: ['calendar'] });
 
             return data;
         } catch (err: any) {
@@ -206,6 +212,10 @@ export function usePersonalTodos() {
             if (error) throw error;
 
             setTodos(prev => prev.filter(t => t.id !== todoId));
+            
+            // Sync with global calendar cache
+            queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            
             return true;
         } catch (err: any) {
             console.error('Error deleting todo:', err);

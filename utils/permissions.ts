@@ -52,6 +52,8 @@ export const PERMISSIONS = {
     UPLOAD_FILES: ['owner', 'admin', 'moderator', 'delegate'] as const,
     DELETE_FILES: ['owner', 'admin'] as const,
     DELETE_OWN_FILES: ['owner', 'admin', 'moderator', 'delegate', 'member'] as const,
+    RENAME_FILES: ['owner', 'admin'] as const,
+    RENAME_OWN_FILES: ['owner', 'admin', 'moderator', 'delegate', 'member'] as const,
 } as const;
 
 export type PermissionAction = keyof typeof PERMISSIONS;

@@ -63,6 +63,14 @@ const FILTERS: { id: FilterType; label: string; icon: string }[] = [
     { id: 'task', label: 'Tarefas', icon: 'checkbox' },
 ];
 
+type RangeType = 'day' | '3months' | 'all';
+
+const RANGES: { id: RangeType; label: string; icon: string }[] = [
+    { id: 'day', label: 'Dia', icon: 'today-outline' },
+    { id: '3months', label: '3 Meses', icon: 'calendar-outline' },
+    { id: 'all', label: 'Tudo', icon: 'infinite-outline' },
+];
+
 // ============================================
 // ANIMATED PRESSABLE
 // ============================================
@@ -86,6 +94,7 @@ export default function CalendarScreen() {
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState<AgendaItem | null>(null);
     const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+    const [agendaRange, setAgendaRange] = useState<RangeType>('day');
     const [todoModalVisible, setTodoModalVisible] = useState(false);
     const [showAddOptions, setShowAddOptions] = useState(false);
 
@@ -96,14 +105,28 @@ export default function CalendarScreen() {
     const focusedMonth = useMemo(() => new Date(selectedDate), [selectedDate]);
 
     // Calendar data
-    const { agendaItems, markedDates, loading, refetch } = useCalendarItems(focusedMonth);
+    const { items: allCalendarItems, agendaItems, markedDates, loading, refetch } = useCalendarItems(
+        focusedMonth,
+        agendaRange === 'day' ? 'month' : agendaRange
+    );
 
     // Items for selected date (filtered)
     const selectedDayItems = useMemo(() => {
-        const items = agendaItems[selectedDate] || [];
+        let items: AgendaItem[] = [];
+
+        if (agendaRange === 'day') {
+            items = agendaItems[selectedDate] || [];
+        } else {
+            // Show all future items (from today onwards)
+            const today = new Date().toISOString().split('T')[0];
+            items = allCalendarItems
+                .filter(item => item.start_at.split('T')[0] >= today)
+                .map(item => ({ ...item, name: item.title, height: 80 }));
+        }
+
         if (activeFilter === 'all') return items;
         return items.filter(item => item.item_type === activeFilter);
-    }, [agendaItems, selectedDate, activeFilter]);
+    }, [agendaItems, allCalendarItems, selectedDate, activeFilter, agendaRange]);
 
     // Memoize initial date for the modal to prevent re-renders
     const modalInitialDate = useMemo(() => new Date(selectedDate), [selectedDate]);
@@ -282,14 +305,25 @@ export default function CalendarScreen() {
                 {/* ========== CALENDAR ========== */}
                 <View style={styles.calendarContainer}>
                     <Calendar
+                        key={focusedMonth.toISOString().substring(0, 7)} // Force re-render on month change
                         current={selectedDate}
-                        onDayPress={(day) => setSelectedDate(day.dateString)}
-                        onMonthChange={(month) => {
-                            const newDate = `${month.year}-${String(month.month).padStart(2, '0')}-01`;
-                            if (!selectedDate.startsWith(`${month.year}-${String(month.month).padStart(2, '0')}`)) {
-                                setSelectedDate(newDate);
-                            }
+                        onDayPress={(day) => {
+                            setSelectedDate(day.dateString);
+                            setAgendaRange('day'); // Switch back to day view when clicking a specific day
                         }}
+                        onMonthChange={(month) => {
+                            const newDateString = `${month.year}-${String(month.month).padStart(2, '0')}-01`;
+                            setSelectedDate(newDateString);
+                        }}
+                        renderArrow={(direction) => (
+                            <View style={styles.calendarArrow}>
+                                <Ionicons
+                                    name={direction === 'left' ? 'chevron-back' : 'chevron-forward'}
+                                    size={20}
+                                    color={COLORS.text.primary}
+                                />
+                            </View>
+                        )}
                         markingType="multi-dot"
                         markedDates={markedDatesWithSelection}
                         theme={{
@@ -318,7 +352,7 @@ export default function CalendarScreen() {
                     />
                 </View>
 
-                {/* ========== FILTERS ========== */}
+                {/* ========== FILTERS (TYPE) ========== */}
                 <View style={styles.filtersContainer}>
                     <ScrollView
                         horizontal
@@ -352,9 +386,42 @@ export default function CalendarScreen() {
                     </ScrollView>
                 </View>
 
+                {/* ========== RANGE SELECTOR ========== */}
+                <View style={styles.rangeContainer}>
+                    <Text style={styles.rangeLabel}>Visualizar Agenda:</Text>
+                    <View style={styles.rangeChips}>
+                        {RANGES.map((range) => (
+                            <Pressable
+                                key={range.id}
+                                style={[
+                                    styles.rangeChip,
+                                    agendaRange === range.id && styles.rangeChipActive,
+                                ]}
+                                onPress={() => setAgendaRange(range.id)}
+                            >
+                                <Ionicons
+                                    name={range.icon as any}
+                                    size={14}
+                                    color={agendaRange === range.id ? '#FFF' : COLORS.text.tertiary}
+                                />
+                                <Text
+                                    style={[
+                                        styles.rangeChipText,
+                                        agendaRange === range.id && styles.rangeChipTextActive,
+                                    ]}
+                                >
+                                    {range.label}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
+
                 {/* ========== DATE HEADER ========== */}
                 <View style={styles.dateHeader}>
-                    <Text style={styles.dateHeaderText}>{formatDateHeader(selectedDate)}</Text>
+                    <Text style={styles.dateHeaderText}>
+                        {agendaRange === 'day' ? formatDateHeader(selectedDate) : (agendaRange === '3months' ? 'Próximos 3 Meses' : 'Toda a Agenda')}
+                    </Text>
                     <View style={styles.dateHeaderBadge}>
                         <Text style={styles.dateHeaderBadgeText}>{selectedDayItems.length}</Text>
                     </View>
@@ -523,8 +590,58 @@ const styles = StyleSheet.create({
         marginBottom: SPACING.xl,
         ...SHADOWS.md,
     },
+    calendarArrow: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: COLORS.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...SHADOWS.sm,
+    },
     calendar: {
         borderRadius: RADIUS.xl,
+    },
+
+    // Range Selector
+    rangeContainer: {
+        paddingHorizontal: LAYOUT.screenPadding,
+        marginBottom: SPACING.lg,
+        gap: SPACING.sm,
+    },
+    rangeLabel: {
+        fontSize: TYPOGRAPHY.size.xs,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: COLORS.text.tertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    rangeChips: {
+        flexDirection: 'row',
+        gap: SPACING.sm,
+    },
+    rangeChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: 6,
+        borderRadius: RADIUS.lg,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    rangeChipActive: {
+        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+        borderColor: '#6366F1',
+    },
+    rangeChipText: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+    },
+    rangeChipTextActive: {
+        color: '#6366F1',
+        fontWeight: TYPOGRAPHY.weight.bold,
     },
 
     // Filters

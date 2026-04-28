@@ -330,9 +330,12 @@ export default function StudyRoomScreen() {
             setLivekitToken(response.token);
             setLivekitUrl(response.url);
             setIsCallActive(true);
-        } catch (error) {
+        } catch (error: any) {
             console.error('[Study Room] Failed to join call:', error);
-            showAlert({ title: 'Erro', message: 'Não foi possível entrar na chamada' });
+            showAlert({ 
+                title: 'Erro na Chamada', 
+                message: error.message || 'Não foi possível entrar na chamada. Verifica se os Secrets estão configurados no Supabase.' 
+            });
         } finally {
             setJoiningCall(false);
         }

@@ -264,7 +264,7 @@ export default function PlannerScreen() {
 
             const { data: taskData } = await supabase
                 .from('tasks')
-                .select(`id, title, description, due_date, status, team_id, created_by, team:teams(name, color)`)
+                .select(`id, title, description, due_date, status, team_id, created_by, config, team:teams(name, color)`)
                 .in('team_id', teamIds)
                 .is('deleted_at', null)
                 .neq('created_by', user.id)

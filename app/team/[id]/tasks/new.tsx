@@ -12,6 +12,8 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -38,6 +40,15 @@ interface TeamMember {
     user_id: string;
     role: string;
     profile: { username: string; full_name: string; avatar_url: string };
+}
+
+interface Attachment {
+    name: string;
+    uri: string;
+    mimeType?: string;
+    size?: number;
+    url?: string;
+    type?: string;
 }
 
 const FILE_TYPES = [
@@ -83,6 +94,8 @@ export default function CreateTaskScreen() {
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
     const [memberGroups, setMemberGroups] = useState<Map<string, number>>(new Map());
     const [numGroups, setNumGroups] = useState('2');
+    const [instructorAttachments, setInstructorAttachments] = useState<Attachment[]>([]);
+    const [uploadingAttachments, setUploadingAttachments] = useState(false);
 
     useEffect(() => {
         if (teamId) fetchTeamMembers();
@@ -128,11 +141,73 @@ export default function CreateTaskScreen() {
         setAllowedTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
     };
 
+    const handlePickAttachment = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: true,
+            });
+
+            if (!result.canceled) {
+                setInstructorAttachments(prev => [...prev, result.assets[0]]);
+            }
+        } catch (err) {
+            console.error('Error picking document:', err);
+        }
+    };
+
+    const removeAttachment = (index: number) => {
+        setInstructorAttachments(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const uploadInstructorAttachments = async () => {
+        const uploadedFiles = [];
+        for (const file of instructorAttachments) {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+            const filePath = `${teamId}/${fileName}`;
+
+            try {
+                const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
+                const arrayBuffer = require('base64-arraybuffer').decode(base64);
+
+                const { data, error } = await supabase.storage
+                    .from('task-files')
+                    .upload(filePath, arrayBuffer, {
+                        contentType: file.mimeType || 'application/octet-stream'
+                    });
+
+                if (error) throw error;
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from('task-files')
+                    .getPublicUrl(filePath);
+
+                uploadedFiles.push({
+                    name: file.name,
+                    url: publicUrl,
+                    type: file.mimeType,
+                    size: file.size
+                });
+            } catch (err) {
+                console.error('Error uploading instructor attachment:', err);
+            }
+        }
+        return uploadedFiles;
+    };
+
     const handlePublish = async () => {
         if (!teamId || !user?.id) return;
 
         setPublishing(true);
         try {
+            // 1. Upload Attachments if any
+            let attachments: any[] = [];
+            if (instructorAttachments.length > 0) {
+                attachments = await uploadInstructorAttachments();
+            }
+
+            // 2. Insert Task
             const { data: task, error: taskError } = await supabase
                 .from('tasks')
                 .insert({
@@ -152,32 +227,41 @@ export default function CreateTaskScreen() {
                         max_score: parseInt(maxScore) || 20,
                         assignment_type: assignmentType,
                         allow_late_submissions: allowLate,
+                        instructor_attachments: attachments, // ADDED
                     },
                 })
                 .select()
                 .single();
 
-            if (taskError) throw taskError;
+            if (taskError) {
+                console.error('Supabase Insert Error:', taskError);
+                throw new Error(`Erro ao inserir tarefa: ${taskError.message}`);
+            }
 
+            // 3. Assignments
             if (assignmentType === 'team') {
-                await supabase.rpc('assign_task_to_team', { p_task_id: task.id, p_team_id: teamId });
+                const { error: assignError } = await supabase.rpc('assign_task_to_team', { p_task_id: task.id, p_team_id: teamId });
+                if (assignError) console.error('Assign RPC Error:', assignError);
             } else if (assignmentType === 'groups') {
-                await supabase.rpc('generate_random_groups', {
+                const { error: groupsError } = await supabase.rpc('generate_random_groups', {
                     p_task_id: task.id,
                     p_team_id: teamId,
                     p_members_per_group: 4,
                 });
+                if (groupsError) console.error('Groups RPC Error:', groupsError);
             }
-
 
             showAlert({
                 title: '🚀 Tarefa Publicada!',
                 message: 'A tarefa foi criada com sucesso.',
                 buttons: [{ text: 'OK', onPress: () => router.back() }]
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error publishing task:', error);
-            showAlert({ title: 'Erro', message: 'Não foi possível criar a tarefa.' });
+            showAlert({ 
+                title: 'Erro Crítico', 
+                message: error.message || 'Não foi possível criar a tarefa. Verifica as tuas permissões.' 
+            });
         } finally {
             setPublishing(false);
         }
@@ -295,6 +379,28 @@ export default function CreateTaskScreen() {
                                             </Pressable>
                                         ))}
                                     </View>
+                                </View>
+
+                                <View style={styles.card}>
+                                    <Text style={styles.cardLabel}>Material de Apoio (Instruções, PDFs, etc.)</Text>
+                                    <Pressable style={styles.attachButton} onPress={handlePickAttachment}>
+                                        <Ionicons name="add-circle-outline" size={20} color="#6366F1" />
+                                        <Text style={styles.attachButtonText}>Anexar Ficheiro</Text>
+                                    </Pressable>
+
+                                    {instructorAttachments.length > 0 && (
+                                        <View style={styles.attachmentsList}>
+                                            {instructorAttachments.map((file, idx) => (
+                                                <View key={idx} style={styles.attachmentItem}>
+                                                    <Ionicons name="document-text" size={18} color={COLORS.text.secondary} />
+                                                    <Text style={styles.attachmentName} numberOfLines={1}>{file.name}</Text>
+                                                    <Pressable onPress={() => removeAttachment(idx)}>
+                                                        <Ionicons name="close-circle" size={18} color="#EF4444" />
+                                                    </Pressable>
+                                                </View>
+                                            ))}
+                                        </View>
+                                    )}
                                 </View>
                             </View>
                         )}
@@ -942,5 +1048,42 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.lg,
         fontWeight: TYPOGRAPHY.weight.semibold,
         color: '#FFF',
+    },
+
+    // Attachments
+    attachButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        padding: SPACING.md,
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderRadius: RADIUS.lg,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: '#6366F1',
+        marginTop: SPACING.xs,
+    },
+    attachButtonText: {
+        color: '#6366F1',
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        fontSize: TYPOGRAPHY.size.sm,
+    },
+    attachmentsList: {
+        marginTop: SPACING.md,
+        gap: SPACING.xs,
+    },
+    attachmentItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceMuted,
+        padding: SPACING.sm,
+        borderRadius: RADIUS.md,
+        gap: SPACING.sm,
+    },
+    attachmentName: {
+        flex: 1,
+        fontSize: TYPOGRAPHY.size.sm,
+        color: COLORS.text.secondary,
     },
 });

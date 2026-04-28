@@ -349,6 +349,31 @@ export default function TaskDetailScreen() {
                                 <Text style={styles.configText}>Nota máxima: {task.config?.max_score || 20}</Text>
                             </View>
                         </View>
+
+                        {/* Instructor Attachments */}
+                        {task.config?.instructor_attachments && task.config.instructor_attachments.length > 0 && (
+                            <View style={styles.instructorAttachments}>
+                                <Text style={styles.attachmentSectionTitle}>Material de Apoio</Text>
+                                <View style={styles.attachmentGrid}>
+                                    {task.config.instructor_attachments.map((file, idx) => (
+                                        <Pressable 
+                                            key={idx} 
+                                            style={styles.attachmentItem}
+                                            onPress={() => Linking.openURL(file.url)}
+                                        >
+                                            <View style={styles.attachmentIcon}>
+                                                <Ionicons name="document-text" size={20} color="#6366F1" />
+                                            </View>
+                                            <View style={styles.attachmentMeta}>
+                                                <Text style={styles.attachmentName} numberOfLines={1}>{file.name}</Text>
+                                                <Text style={styles.attachmentSize}>{(file.size / 1024).toFixed(1)} KB</Text>
+                                            </View>
+                                            <Ionicons name="download-outline" size={18} color={COLORS.text.tertiary} />
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
+                        )}
                     </View>
 
                     {/* Student View: Submission */}
@@ -1023,5 +1048,55 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.base,
         fontWeight: TYPOGRAPHY.weight.semibold,
         color: '#FFF',
+    },
+
+    // Instructor Attachments
+    instructorAttachments: {
+        marginTop: SPACING.lg,
+        paddingTop: SPACING.md,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.05)',
+    },
+    attachmentSectionTitle: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: TYPOGRAPHY.weight.bold,
+        color: COLORS.text.primary,
+        marginBottom: SPACING.sm,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    attachmentGrid: {
+        gap: 10,
+    },
+    attachmentItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        padding: 12,
+        borderRadius: RADIUS.lg,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        gap: 12,
+    },
+    attachmentIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 10,
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    attachmentMeta: {
+        flex: 1,
+    },
+    attachmentName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.text.primary,
+        marginBottom: 2,
+    },
+    attachmentSize: {
+        fontSize: 12,
+        color: COLORS.text.tertiary,
     },
 });

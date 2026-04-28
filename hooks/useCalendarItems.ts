@@ -143,7 +143,9 @@ async function fetchUserEvents(userId: string, startDate: string, endDate: strin
 // HOOK - OFFLINE-FIRST VERSION
 // ============================================
 
-export function useCalendarItems(focusedDate: Date) {
+export type CalendarRange = 'month' | '3months' | 'all';
+
+export function useCalendarItems(focusedDate: Date, rangeType: CalendarRange = 'month') {
     const { user } = useAuthContext();
 
     // Calculate start and end of the focused month
@@ -151,8 +153,15 @@ export function useCalendarItems(focusedDate: Date) {
         const y = focusedDate.getFullYear();
         const m = focusedDate.getMonth();
 
-        const start = new Date(y, m, 1);
-        const end = new Date(y, m + 1, 0);
+        let start = new Date(y, m, 1);
+        let end = new Date(y, m + 1, 0);
+
+        if (rangeType === '3months') {
+            end = new Date(y, m + 3, 0);
+        } else if (rangeType === 'all') {
+            start = new Date(y, m - 6, 1); // 6 months back
+            end = new Date(y, m + 12, 0); // 1 year forward
+        }
 
         return {
             startDate: start.toISOString().split('T')[0],
@@ -160,7 +169,7 @@ export function useCalendarItems(focusedDate: Date) {
             year: y,
             month: m,
         };
-    }, [focusedDate]);
+    }, [focusedDate, rangeType]);
 
     // ============================================
     // QUERY 1: Calendar Items (RPC) - OFFLINE-FIRST

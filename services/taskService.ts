@@ -19,6 +19,12 @@ export interface TaskConfig {
     max_score: number;
     assignment_type: AssignmentType;
     allow_late_submissions: boolean;
+    instructor_attachments?: {
+        name: string;
+        url: string;
+        type: string;
+        size: number;
+    }[];
 }
 
 export interface Task {

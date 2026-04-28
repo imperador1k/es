@@ -47,7 +47,12 @@ export async function getLiveKitToken(
 
     if (error) {
         console.error('[LiveKit Service] ERROR:', error);
-        throw new Error(`Failed to get LiveKit token: ${error.message}`);
+        throw new Error(`Failed to invoke Edge Function: ${error.message}`);
+    }
+
+    if (data?.error) {
+        console.error('[LiveKit Service] FUNCTION ERROR:', data.error);
+        throw new Error(data.error);
     }
 
     return data as LiveKitTokenResponse;

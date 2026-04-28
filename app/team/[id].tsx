@@ -5,15 +5,16 @@
 
 import { CachedImage } from '@/components/CachedImage';
 import { supabase } from '@/lib/supabase';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { useTeam } from '@/providers/TeamsProvider';
 import { Channel } from '@/types/database.types';
 import { canUser } from '@/utils/permissions';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -24,7 +25,8 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    View
+    View,
+    Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -45,6 +47,7 @@ export default function TeamDetailsScreen() {
     const [channels, setChannels] = useState<Channel[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [chatModalVisible, setChatModalVisible] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [memberCount, setMemberCount] = useState(0);
 
@@ -82,9 +85,30 @@ export default function TeamDetailsScreen() {
         setRefreshing(false);
     };
 
-    useEffect(() => {
-        loadData();
-    }, [loadData]);
+    const handleChatPress = () => {
+        if (channels.length === 0) {
+            if (userRole === 'owner' || userRole === 'admin') {
+                router.push(`/team/${id}/channels` as any);
+            } else {
+                // For regular members with no channels, maybe do nothing or show alert
+                // but usually there's at least one default channel
+            }
+            return;
+        }
+
+        if (channels.length === 1) {
+            router.push(`/team/${id}/channel/${channels[0].id}` as any);
+            return;
+        }
+
+        setChatModalVisible(true);
+    };
+
+    useFocusEffect(
+        useCallback(() => {
+            loadData();
+        }, [loadData])
+    );
 
     useEffect(() => {
         if (!teamLoading && !team && id) {
@@ -195,7 +219,7 @@ export default function TeamDetailsScreen() {
                             icon="chatbubbles"
                             label="Chat"
                             color="#10B981"
-                            onPress={() => channels[0] && router.push(`/team/${id}/channel/${channels[0].id}` as any)}
+                            onPress={handleChatPress}
                         />
                         <QuickActionCard
                             icon="checkbox"
@@ -254,6 +278,66 @@ export default function TeamDetailsScreen() {
                     )}
                 </ScrollView>
 
+                {/* Channels Selection Modal */}
+                <Modal
+                    visible={chatModalVisible}
+                    animationType="slide"
+                    transparent
+                    onRequestClose={() => setChatModalVisible(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <Pressable style={StyleSheet.absoluteFill} onPress={() => setChatModalVisible(false)}>
+                            <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+                        </Pressable>
+                        
+                        <View style={styles.modalContentFixed}>
+                            <View style={styles.modalHandle} />
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Escolher Canal</Text>
+                                <Pressable style={styles.modalCloseBtn} onPress={() => setChatModalVisible(false)}>
+                                    <Ionicons name="close" size={20} color={COLORS.text.primary} />
+                                </Pressable>
+                            </View>
+
+                            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                                {channels.map((channel) => (
+                                    <Pressable
+                                        key={channel.id}
+                                        style={styles.modalChannelItem}
+                                        onPress={() => {
+                                            setChatModalVisible(false);
+                                            router.push(`/team/${id}/channel/${channel.id}` as any);
+                                        }}
+                                    >
+                                        <View style={styles.modalChannelIcon}>
+                                            <Text style={styles.modalChannelHash}>#</Text>
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.modalChannelName}>{channel.name}</Text>
+                                            {channel.description && (
+                                                <Text style={styles.modalChannelDesc} numberOfLines={1}>{channel.description}</Text>
+                                            )}
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
+                                    </Pressable>
+                                ))}
+                            </ScrollView>
+
+                            {(userRole === 'owner' || userRole === 'admin') && (
+                                <Pressable 
+                                    style={styles.modalAddBtn}
+                                    onPress={() => {
+                                        setChatModalVisible(false);
+                                        router.push(`/team/${id}/channels` as any);
+                                    }}
+                                >
+                                    <Ionicons name="add-circle-outline" size={20} color="#6366F1" />
+                                    <Text style={styles.modalAddBtnText}>Gerir Canais</Text>
+                                </Pressable>
+                            )}
+                        </View>
+                    </View>
+                </Modal>
             </SafeAreaView>
         </View>
     );
@@ -598,30 +682,49 @@ const styles = StyleSheet.create({
         color: COLORS.text.primary,
     },
 
-    // Modal
-    modalWrapper: {
+    submitText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.semibold,
+        color: '#FFF',
+    },
+
+    // ========== CHAT SELECTION MODAL STYLES ==========
+    modalOverlay: {
         flex: 1,
         justifyContent: 'flex-end',
     },
-    modalBackdrop: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+    modalContentFixed: {
+        backgroundColor: COLORS.background,
+        borderTopLeftRadius: RADIUS['2xl'],
+        borderTopRightRadius: RADIUS['2xl'],
+        padding: SPACING.lg,
+        paddingBottom: 40,
+        maxHeight: '70%',
+        ...SHADOWS.lg,
     },
-    modalContent: {
-        backgroundColor: COLORS.surface,
-        borderTopLeftRadius: RADIUS['3xl'],
-        borderTopRightRadius: RADIUS['3xl'],
-        padding: SPACING.xl,
-        paddingBottom: 50,
-        maxHeight: '85%',
+    modalAddBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        padding: SPACING.md,
+        borderRadius: RADIUS.xl,
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(99, 102, 241, 0.2)',
+    },
+    modalAddBtnText: {
+        fontSize: TYPOGRAPHY.size.sm,
+        fontWeight: '600',
+        color: '#6366F1',
     },
     modalHandle: {
         width: 40,
-        height: 5,
-        borderRadius: 3,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 2,
         alignSelf: 'center',
-        marginBottom: SPACING.lg,
+        marginBottom: SPACING.md,
     },
     modalHeader: {
         flexDirection: 'row',
@@ -630,113 +733,53 @@ const styles = StyleSheet.create({
         marginBottom: SPACING.xl,
     },
     modalTitle: {
-        fontSize: TYPOGRAPHY.size.xl,
+        fontSize: TYPOGRAPHY.size.lg,
         fontWeight: TYPOGRAPHY.weight.bold,
         color: COLORS.text.primary,
     },
-    modalClose: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: COLORS.surfaceMuted,
+    modalCloseBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
     },
-
-    // Info Banner
-    infoBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SPACING.sm,
-        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-        padding: SPACING.md,
-        borderRadius: RADIUS.lg,
-        marginBottom: SPACING.xl,
-    },
-    infoBannerText: {
-        flex: 1,
-        fontSize: TYPOGRAPHY.size.sm,
-        color: '#6366F1',
-    },
-
-    // Form
-    formSection: {
+    modalList: {
         marginBottom: SPACING.lg,
     },
-    formLabel: {
-        fontSize: TYPOGRAPHY.size.sm,
-        fontWeight: TYPOGRAPHY.weight.medium,
-        color: COLORS.text.secondary,
+    modalChannelItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
         marginBottom: SPACING.sm,
-    },
-    formInput: {
-        backgroundColor: COLORS.surfaceMuted,
-        borderRadius: RADIUS.lg,
-        padding: SPACING.md,
-        fontSize: TYPOGRAPHY.size.base,
-        color: COLORS.text.primary,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        borderColor: 'rgba(255,255,255,0.03)',
     },
-    dateButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SPACING.sm,
+    modalChannelIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
         backgroundColor: COLORS.surfaceMuted,
-        borderRadius: RADIUS.lg,
-        padding: SPACING.md,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
-    },
-    dateButtonText: {
-        fontSize: TYPOGRAPHY.size.base,
-        color: COLORS.text.primary,
-    },
-
-    // XP Selector
-    xpSelector: {
-        flexDirection: 'row',
-        gap: SPACING.sm,
-    },
-    xpOption: {
-        flex: 1,
-        alignItems: 'center',
-        paddingVertical: SPACING.md,
-        backgroundColor: COLORS.surfaceMuted,
-        borderRadius: RADIUS.lg,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
-    },
-    xpOptionSelected: {
-        backgroundColor: '#6366F1',
-        borderColor: '#6366F1',
-    },
-    xpOptionText: {
-        fontSize: TYPOGRAPHY.size.sm,
-        fontWeight: TYPOGRAPHY.weight.medium,
-        color: COLORS.text.secondary,
-    },
-    xpOptionTextSelected: {
-        color: '#FFF',
-    },
-
-    // Submit
-    submitButton: {
-        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: SPACING.sm,
-        backgroundColor: '#6366F1',
-        paddingVertical: SPACING.lg,
-        borderRadius: RADIUS.xl,
-        marginTop: SPACING.lg,
+        marginRight: SPACING.md,
     },
-    submitButtonDisabled: {
-        opacity: 0.6,
+    modalChannelHash: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: COLORS.text.tertiary,
     },
-    submitText: {
+    modalChannelName: {
         fontSize: TYPOGRAPHY.size.base,
-        fontWeight: TYPOGRAPHY.weight.semibold,
-        color: '#FFF',
+        fontWeight: '600',
+        color: COLORS.text.primary,
+    },
+    modalChannelDesc: {
+        fontSize: TYPOGRAPHY.size.xs,
+        color: COLORS.text.tertiary,
+        marginTop: 2,
     },
 });

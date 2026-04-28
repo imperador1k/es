@@ -71,11 +71,15 @@ serve(async (req: Request) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating token:", error);
+    // Devolvemos 200 mas com erro no corpo para conseguirmos ler a mensagem no cliente
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ 
+        error: error.message,
+        details: "Check Supabase Edge Function logs for more info" 
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAlert } from '@/providers/AlertProvider'; // Added
 import { useAuthContext } from '@/providers/AuthProvider';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,6 +49,7 @@ const TYPE_CONFIG: Record<string, { gradient: [string, string]; icon: string; em
 
 export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetailsModalProps) {
     const { user } = useAuthContext();
+    const queryClient = useQueryClient();
     const { showAlert } = useAlert(); // Added
     const [loading, setLoading] = useState(false);
     const scaleAnim = useRef(new Animated.Value(0.9)).current;
@@ -95,6 +97,10 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
                 title: item.is_completed ? '✅ Reaberta!' : '🎉 Concluída!',
                 message: item.is_completed ? 'Tarefa reaberta.' : 'Parabéns!'
             });
+            
+            // Global cache invalidation
+            queryClient.invalidateQueries({ queryKey: ['calendar'] });
+
             onUpdate();
             onClose();
         } catch (err: any) {
@@ -105,11 +111,17 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
         }
     };
 
-    const handleDeleteEvent = async () => {
+    const handleDeleteItem = async () => {
         if (!user?.id) return;
+        
+        const isEvent = item.item_type === 'event';
+        const isTodo = item.item_type === 'todo';
+        const title = isEvent ? 'Apagar Evento' : (isTodo ? 'Apagar Tarefa' : 'Apagar Item');
+        const table = isEvent ? 'events' : (isTodo ? 'personal_todos' : 'tasks');
+
         showAlert({
-            title: 'Apagar Evento',
-            message: 'Tens a certeza?',
+            title,
+            message: 'Tens a certeza? Esta ação não pode ser desfeita.',
             buttons: [
                 { text: 'Cancelar', style: 'cancel' },
                 {
@@ -118,17 +130,21 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
                     onPress: async () => {
                         setLoading(true);
                         try {
-                            // Fix: Don't split UUIDs! Only split if it's a generated ID (like class-xxx)
-                            // But for 'events' table, it should always be a pure UUID.
-                            // However, let's keep the safeguard for consistency if we ever use generated event IDs.
-                            // Better logic: if it's a UUID, use it directly.
-                            const realId = item.id;
-                            const { error } = await supabase.from('events').delete().eq('id', realId);
+                            const { error } = await supabase.from(table).delete().eq('id', item.id);
                             if (error) throw error;
-                            showAlert({ title: '✅ Apagado!', message: 'Evento removido.' });
+                            
+                            showAlert({ 
+                                title: '✅ Removido!', 
+                                message: isEvent ? 'Evento apagado.' : 'Tarefa apagada.' 
+                            });
+
+                            // Global cache invalidation
+                            queryClient.invalidateQueries({ queryKey: ['calendar'] });
+
                             onUpdate();
                             onClose();
                         } catch (err) {
+                            console.error('❌ Error deleting:', err);
                             showAlert({ title: 'Erro', message: 'Não foi possível apagar.' });
                         } finally {
                             setLoading(false);
@@ -200,6 +216,14 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
                                 </LinearGradient>
                             )}
                         </Pressable>
+
+                        {/* Delete Button for Personal Todos */}
+                        {item.item_type === 'todo' && (
+                            <Pressable style={styles.deleteBtnOutline} onPress={handleDeleteItem} disabled={loading}>
+                                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                                <Text style={styles.deleteBtnTextOutline}>Apagar Tarefa</Text>
+                            </Pressable>
+                        )}
                     </>
                 );
 
@@ -214,7 +238,7 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
                             </View>
                         )}
 
-                        <Pressable style={styles.deleteBtn} onPress={handleDeleteEvent} disabled={loading}>
+                        <Pressable style={styles.deleteBtn} onPress={handleDeleteItem} disabled={loading}>
                             <Ionicons name="trash" size={18} color="#FFF" />
                             <Text style={styles.deleteBtnText}>Apagar Evento</Text>
                         </Pressable>
@@ -339,6 +363,8 @@ const styles = StyleSheet.create({
     primaryBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
     deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: '#EF4444', paddingVertical: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.md },
     deleteBtnText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: '#FFF' },
+    deleteBtnOutline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.md, borderRadius: RADIUS.xl, marginTop: SPACING.sm, borderWidth: 1, borderColor: '#EF444420' },
+    deleteBtnTextOutline: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#EF4444' },
 
     // Info Badge
     infoBadge: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: '#6366F120', padding: SPACING.md, borderRadius: RADIUS.lg, marginTop: SPACING.md },

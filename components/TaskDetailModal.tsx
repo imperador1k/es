@@ -6,6 +6,7 @@
 import { supabase } from '@/lib/supabase';
 import { useAlert } from '@/providers/AlertProvider'; // Added
 import { useAuthContext } from '@/providers/AuthProvider';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
 import * as DocumentPicker from 'expo-document-picker';
@@ -21,7 +22,8 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View
+    View,
+    Linking
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -46,6 +48,7 @@ interface TaskDetailModalProps {
         team_name?: string;
         team_color?: string;
         team_id?: string;
+        config?: any;
     } | null;
 }
 
@@ -56,6 +59,7 @@ interface TaskDetailModalProps {
 export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetailModalProps) {
     const insets = useSafeAreaInsets();
     const { user } = useAuthContext();
+    const queryClient = useQueryClient();
     const { showAlert } = useAlert(); // Added
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -193,6 +197,48 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
         }
     };
 
+    const handleDelete = async () => {
+        if (!user?.id || !task) return;
+        
+        const isTeamTask = task.type === 'task';
+        const title = isTeamTask ? 'Apagar Tarefa de Equipa' : 'Apagar Tarefa';
+        const table = isTeamTask ? 'tasks' : 'personal_todos';
+
+        showAlert({
+            title,
+            message: 'Tens a certeza? Esta ação não pode ser desfeita.',
+            buttons: [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Apagar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setLoading(true);
+                        try {
+                            const { error } = await supabase.from(table).delete().eq('id', task.id);
+                            if (error) throw error;
+                            
+                            // Invalidate caches to keep app in sync
+                            queryClient.invalidateQueries({ queryKey: ['calendar'] });
+                            if (isTeamTask) {
+                                queryClient.invalidateQueries({ queryKey: ['team-tasks'] });
+                            }
+
+                            showAlert({ title: '✅ Apagada', message: 'Tarefa removida com sucesso.' });
+                            onUpdate();
+                            onClose();
+                        } catch (err: any) {
+                            console.error('Error deleting task:', err);
+                            showAlert({ title: 'Erro', message: 'Não foi possível apagar a tarefa.' });
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        });
+    };
+
     // ============================================
     // RENDER
     // ============================================
@@ -222,9 +268,16 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                                 </Text>
                             </View>
 
-                            <Pressable onPress={onClose} style={styles.closeButton}>
-                                <Ionicons name="close" size={22} color="rgba(255,255,255,0.6)" />
-                            </Pressable>
+                            <View style={styles.headerActions}>
+                                {!task.is_completed && (
+                                    <Pressable onPress={handleDelete} style={[styles.headerIconButton, { marginRight: 8 }]}>
+                                        <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                                    </Pressable>
+                                )}
+                                <Pressable onPress={onClose} style={styles.headerIconButton}>
+                                    <Ionicons name="close" size={22} color="rgba(255,255,255,0.6)" />
+                                </Pressable>
+                            </View>
                         </View>
 
                         <Text style={styles.title}>{task.title}</Text>
@@ -295,6 +348,33 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                             <View style={styles.descriptionCard}>
                                 <Text style={styles.sectionTitle}>Descrição</Text>
                                 <Text style={styles.descriptionText}>{task.description}</Text>
+                            </View>
+                        )}
+
+                        {/* Instructor Attachments */}
+                        {task?.config?.instructor_attachments?.length > 0 && (
+                            <View style={styles.attachmentsSection}>
+                                <Text style={styles.sectionTitle}>Material de Apoio</Text>
+                                <View style={styles.attachmentsGrid}>
+                                    {task.config.instructor_attachments.map((file: any, idx: number) => (
+                                        <Pressable 
+                                            key={idx} 
+                                            style={styles.attachmentCard}
+                                            onPress={() => Linking.openURL(file.url)}
+                                        >
+                                            <View style={styles.attachmentIconContainer}>
+                                                <Ionicons name="document-text" size={24} color="#6366F1" />
+                                            </View>
+                                            <View style={styles.attachmentInfo}>
+                                                <Text style={styles.attachmentName} numberOfLines={1}>{file.name}</Text>
+                                                <Text style={styles.attachmentSize}>
+                                                    {(file.size / 1024).toFixed(1)} KB
+                                                </Text>
+                                            </View>
+                                            <Ionicons name="download-outline" size={18} color="rgba(255,255,255,0.4)" />
+                                        </Pressable>
+                                    ))}
+                                </View>
                             </View>
                         )}
 
@@ -495,7 +575,11 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
     },
-    closeButton: {
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    headerIconButton: {
         width: 36,
         height: 36,
         borderRadius: 18,
@@ -710,5 +794,44 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: '#10B981',
+    },
+
+    // Attachments
+    attachmentsSection: {
+        marginBottom: 20,
+    },
+    attachmentsGrid: {
+        gap: 10,
+    },
+    attachmentCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        padding: 12,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        gap: 12,
+    },
+    attachmentIconContainer: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    attachmentInfo: {
+        flex: 1,
+    },
+    attachmentName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFF',
+        marginBottom: 2,
+    },
+    attachmentSize: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.4)',
     },
 });
