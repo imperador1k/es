@@ -80,7 +80,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         } finally {
             setLoading(false);
         }
-    }, [user?.id, profile]);
+    }, [user?.id]);
 
     // Carregar perfil quando o user mudar
     useEffect(() => {

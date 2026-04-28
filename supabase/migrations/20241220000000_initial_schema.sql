@@ -5,7 +5,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 DO $$ BEGIN
-    CREATE TYPE public.education_level AS ENUM ('2_ciclo', '3_ciclo', 'secundario', 'superior');
+    -- Create custom types
+    CREATE TYPE public.education_level AS ENUM (
+        'basic_2',
+        'basic_3',
+        'secondary',
+        'university'
+    );
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;

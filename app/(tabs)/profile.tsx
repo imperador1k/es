@@ -286,7 +286,7 @@ export default function ProfileScreen() {
         if (!user?.id) return;
         setDeleting(true);
         try {
-            const { error } = await supabase.rpc('delete_user');
+            const { error } = await supabase.rpc('delete_user_account');
             if (error) throw error;
             await signOut();
         } catch (err) {

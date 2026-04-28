@@ -4,6 +4,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premiu
 import { useAlert } from '@/providers/AlertProvider';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -49,6 +50,7 @@ export default function EducationSetupScreen() {
 
     const {
         searchSchools,
+        getNearbySchools, // Novo método
         searchUniversities,
         searchDegrees,
         getDistricts,
@@ -59,6 +61,7 @@ export default function EducationSetupScreen() {
     } = useEducationData();
     const [step, setStep] = useState<Step>('level');
     const [saving, setSaving] = useState(false);
+    const [isLocating, setIsLocating] = useState(false);
 
     // Filtros de localização (Escolas)
     const [districts, setDistricts] = useState<string[]>([]);
@@ -166,6 +169,62 @@ export default function EducationSetupScreen() {
     const handleSearchDegrees = useCallback(async (query: string) => {
         return searchDegrees(query, selectedUniversity?.id);
     }, [selectedUniversity, searchDegrees]);
+
+    // Encontrar escolas perto de mim via GPS
+    const handleNearbySearch = async () => {
+        if (!selectedLevel) return;
+
+        try {
+            setIsLocating(true);
+            
+            // 1. Pedir permissão
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                showAlert({ 
+                    title: 'Localização Negada', 
+                    message: 'Precisamos de permissão para encontrar escolas perto de ti.' 
+                });
+                return;
+            }
+
+            // 2. Obter posição atual
+            const location = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced
+            });
+
+            // 3. Definir o ciclo correto
+            let cycle: string | undefined;
+            if (selectedLevel === 'basic_2') cycle = '2º Ciclo';
+            else if (selectedLevel === 'basic_3') cycle = '3º Ciclo';
+            else if (selectedLevel === 'secondary') cycle = 'Secundário';
+
+            // 4. Procurar na BD (via RPC)
+            const nearby = await getNearbySchools(
+                location.coords.latitude, 
+                location.coords.longitude, 
+                cycle
+            );
+
+            if (nearby.length === 0) {
+                showAlert({ 
+                    title: 'Ups!', 
+                    message: 'Não encontrámos escolas num raio de 30km. Tenta pesquisar manualmente.' 
+                });
+            } else {
+                // Forçar a abertura do Autocomplete com os resultados?
+                // Aqui podemos apenas avisar ou mostrar uma lista
+                showAlert({ 
+                    title: 'Escolas Encontradas', 
+                    message: `Encontrámos ${nearby.length} escolas perto de ti. Começa a escrever no campo para as veres.` 
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao obter localização:', error);
+            showAlert({ title: 'Erro', message: 'Ocorreu um erro ao tentar aceder ao GPS.' });
+        } finally {
+            setIsLocating(false);
+        }
+    };
 
     // Guardar e finalizar
     const onSubmit = async (data: EducationFormData) => {
@@ -431,7 +490,23 @@ export default function EducationSetupScreen() {
                                                 rules={{ required: 'Escola é obrigatória' }}
                                                 render={({ field: { value, onChange } }) => (
                                                     <View style={styles.inputGroup}>
-                                                        <Text style={styles.inputLabel}>Escola</Text>
+                                                        <View style={styles.labelWithAction}>
+                                                            <Text style={styles.inputLabel}>Escola</Text>
+                                                            <Pressable 
+                                                                style={[styles.nearbyButton, isLocating && styles.nearbyButtonDisabled]} 
+                                                                onPress={handleNearbySearch}
+                                                                disabled={isLocating}
+                                                            >
+                                                                {isLocating ? (
+                                                                    <ActivityIndicator size="small" color={COLORS.accent.primary} />
+                                                                ) : (
+                                                                    <>
+                                                                        <Ionicons name="location" size={14} color={COLORS.accent.primary} />
+                                                                        <Text style={styles.nearbyButtonText}>Perto de mim</Text>
+                                                                    </>
+                                                                )}
+                                                            </Pressable>
+                                                        </View>
                                                         <Autocomplete
                                                             label=""
                                                             placeholder="Pesquisa a tua escola..."
@@ -799,11 +874,36 @@ const styles = StyleSheet.create({
     levelCardIcon: {
         width: 56,
         height: 56,
-        borderRadius: 28,
-        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+        borderRadius: RADIUS.lg,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: SPACING.md,
+    },
+    labelWithAction: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: SPACING.xs,
+    },
+    nearbyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        paddingHorizontal: SPACING.sm,
+        paddingVertical: 4,
+        borderRadius: RADIUS.full,
+        gap: 4,
+        borderWidth: 1,
+        borderColor: COLORS.glassBorder,
+    },
+    nearbyButtonDisabled: {
+        opacity: 0.6,
+    },
+    nearbyButtonText: {
+        fontSize: 12,
+        fontFamily: TYPOGRAPHY.family.semibold,
+        color: COLORS.accent.primary,
     },
     levelLabel: {
         fontSize: TYPOGRAPHY.size.md,

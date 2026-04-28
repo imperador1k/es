@@ -6,7 +6,7 @@ CREATE OR REPLACE FUNCTION public.delete_user_account()
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 DECLARE
   current_user_id uuid;
@@ -59,11 +59,14 @@ BEGIN
   -- 11. Push tokens
   DELETE FROM user_push_tokens WHERE user_id = current_user_id;
   
-  -- 12. Perfil (por último)
+  -- 12. Dados de Educação (Adicionado para evitar erro de FK)
+  DELETE FROM user_education WHERE user_id = current_user_id;
+
+  -- 13. Perfil
   DELETE FROM profiles WHERE id = current_user_id;
   
-  -- NOTA: O utilizador em auth.users será eliminado pelo Supabase
-  -- quando a sessão expirar ou pode ser feito via Edge Function
+  -- 14. Eliminar da AUTH (O passo crucial que faltava)
+  DELETE FROM auth.users WHERE id = current_user_id;
   
 END;
 $$;

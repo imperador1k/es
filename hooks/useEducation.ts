@@ -240,8 +240,35 @@ export function useEducationData() {
         { id: 'profissional', label: 'Curso Profissional' },
     ];
 
+    // Encontrar escolas próximas via GPS (RPC)
+    const getNearbySchools = useCallback(async (
+        lat: number, 
+        lon: number, 
+        cycle?: string
+    ): Promise<{ id: string; label: string; sublabel?: string; dist_km: number }[]> => {
+        const { data, error } = await supabase.rpc('get_nearby_schools', {
+            user_lat: lat,
+            user_lon: lon,
+            school_cycle: cycle || null,
+            max_dist_km: 30.0 // Raio de 30km
+        });
+
+        if (error) {
+            console.error('Erro ao obter escolas próximas:', error);
+            return [];
+        }
+
+        return (data || []).map((school: any) => ({
+            id: school.id,
+            label: school.name,
+            sublabel: `${school.dist_km.toFixed(1)} km • ${school.municipality}`,
+            dist_km: school.dist_km
+        }));
+    }, []);
+
     return {
         searchSchools,
+        getNearbySchools, // NOVO
         searchUniversities,
         searchDegrees,
         getDistricts,

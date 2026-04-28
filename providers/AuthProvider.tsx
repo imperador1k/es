@@ -88,25 +88,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 // Utilizador NÃO está logado e NÃO está na página de auth
                 console.log('➡️ Redirecting to login');
                 router.replace('/(auth)/login');
-            } else if (session && inAuthGroup && !inOnboarding && !inEducationSetup) {
+            } else if (session) {
+                // Se estivermos no grupo auth, onboarding ou setup, precisamos de validar se já podemos sair
+                if (!inAuthGroup && !inOnboarding && !inEducationSetup) return;
                 // Utilizador ESTÁ logado, verificar se tem perfil completo
-                const { data: profile } = await supabase
+                console.log('🔍 [AuthProvider] Checking profile for:', session.user.id);
+                const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('username')
                     .eq('id', session.user.id)
                     .single();
 
+                if (profileError) console.error('❌ [AuthProvider] Profile error:', profileError);
+
                 if (!profile?.username) {
                     // Perfil incompleto - ir para onboarding
-                    console.log('➡️ Redirecting to onboarding (profile incomplete)');
+                    console.log('➡️ [AuthProvider] Redirecting to onboarding (profile incomplete)');
                     router.replace('/(auth)/onboarding');
                 } else {
+                    console.log('✅ [AuthProvider] Profile found:', profile.username);
                     // Verificar se tem dados de educação
-                    const { data: education } = await supabase
+                    const { data: education, error: eduError } = await supabase
                         .from('user_education')
                         .select('user_id')
                         .eq('user_id', session.user.id)
                         .single();
+
+                    if (eduError && eduError.code !== 'PGRST116') {
+                        console.error('❌ [AuthProvider] Education error:', eduError);
+                    }
 
                     if (!education) {
                         // Educação não configurada - ir para education-setup

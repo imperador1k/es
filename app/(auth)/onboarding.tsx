@@ -116,22 +116,22 @@ export default function OnboardingScreen() {
         try {
             const { error: updateError } = await supabase
                 .from('profiles')
-                .update({
+                .upsert({
+                    id: user.id,
                     username: username.toLowerCase(),
                     full_name: fullName || null,
                     avatar_url: avatarUrl,
-                })
-                .eq('id', user.id);
+                }, { onConflict: 'id' });
 
             if (updateError) throw updateError;
 
             setStep('done');
             await refreshSession(); // Refresh session to trigger AuthProvider redirect check
 
-            // Ir para setup educacional
+            // Ir para setup educacional (Reduzido para 500ms para ser mais fluido)
             setTimeout(() => {
                 router.replace('/(auth)/education-setup' as any);
-            }, 1500);
+            }, 500);
         } catch (error: any) {
             console.error('Onboarding error:', error);
             showAlert({ title: 'Erro', message: error.message });
