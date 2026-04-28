@@ -1,7 +1,7 @@
 {
   "name": "escolaa",
   "main": "expo-router/entry",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "author": "Imperador1k",
   "description": "A melhor plataforma escolar do mundo",
   "scripts": {
@@ -140,10 +140,12 @@
       "icon": "assets/images/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
       "installerIcon": "assets/images/icon.ico",
-      "uninstallerIcon": "assets/images/icon.ico"
+      "uninstallerIcon": "assets/images/icon.ico",
+      "artifactName": "EscolaPlus-Setup-${version}.${ext}"
     },
     "publish": [
       {

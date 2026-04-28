@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { NotificationService } from '@/services/NotificationService';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
@@ -111,6 +112,7 @@ export function CreateEventModal({
     initialDate = new Date(),
 }: CreateEventModalProps) {
     const { user } = useAuthContext();
+    const queryClient = useQueryClient();
     const insets = useSafeAreaInsets();
     const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -186,6 +188,9 @@ export function CreateEventModal({
                 });
                 if (error) throw error;
             }
+
+            // Invalidate React Query cache for the calendar
+            queryClient.invalidateQueries({ queryKey: ['calendar'] });
 
             resetForm();
             onSuccess?.();

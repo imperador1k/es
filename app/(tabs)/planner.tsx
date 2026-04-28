@@ -4,6 +4,7 @@
  */
 
 import { CreateTodoModal } from '@/components/CreateTodoModal';
+import CreateEventModal from '@/components/CreateEventModal';
 import { TaskDetailModal } from '@/components/TaskDetailModal';
 import { CreateTodoInput, PersonalTodo, usePersonalTodos } from '@/hooks/usePersonalTodos';
 import { supabase } from '@/lib/supabase';
@@ -61,7 +62,17 @@ interface UnifiedItem {
     team_name?: string;
     team_color?: string;
     team_id?: string;
-    original: TeamTask | PersonalTodo;
+    original: TeamTask | PersonalTodo | UserEvent;
+}
+
+interface UserEvent {
+    id: string;
+    title: string;
+    description: string | null;
+    start_time: string;
+    end_time: string;
+    location: string | null;
+    type: string;
 }
 
 type ViewMode = 'personal' | 'teams' | 'all';
@@ -226,8 +237,11 @@ export default function PlannerScreen() {
 
     const [tasks, setTasks] = useState<TeamTask[]>([]);
     const [tasksLoading, setTasksLoading] = useState(true);
+    const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
     const [refreshing, setRefreshing] = useState(false);
-    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showTodoModal, setShowTodoModal] = useState(false);
+    const [showEventModal, setShowEventModal] = useState(false);
+    const [showAddOptions, setShowAddOptions] = useState(false);
     const [viewMode, setViewMode] = useState<ViewMode>('personal');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
     const [selectedTask, setSelectedTask] = useState<UnifiedItem | null>(null);
@@ -271,6 +285,15 @@ export default function PlannerScreen() {
             }));
 
             setTasks(processed);
+
+            // Also fetch personal events
+            const { data: eventsData } = await supabase
+                .from('events')
+                .select('id, title, description, start_time, end_time, location, type')
+                .eq('user_id', user.id)
+                .order('start_time', { ascending: true });
+
+            setUserEvents(eventsData || []);
         } catch (err) {
             console.error('Error:', err);
         } finally {
@@ -307,6 +330,19 @@ export default function PlannerScreen() {
         }));
     }, [todos]);
 
+    const userEventItems = useMemo(() => {
+        return userEvents.map(event => ({
+            id: event.id,
+            type: 'todo' as const, // Treat as personal for now
+            title: event.title,
+            description: event.description,
+            due_date: event.start_time,
+            is_completed: false,
+            priority: (event.type === 'exam' ? 'high' : 'medium') as any,
+            original: event,
+        }));
+    }, [userEvents]);
+
     const teamItems = useMemo(() => {
         return tasks.map(task => ({
             id: task.id,
@@ -324,7 +360,15 @@ export default function PlannerScreen() {
     }, [tasks]);
 
     // Filter by status
-    const filteredPersonal = personalItems.filter(i =>
+    const combinedPersonal = useMemo(() => {
+        return [...personalItems, ...userEventItems].sort((a, b) => {
+            if (!a.due_date) return 1;
+            if (!b.due_date) return -1;
+            return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        });
+    }, [personalItems, userEventItems]);
+
+    const filteredPersonal = combinedPersonal.filter(i =>
         statusFilter === 'pending' ? !i.is_completed : i.is_completed
     );
     const filteredTeam = teamItems.filter(i =>
@@ -332,7 +376,7 @@ export default function PlannerScreen() {
     );
 
     // Stats
-    const personalPending = personalItems.filter(i => !i.is_completed).length;
+    const personalPending = combinedPersonal.filter(i => !i.is_completed).length;
     const teamPending = teamItems.filter(i => !i.is_completed).length;
 
     const handleCreateTodo = async (input: CreateTodoInput) => {
@@ -363,7 +407,7 @@ export default function PlannerScreen() {
                             <Text style={styles.headerTitle}>Planner</Text>
                         </WalkthroughableView>
                     </CopilotStep>
-                    <Pressable style={styles.addButton} onPress={() => setShowCreateModal(true)}>
+                    <Pressable style={styles.addButton} onPress={() => setShowAddOptions(true)}>
                         <Ionicons name="add" size={24} color="#FFF" />
                     </Pressable>
                 </View>
@@ -455,7 +499,7 @@ export default function PlannerScreen() {
                                         {statusFilter === 'pending' ? 'Tudo em dia!' : 'Sem tarefas concluídas'}
                                     </Text>
                                     {statusFilter === 'pending' && (
-                                        <Pressable style={styles.emptyButton} onPress={() => setShowCreateModal(true)}>
+                                        <Pressable style={styles.emptyButton} onPress={() => setShowTodoModal(true)}>
                                             <Ionicons name="add" size={18} color="#FFF" />
                                             <Text style={styles.emptyButtonText}>Nova Tarefa</Text>
                                         </Pressable>
@@ -507,8 +551,39 @@ export default function PlannerScreen() {
                 <View style={{ height: 150 }} />
             </ScrollView>
 
-            {/* ========== FAB ========== */}
-            <Pressable style={styles.fab} onPress={() => setShowCreateModal(true)}>
+            {/* ========== FAB with Options ========== */}
+            {showAddOptions && (
+                <Pressable style={styles.fabOverlay} onPress={() => setShowAddOptions(false)}>
+                    <View style={styles.fabOptions}>
+                        <Pressable
+                            style={styles.fabOption}
+                            onPress={() => {
+                                setShowAddOptions(false);
+                                setShowTodoModal(true);
+                            }}
+                        >
+                            <LinearGradient colors={['#10B981', '#059669']} style={styles.fabOptionIcon}>
+                                <Ionicons name="checkbox" size={20} color="#FFF" />
+                            </LinearGradient>
+                            <Text style={styles.fabOptionText}>Nova Tarefa</Text>
+                        </Pressable>
+                        <Pressable
+                            style={styles.fabOption}
+                            onPress={() => {
+                                setShowAddOptions(false);
+                                setShowEventModal(true);
+                            }}
+                        >
+                            <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.fabOptionIcon}>
+                                <Ionicons name="calendar" size={20} color="#FFF" />
+                            </LinearGradient>
+                            <Text style={styles.fabOptionText}>Novo Evento</Text>
+                        </Pressable>
+                    </View>
+                </Pressable>
+            )}
+
+            <Pressable style={styles.fab} onPress={() => setShowAddOptions(true)}>
                 <LinearGradient colors={['#10B981', '#059669']} style={styles.fabGradient}>
                     <Ionicons name="add" size={28} color="#FFF" />
                 </LinearGradient>
@@ -516,9 +591,18 @@ export default function PlannerScreen() {
 
             {/* ========== MODALS ========== */}
             <CreateTodoModal
-                visible={showCreateModal}
-                onClose={() => setShowCreateModal(false)}
+                visible={showTodoModal}
+                onClose={() => setShowTodoModal(false)}
                 onSubmit={handleCreateTodo}
+            />
+
+            <CreateEventModal
+                visible={showEventModal}
+                onClose={() => setShowEventModal(false)}
+                onSuccess={() => {
+                    fetchTasks();
+                    refreshTodos();
+                }}
             />
 
             <TaskDetailModal
@@ -858,5 +942,43 @@ const styles = StyleSheet.create({
         borderRadius: 28,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    fabOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+        alignItems: 'flex-end',
+        paddingBottom: 190,
+        paddingRight: LAYOUT.screenPadding,
+    },
+    fabOptions: {
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.sm,
+        gap: SPACING.xs,
+        ...SHADOWS.lg,
+    },
+    fabOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.md,
+        paddingVertical: SPACING.sm,
+        paddingHorizontal: SPACING.md,
+    },
+    fabOptionIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    fabOptionText: {
+        fontSize: TYPOGRAPHY.size.base,
+        fontWeight: TYPOGRAPHY.weight.medium,
+        color: COLORS.text.primary,
     },
 });

@@ -37,6 +37,16 @@ export interface PersonalTodo {
     tags?: string[];
 }
 
+export interface UserEvent {
+    id: string;
+    title: string;
+    description?: string;
+    start_time: string;
+    end_time: string;
+    location?: string;
+    type: string;
+}
+
 export interface AgendaItem extends CalendarItem {
     name: string;
     height: number;
@@ -113,6 +123,22 @@ async function fetchPersonalTodos(userId: string, startDate: string, endDate: st
     return (data || []) as PersonalTodo[];
 }
 
+async function fetchUserEvents(userId: string, startDate: string, endDate: string): Promise<UserEvent[]> {
+    const { data, error } = await supabase
+        .from('events')
+        .select('id, title, description, start_time, end_time, location, type')
+        .eq('user_id', userId)
+        .gte('start_time', startDate)
+        .lte('start_time', endDate + 'T23:59:59');
+
+    if (error) {
+        console.error('❌ User events error:', error);
+        return [];
+    }
+
+    return (data || []) as UserEvent[];
+}
+
 // ============================================
 // HOOK - OFFLINE-FIRST VERSION
 // ============================================
@@ -175,6 +201,24 @@ export function useCalendarItems(focusedDate: Date) {
     });
 
     // ============================================
+    // QUERY 4: User Events - OFFLINE-FIRST
+    // ============================================
+    const {
+        data: userEvents = [],
+        isLoading: userEventsLoading,
+        isRefetching: userEventsRefetching,
+        error: userEventsError,
+        refetch: refetchUserEvents,
+    } = useQuery<UserEvent[]>({
+        queryKey: ['calendar', 'user_events', user?.id, startDate, endDate],
+        queryFn: () => fetchUserEvents(user!.id, startDate, endDate),
+        enabled: !!user?.id,
+        staleTime: 1000 * 60 * 5, // 5 minutos
+        gcTime: 1000 * 60 * 60 * 24, // 24 horas
+        placeholderData: (previousData) => previousData,
+    });
+
+    // ============================================
     // MERGE ALL ITEMS
     // ============================================
 
@@ -197,8 +241,23 @@ export function useCalendarItems(focusedDate: Date) {
         });
     }, [personalTodos]);
 
+    // Map user events to CalendarItem format
+    const userEventsItems: CalendarItem[] = useMemo(() => {
+        return userEvents.map(event => ({
+            id: event.id,
+            title: event.title,
+            description: event.description,
+            start_at: event.start_time,
+            end_at: event.end_time,
+            item_type: 'event' as const,
+            category: event.type,
+            color: getItemColor('event', event.type),
+            room: event.location,
+        }));
+    }, [userEvents]);
+
     const allItems = useMemo(() => {
-        const combined = [...rpcItems, ...personalTodosItems];
+        const combined = [...rpcItems, ...personalTodosItems, ...userEventsItems];
         // Deduplicate by ID to prevent React key errors
         const seen = new Set<string>();
         return combined.filter(item => {
@@ -206,7 +265,7 @@ export function useCalendarItems(focusedDate: Date) {
             seen.add(item.id);
             return true;
         });
-    }, [rpcItems, personalTodosItems]);
+    }, [rpcItems, personalTodosItems, userEventsItems]);
 
     // ============================================
     // FORMAT FOR AGENDA COMPONENT
@@ -276,17 +335,17 @@ export function useCalendarItems(focusedDate: Date) {
     // ============================================
 
     const refetch = async () => {
-        await Promise.all([refetchRpc(), refetchTodos()]);
+        await Promise.all([refetchRpc(), refetchTodos(), refetchUserEvents()]);
     };
 
     // ============================================
     // COMBINED LOADING STATE
     // ============================================
 
-    const loading = rpcLoading || todosLoading;
-    const isRefetching = rpcRefetching || todosRefetching;
-    const error = rpcError || todosError
-        ? (rpcError?.message || todosError?.message || 'Erro ao carregar calendário')
+    const loading = rpcLoading || todosLoading || userEventsLoading;
+    const isRefetching = rpcRefetching || todosRefetching || userEventsRefetching;
+    const error = rpcError || todosError || userEventsError
+        ? (rpcError?.message || todosError?.message || userEventsError?.message || 'Erro ao carregar calendário')
         : null;
 
     return {
