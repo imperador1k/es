@@ -1,3 +1,4 @@
+import { LoadingScreen } from '@/components/LoadingScreen';
 import { supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const router = useRouter();
     const segments = useSegments();
@@ -52,15 +54,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
             console.log('✅ [AuthProvider] Initial session:', session ? 'FOUND' : 'NULL');
             setSession(session);
             setUser(session?.user ?? null);
-            setIsLoading(false);
+            // Pequeno delay para garantir que a transição é suave e não um "flash"
+            setTimeout(() => setIsLoading(false), 1000);
         });
 
         // Escutar mudanças de autenticação
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 console.log('🔐 [AuthProvider] Auth event:', event);
+                
+                if (event === 'SIGNED_IN') setIsRefreshing(true);
+                
                 setSession(session);
                 setUser(session?.user ?? null);
+                
+                if (event === 'SIGNED_IN') {
+                    setTimeout(() => setIsRefreshing(false), 1500);
+                }
+                
                 setIsLoading(false);
             }
         );
@@ -74,7 +85,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     useEffect(() => {
         const checkProfileAndRedirect = async () => {
             // Não fazer nada enquanto está a carregar
-            if (isLoading) return;
+            if (isLoading || isRefreshing) return;
 
             // Verificar se a navegação está pronta
             if (!navigationState?.key) return;
@@ -91,6 +102,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             } else if (session) {
                 // Se estivermos no grupo auth, onboarding ou setup, precisamos de validar se já podemos sair
                 if (!inAuthGroup && !inOnboarding && !inEducationSetup) return;
+                
                 // Utilizador ESTÁ logado, verificar se tem perfil completo
                 console.log('🔍 [AuthProvider] Checking profile for:', session.user.id);
                 const { data: profile, error: profileError } = await supabase
@@ -132,7 +144,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         };
 
         checkProfileAndRedirect();
-    }, [session, segments, isLoading, navigationState?.key]);
+    }, [session, segments, isLoading, isRefreshing, navigationState?.key]);
 
     // Função de logout
     const signOut = async () => {
@@ -147,15 +159,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     const refreshSession = async () => {
+        setIsRefreshing(true);
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
         setUser(session?.user ?? null);
+        setTimeout(() => setIsRefreshing(false), 800);
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, isLoading, signOut, refreshSession }}>
-            {children}
+        <AuthContext.Provider value={{ user, session, isLoading: isLoading || isRefreshing, signOut, refreshSession }}>
+            {isLoading || isRefreshing ? (
+                <LoadingScreen message={isRefreshing ? "A entrar no teu espaço..." : "A preparar a Escola+..."} />
+            ) : (
+                children
+            )}
         </AuthContext.Provider>
     );
 }
-

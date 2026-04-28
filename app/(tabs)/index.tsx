@@ -101,8 +101,11 @@ export default function HomeScreen() {
 
   const fetchNextClass = async () => {
     try {
-      const today = new Date();
-      const dayOfWeek = today.getDay(); // 0 = Sunday
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const currentTime = now.toLocaleTimeString('pt-PT', { hour12: false, hour: '2-digit', minute: '2-digit' }) + ':00';
+
+      console.log(`🔍 [Home] Searching class for Day: ${dayOfWeek}, Time: ${currentTime}, User: ${profile?.id}`);
 
       const { data, error } = await supabase
         .from('class_schedule')
@@ -116,11 +119,17 @@ export default function HomeScreen() {
         `)
         .eq('user_id', profile?.id)
         .eq('day_of_week', dayOfWeek)
+        .gte('end_time', currentTime) // Mostrar a que está a decorrer ou a próxima
         .order('start_time', { ascending: true })
         .limit(1);
 
-      if (!error && data && data.length > 0) {
+      if (error) {
+        console.error('❌ [Home] Error fetching class:', error);
+      }
+
+      if (data && data.length > 0) {
         const classData = data[0];
+        console.log('✅ [Home] Next class found:', (classData.user_subjects as any)?.name);
         setNextClass({
           id: classData.id,
           subject_name: (classData.user_subjects as any)?.name || 'Aula',
@@ -130,6 +139,9 @@ export default function HomeScreen() {
           day_of_week: classData.day_of_week,
           image_url: (classData.user_subjects as any)?.image_url || undefined,
         });
+      } else {
+        console.log('ℹ️ [Home] No more classes for today.');
+        setNextClass(null);
       }
     } catch (err) {
       console.error('Error fetching next class:', err);

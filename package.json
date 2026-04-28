@@ -38,6 +38,7 @@
     "csv-parse": "^6.1.0",
     "date-fns": "^4.1.0",
     "electron-serve": "^3.0.0",
+    "electron-updater": "^6.8.3",
     "expo": "~54.0.30",
     "expo-auth-session": "~7.0.10",
     "expo-av": "~16.0.8",
@@ -135,6 +136,13 @@
       "installerIcon": "assets/images/icon.ico",
       "uninstallerIcon": "assets/images/icon.ico"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "imperador1k",
+        "repo": "es"
+      }
+    ],
     "protocols": [
       {
         "name": "escolaa",

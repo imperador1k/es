@@ -2,7 +2,8 @@
  * Electron Main Process - VERSÃO FINAL COM DEEP LINKING
  */
 
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs'); // Add fs
 
@@ -105,9 +106,37 @@ async function createWindow() {
     try {
         await loadURL(mainWindow);
         console.log('✅ App carregada!');
+        
+        // --- AUTO UPDATER LOGIC ---
+        if (!process.defaultApp) { // Apenas em produção
+            autoUpdater.checkForUpdatesAndNotify();
+        }
     } catch (err) {
         console.error('❌ Erro ao carregar dist:', err);
     }
+
+    // Eventos do AutoUpdater
+    autoUpdater.on('update-available', () => {
+        logToFile('📢 Atualização disponível detetada.');
+    });
+
+    autoUpdater.on('update-downloaded', () => {
+        logToFile('✅ Atualização descarregada e pronta.');
+        dialog.showMessageBox({
+            type: 'info',
+            title: 'Atualização Pronta 🚀',
+            message: 'Uma nova versão da Escola+ foi descarregada. Queres reiniciar a app para aplicar as melhorias?',
+            buttons: ['Reiniciar', 'Mais tarde']
+        }).then((result) => {
+            if (result.response === 0) {
+                autoUpdater.quitAndInstall();
+            }
+        });
+    });
+
+    autoUpdater.on('error', (err) => {
+        logToFile('❌ Erro no AutoUpdater: ' + err.message);
+    });
 
     mainWindow.on('closed', () => {
         mainWindow = null;
