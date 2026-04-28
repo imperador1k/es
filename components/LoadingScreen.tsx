@@ -1,8 +1,8 @@
-import { COLORS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { COLORS, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View, ImageBackground, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, Dimensions } from 'react-native';
 import Animated, { 
     useAnimatedStyle, 
     useSharedValue, 
@@ -19,34 +19,20 @@ interface LoadingScreenProps {
     message?: string;
 }
 
-export function LoadingScreen({ message = 'A preparar o teu espaço...' }: LoadingScreenProps) {
+export function LoadingScreen({ message = 'A carregar o teu sucesso...' }: LoadingScreenProps) {
     const scale = useSharedValue(1);
     const progress = useSharedValue(0);
-    const glowOpacity = useSharedValue(0.4);
 
     useEffect(() => {
-        // Logo pulse
         scale.value = withRepeat(
             withSequence(
-                withTiming(1.05, { duration: 1500 }),
-                withTiming(1, { duration: 1500 })
+                withTiming(1.1, { duration: 1200 }),
+                withTiming(1, { duration: 1200 })
             ),
             -1,
             true
         );
-
-        // Progress bar simulation
-        progress.value = withTiming(1, { duration: 3000 });
-
-        // Glow pulse
-        glowOpacity.value = withRepeat(
-            withSequence(
-                withTiming(0.8, { duration: 2000 }),
-                withTiming(0.4, { duration: 2000 })
-            ),
-            -1,
-            true
-        );
+        progress.value = withTiming(1, { duration: 2500 });
     }, []);
 
     const logoStyle = useAnimatedStyle(() => ({
@@ -57,44 +43,34 @@ export function LoadingScreen({ message = 'A preparar o teu espaço...' }: Loadi
         width: `${progress.value * 100}%`,
     }));
 
-    const glowStyle = useAnimatedStyle(() => ({
-        opacity: glowOpacity.value,
-    }));
-
     return (
         <View style={styles.container}>
-            <ImageBackground 
-                source={require('../assets/images/premium_loading_bg.png')}
+            <LinearGradient
+                colors={['#050505', '#0A0A0F', '#050505']}
                 style={StyleSheet.absoluteFill}
-                resizeMode="cover"
-            >
-                <View style={styles.overlay} />
-                
-                <Animated.View entering={FadeIn.duration(1000)} style={styles.content}>
-                    <BlurView intensity={20} tint="dark" style={styles.glassCard}>
-                        <View style={styles.logoWrapper}>
-                            <Animated.View style={[styles.glow, glowStyle]} />
-                            <Animated.View style={[styles.logoContainer, logoStyle]}>
-                                <Ionicons name="school" size={44} color="#FFF" />
-                            </Animated.View>
-                        </View>
-
-                        <Animated.View entering={FadeInDown.delay(400).duration(800)} style={styles.textContainer}>
-                            <Text style={styles.title}>Escola+</Text>
-                            <Text style={styles.subtitle}>{message}</Text>
-                        </Animated.View>
-
-                        <View style={styles.loaderContainer}>
-                            <View style={styles.loaderTrack}>
-                                <Animated.View style={[styles.loaderFill, progressStyle]} />
-                            </View>
-                            <Text style={styles.percentage}>
-                                A carregar módulos seguros...
-                            </Text>
-                        </View>
-                    </BlurView>
+            />
+            
+            <Animated.View entering={FadeIn.duration(800)} style={styles.content}>
+                <Animated.View style={[styles.logoContainer, logoStyle]}>
+                    <LinearGradient
+                        colors={['#6366F1', '#4F46E5']}
+                        style={styles.logoGradient}
+                    >
+                        <Ionicons name="school" size={40} color="#FFF" />
+                    </LinearGradient>
                 </Animated.View>
-            </ImageBackground>
+
+                <Animated.View entering={FadeInDown.delay(200).duration(800)} style={styles.textContainer}>
+                    <Text style={styles.title}>Escola+</Text>
+                    <Text style={styles.subtitle}>{message}</Text>
+                </Animated.View>
+
+                <View style={styles.loaderContainer}>
+                    <View style={styles.loaderTrack}>
+                        <Animated.View style={[styles.loaderFill, progressStyle]} />
+                    </View>
+                </View>
+            </Animated.View>
         </View>
     );
 }
@@ -102,99 +78,60 @@ export function LoadingScreen({ message = 'A preparar o teu espaço...' }: Loadi
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#000',
-    },
-    overlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        backgroundColor: '#050505',
     },
     content: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
-    },
-    glassCard: {
-        width: width * 0.85,
-        maxWidth: 400,
-        padding: 40,
-        borderRadius: 40,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        overflow: 'hidden',
-    },
-    logoWrapper: {
-        width: 100,
-        height: 100,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 24,
-    },
-    glow: {
-        position: 'absolute',
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        backgroundColor: COLORS.accent.primary,
-        filter: 'blur(30px)',
     },
     logoContainer: {
         width: 80,
         height: 80,
-        borderRadius: 24,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 22,
+        overflow: 'hidden',
+        marginBottom: 24,
+        elevation: 20,
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+    },
+    logoGradient: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
     },
     textContainer: {
         alignItems: 'center',
-        marginBottom: 40,
+        marginBottom: 32,
     },
     title: {
-        fontSize: 32,
+        fontSize: 24,
         fontFamily: TYPOGRAPHY.family.bold,
         color: '#FFF',
-        letterSpacing: 2,
-        marginBottom: 8,
-        textShadowColor: 'rgba(0,0,0,0.5)',
-        textShadowOffset: { width: 0, height: 2 },
-        textShadowRadius: 4,
+        letterSpacing: 3,
+        textTransform: 'uppercase',
     },
     subtitle: {
-        fontSize: 16,
-        color: 'rgba(255,255,255,0.6)',
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.4)',
         fontFamily: TYPOGRAPHY.family.medium,
-        textAlign: 'center',
+        marginTop: 4,
     },
     loaderContainer: {
-        width: '100%',
+        width: 120,
         alignItems: 'center',
     },
     loaderTrack: {
         width: '100%',
-        height: 6,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 3,
+        height: 2,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 1,
         overflow: 'hidden',
-        marginBottom: 12,
     },
     loaderFill: {
         height: '100%',
-        backgroundColor: COLORS.accent.primary,
-        borderRadius: 3,
-        shadowColor: COLORS.accent.primary,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 10,
-    },
-    percentage: {
-        fontSize: 12,
-        color: 'rgba(255,255,255,0.4)',
-        fontFamily: TYPOGRAPHY.family.regular,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
+        backgroundColor: '#6366F1',
     }
 });

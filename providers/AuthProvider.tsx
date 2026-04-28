@@ -84,59 +84,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Redirecionar baseado no estado de autenticação E perfil completo
     useEffect(() => {
         const checkProfileAndRedirect = async () => {
-            // Não fazer nada enquanto está a carregar
-            if (isLoading || isRefreshing) return;
+            // Não fazer nada enquanto está a carregar o arranque inicial
+            if (isLoading) return;
 
             // Verificar se a navegação está pronta
             if (!navigationState?.key) return;
 
-            // Verificar se estamos numa rota de autenticação
+            const segments_str = segments.join('/');
             const inAuthGroup = segments[0] === '(auth)';
-            const inOnboarding = segments[1] === 'onboarding';
-            const inEducationSetup = segments[1] === 'education-setup';
+            const inTabs = segments[0] === '(tabs)';
 
-            if (!session && !inAuthGroup) {
-                // Utilizador NÃO está logado e NÃO está na página de auth
-                console.log('➡️ Redirecting to login');
-                router.replace('/(auth)/login');
-            } else if (session) {
-                // Se estivermos no grupo auth, onboarding ou setup, precisamos de validar se já podemos sair
-                if (!inAuthGroup && !inOnboarding && !inEducationSetup) return;
-                
-                // Utilizador ESTÁ logado, verificar se tem perfil completo
-                console.log('🔍 [AuthProvider] Checking profile for:', session.user.id);
-                const { data: profile, error: profileError } = await supabase
+            if (!session) {
+                if (!inAuthGroup) {
+                    console.log('➡️ Redirecting to login');
+                    router.replace('/(auth)/login');
+                }
+                return;
+            }
+
+            // Se o utilizador já estiver na App (tabs) e a sessão for apenas renovada, NÃO redirecionar
+            if (session && inTabs && !isRefreshing) return;
+
+            // Se estivermos logados e no grupo auth ou root, verificar perfil
+            if (session && (inAuthGroup || segments_str === '')) {
+                console.log('🔍 [AuthProvider] Validating profile...');
+                const { data: profile } = await supabase
                     .from('profiles')
                     .select('username')
                     .eq('id', session.user.id)
                     .single();
 
-                if (profileError) console.error('❌ [AuthProvider] Profile error:', profileError);
-
                 if (!profile?.username) {
-                    // Perfil incompleto - ir para onboarding
-                    console.log('➡️ [AuthProvider] Redirecting to onboarding (profile incomplete)');
                     router.replace('/(auth)/onboarding');
                 } else {
-                    console.log('✅ [AuthProvider] Profile found:', profile.username);
-                    // Verificar se tem dados de educação
-                    const { data: education, error: eduError } = await supabase
+                    const { data: education } = await supabase
                         .from('user_education')
                         .select('user_id')
                         .eq('user_id', session.user.id)
                         .single();
 
-                    if (eduError && eduError.code !== 'PGRST116') {
-                        console.error('❌ [AuthProvider] Education error:', eduError);
-                    }
-
                     if (!education) {
-                        // Educação não configurada - ir para education-setup
-                        console.log('➡️ Redirecting to education-setup');
-                        router.replace('/(auth)/education-setup' as any);
+                        router.replace('/(auth)/education-setup');
                     } else {
-                        // Perfil completo - ir para a app
-                        console.log('➡️ Redirecting to tabs');
                         router.replace('/(tabs)');
                     }
                 }
@@ -144,7 +133,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         };
 
         checkProfileAndRedirect();
-    }, [session, segments, isLoading, isRefreshing, navigationState?.key]);
+    }, [session, segments, isLoading, navigationState?.key]);
 
     // Função de logout
     const signOut = async () => {
@@ -163,13 +152,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
         setUser(session?.user ?? null);
-        setTimeout(() => setIsRefreshing(false), 800);
+        setTimeout(() => setIsRefreshing(false), 500);
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, isLoading: isLoading || isRefreshing, signOut, refreshSession }}>
-            {isLoading || isRefreshing ? (
-                <LoadingScreen message={isRefreshing ? "A entrar no teu espaço..." : "A preparar a Escola+..."} />
+        <AuthContext.Provider value={{ user, session, isLoading, signOut, refreshSession }}>
+            {isLoading ? (
+                <LoadingScreen message="A preparar a Escola+..." />
             ) : (
                 children
             )}
