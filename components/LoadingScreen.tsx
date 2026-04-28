@@ -1,16 +1,19 @@
 import { COLORS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, ImageBackground, Dimensions } from 'react-native';
 import Animated, { 
     useAnimatedStyle, 
     useSharedValue, 
     withRepeat, 
     withSequence, 
     withTiming,
-    FadeIn
+    FadeIn,
+    FadeInDown
 } from 'react-native-reanimated';
+
+const { width } = Dimensions.get('window');
 
 interface LoadingScreenProps {
     message?: string;
@@ -18,43 +21,31 @@ interface LoadingScreenProps {
 
 export function LoadingScreen({ message = 'A preparar o teu espaço...' }: LoadingScreenProps) {
     const scale = useSharedValue(1);
-    const opacity = useSharedValue(0.5);
-    const rotation = useSharedValue(0);
-    const loaderMove = useSharedValue(-60);
+    const progress = useSharedValue(0);
+    const glowOpacity = useSharedValue(0.4);
 
     useEffect(() => {
         // Logo pulse
         scale.value = withRepeat(
             withSequence(
-                withTiming(1.1, { duration: 1000 }),
-                withTiming(1, { duration: 1000 })
+                withTiming(1.05, { duration: 1500 }),
+                withTiming(1, { duration: 1500 })
             ),
             -1,
             true
         );
 
-        // Text opacity
-        opacity.value = withRepeat(
+        // Progress bar simulation
+        progress.value = withTiming(1, { duration: 3000 });
+
+        // Glow pulse
+        glowOpacity.value = withRepeat(
             withSequence(
-                withTiming(1, { duration: 1500 }),
-                withTiming(0.5, { duration: 1500 })
+                withTiming(0.8, { duration: 2000 }),
+                withTiming(0.4, { duration: 2000 })
             ),
             -1,
             true
-        );
-
-        // Ring rotation
-        rotation.value = withRepeat(
-            withTiming(360, { duration: 3000 }),
-            -1,
-            false
-        );
-
-        // Progress bar move
-        loaderMove.value = withRepeat(
-            withTiming(140, { duration: 1500 }),
-            -1,
-            false
         );
     }, []);
 
@@ -62,45 +53,48 @@ export function LoadingScreen({ message = 'A preparar o teu espaço...' }: Loadi
         transform: [{ scale: scale.value }],
     }));
 
-    const ringStyle = useAnimatedStyle(() => ({
-        transform: [{ rotate: `${rotation.value}deg` }]
+    const progressStyle = useAnimatedStyle(() => ({
+        width: `${progress.value * 100}%`,
     }));
 
-    const loaderStyle = useAnimatedStyle(() => ({
-        transform: [{ translateX: loaderMove.value }]
+    const glowStyle = useAnimatedStyle(() => ({
+        opacity: glowOpacity.value,
     }));
 
     return (
         <View style={styles.container}>
-            <LinearGradient
-                colors={['#0A0A0F', '#13151A', '#0F1014']}
+            <ImageBackground 
+                source={require('../assets/images/premium_loading_bg.png')}
                 style={StyleSheet.absoluteFill}
-            />
+                resizeMode="cover"
+            >
+                <View style={styles.overlay} />
+                
+                <Animated.View entering={FadeIn.duration(1000)} style={styles.content}>
+                    <BlurView intensity={20} tint="dark" style={styles.glassCard}>
+                        <View style={styles.logoWrapper}>
+                            <Animated.View style={[styles.glow, glowStyle]} />
+                            <Animated.View style={[styles.logoContainer, logoStyle]}>
+                                <Ionicons name="school" size={44} color="#FFF" />
+                            </Animated.View>
+                        </View>
 
-            <Animated.View entering={FadeIn.duration(800)} style={styles.content}>
-                <View style={styles.logoWrapper}>
-                    <Animated.View style={[styles.outerRing, ringStyle]} />
-                    <Animated.View style={[styles.logoContainer, logoStyle]}>
-                        <LinearGradient
-                            colors={COLORS.brand.gradient as [string, string]}
-                            style={styles.logoGradient}
-                        >
-                            <Ionicons name="sparkles" size={40} color="#FFF" />
-                        </LinearGradient>
-                    </Animated.View>
-                </View>
+                        <Animated.View entering={FadeInDown.delay(400).duration(800)} style={styles.textContainer}>
+                            <Text style={styles.title}>Escola+</Text>
+                            <Text style={styles.subtitle}>{message}</Text>
+                        </Animated.View>
 
-                <View style={styles.textContainer}>
-                    <Text style={styles.title}>Escola+</Text>
-                    <Animated.Text style={[styles.subtitle, { opacity: opacity }]}>
-                        {message}
-                    </Animated.Text>
-                </View>
-
-                <View style={styles.loaderTrack}>
-                    <Animated.View style={[styles.loaderFill, loaderStyle]} />
-                </View>
-            </Animated.View>
+                        <View style={styles.loaderContainer}>
+                            <View style={styles.loaderTrack}>
+                                <Animated.View style={[styles.loaderFill, progressStyle]} />
+                            </View>
+                            <Text style={styles.percentage}>
+                                A carregar módulos seguros...
+                            </Text>
+                        </View>
+                    </BlurView>
+                </Animated.View>
+            </ImageBackground>
         </View>
     );
 }
@@ -108,72 +102,99 @@ export function LoadingScreen({ message = 'A preparar o teu espaço...' }: Loadi
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#0A0A0F',
+        backgroundColor: '#000',
+    },
+    overlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.4)',
     },
     content: {
-        alignItems: 'center',
-    },
-    logoWrapper: {
-        width: 120,
-        height: 120,
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: SPACING.xl,
+        padding: 20,
     },
-    outerRing: {
-        position: 'absolute',
+    glassCard: {
+        width: width * 0.85,
+        maxWidth: 400,
+        padding: 40,
+        borderRadius: 40,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        overflow: 'hidden',
+    },
+    logoWrapper: {
         width: 100,
         height: 100,
-        borderRadius: 50,
-        borderWidth: 2,
-        borderColor: 'rgba(99, 102, 241, 0.2)',
-        borderStyle: 'dashed',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    glow: {
+        position: 'absolute',
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: COLORS.accent.primary,
+        filter: 'blur(30px)',
     },
     logoContainer: {
         width: 80,
         height: 80,
         borderRadius: 24,
-        overflow: 'hidden',
-        elevation: 10,
-        shadowColor: COLORS.accent.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
-    },
-    logoGradient: {
-        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     textContainer: {
         alignItems: 'center',
-        gap: 8,
+        marginBottom: 40,
     },
     title: {
-        fontSize: 28,
+        fontSize: 32,
         fontFamily: TYPOGRAPHY.family.bold,
         color: '#FFF',
-        letterSpacing: 1,
+        letterSpacing: 2,
+        marginBottom: 8,
+        textShadowColor: 'rgba(0,0,0,0.5)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 4,
     },
     subtitle: {
         fontSize: 16,
-        color: 'rgba(255,255,255,0.5)',
+        color: 'rgba(255,255,255,0.6)',
         fontFamily: TYPOGRAPHY.family.medium,
+        textAlign: 'center',
+    },
+    loaderContainer: {
+        width: '100%',
+        alignItems: 'center',
     },
     loaderTrack: {
-        width: 140,
-        height: 4,
+        width: '100%',
+        height: 6,
         backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 2,
-        marginTop: 40,
+        borderRadius: 3,
         overflow: 'hidden',
+        marginBottom: 12,
     },
     loaderFill: {
-        width: '40%',
         height: '100%',
         backgroundColor: COLORS.accent.primary,
-        borderRadius: 2,
+        borderRadius: 3,
+        shadowColor: COLORS.accent.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 10,
+    },
+    percentage: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.4)',
+        fontFamily: TYPOGRAPHY.family.regular,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
     }
 });
