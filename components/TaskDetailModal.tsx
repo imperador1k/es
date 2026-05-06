@@ -39,7 +39,7 @@ interface TaskDetailModalProps {
     onUpdate: () => void;
     task: {
         id: string;
-        type: 'task' | 'todo';
+        type: 'task' | 'todo' | 'event';
         title: string;
         description: string | null;
         due_date: string | null;
@@ -47,7 +47,7 @@ interface TaskDetailModalProps {
         priority?: 'low' | 'medium' | 'high';
         team_name?: string;
         team_color?: string;
-        team_id?: string;
+        team_id?: string | null;
         config?: any;
     } | null;
 }
@@ -201,8 +201,9 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
         if (!user?.id || !task) return;
         
         const isTeamTask = task.type === 'task';
-        const title = isTeamTask ? 'Apagar Tarefa de Equipa' : 'Apagar Tarefa';
-        const table = isTeamTask ? 'tasks' : 'personal_todos';
+        const isEvent = task.type === 'event';
+        const title = isEvent ? 'Apagar Evento' : isTeamTask ? 'Apagar Tarefa de Equipa' : 'Apagar Tarefa';
+        const table = isEvent ? 'events' : isTeamTask ? 'tasks' : 'personal_todos';
 
         showAlert({
             title,

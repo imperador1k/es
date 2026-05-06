@@ -25,6 +25,7 @@ export interface CalendarItem {
     is_completed?: boolean;
     room?: string;
     subject_name?: string;
+    team_name?: string;
 }
 
 export interface PersonalTodo {
@@ -45,6 +46,18 @@ export interface UserEvent {
     end_time: string;
     location?: string;
     type: string;
+}
+
+export interface TeamEvent {
+    id: string;
+    team_id: string;
+    title: string;
+    description: string | null;
+    start_time: string;
+    end_time: string | null;
+    location: string | null;
+    type: string;
+    team?: { name: string; color: string };
 }
 
 export interface AgendaItem extends CalendarItem {
@@ -139,6 +152,35 @@ async function fetchUserEvents(userId: string, startDate: string, endDate: strin
     return (data || []) as UserEvent[];
 }
 
+async function fetchTeamEvents(userId: string, startDate: string, endDate: string): Promise<TeamEvent[]> {
+    // 1. Get user's teams
+    const { data: memberships } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .eq('user_id', userId);
+
+    const teamIds = memberships?.map(m => m.team_id) || [];
+    if (teamIds.length === 0) return [];
+
+    // 2. Get team events for those teams
+    const { data, error } = await supabase
+        .from('team_events')
+        .select(`*, team:teams(name, color)`)
+        .in('team_id', teamIds)
+        .gte('start_time', startDate)
+        .lte('start_time', endDate + 'T23:59:59');
+
+    if (error) {
+        console.error('❌ Team events error:', error);
+        return [];
+    }
+
+    return (data || []).map(t => ({
+        ...t,
+        team: Array.isArray(t.team) ? t.team[0] : t.team
+    })) as TeamEvent[];
+}
+
 // ============================================
 // HOOK - OFFLINE-FIRST VERSION
 // ============================================
@@ -222,8 +264,26 @@ export function useCalendarItems(focusedDate: Date, rangeType: CalendarRange = '
         queryKey: ['calendar', 'user_events', user?.id, startDate, endDate],
         queryFn: () => fetchUserEvents(user!.id, startDate, endDate),
         enabled: !!user?.id,
-        staleTime: 1000 * 60 * 5, // 5 minutos
-        gcTime: 1000 * 60 * 60 * 24, // 24 horas
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 60 * 24,
+        placeholderData: (previousData) => previousData,
+    });
+
+    // ============================================
+    // QUERY 5: Team Events - NEW
+    // ============================================
+    const {
+        data: teamEvents = [],
+        isLoading: teamEventsLoading,
+        isRefetching: teamEventsRefetching,
+        error: teamEventsError,
+        refetch: refetchTeamEvents,
+    } = useQuery<TeamEvent[]>({
+        queryKey: ['calendar', 'team_events', user?.id, startDate, endDate],
+        queryFn: () => fetchTeamEvents(user!.id, startDate, endDate),
+        enabled: !!user?.id,
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 60 * 24,
         placeholderData: (previousData) => previousData,
     });
 
@@ -265,8 +325,23 @@ export function useCalendarItems(focusedDate: Date, rangeType: CalendarRange = '
         }));
     }, [userEvents]);
 
+    const teamEventsItems: CalendarItem[] = useMemo(() => {
+        return teamEvents.map(event => ({
+            id: event.id,
+            title: event.title,
+            description: event.description || undefined,
+            start_at: event.start_time,
+            end_at: event.end_time || undefined,
+            item_type: 'event' as const,
+            category: event.type,
+            color: event.team?.color || ITEM_COLORS.event,
+            room: event.location || undefined,
+            team_name: event.team?.name,
+        }));
+    }, [teamEvents]);
+
     const allItems = useMemo(() => {
-        const combined = [...rpcItems, ...personalTodosItems, ...userEventsItems];
+        const combined = [...rpcItems, ...personalTodosItems, ...userEventsItems, ...teamEventsItems];
         // Deduplicate by ID to prevent React key errors
         const seen = new Set<string>();
         return combined.filter(item => {
@@ -344,17 +419,17 @@ export function useCalendarItems(focusedDate: Date, rangeType: CalendarRange = '
     // ============================================
 
     const refetch = async () => {
-        await Promise.all([refetchRpc(), refetchTodos(), refetchUserEvents()]);
+        await Promise.all([refetchRpc(), refetchTodos(), refetchUserEvents(), refetchTeamEvents()]);
     };
 
     // ============================================
     // COMBINED LOADING STATE
     // ============================================
 
-    const loading = rpcLoading || todosLoading || userEventsLoading;
-    const isRefetching = rpcRefetching || todosRefetching || userEventsRefetching;
-    const error = rpcError || todosError || userEventsError
-        ? (rpcError?.message || todosError?.message || userEventsError?.message || 'Erro ao carregar calendário')
+    const loading = rpcLoading || todosLoading || userEventsLoading || teamEventsLoading;
+    const isRefetching = rpcRefetching || todosRefetching || userEventsRefetching || teamEventsRefetching;
+    const error = rpcError || todosError || userEventsError || teamEventsError
+        ? (rpcError?.message || todosError?.message || userEventsError?.message || teamEventsError?.message || 'Erro ao carregar calendário')
         : null;
 
     return {

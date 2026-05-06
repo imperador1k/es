@@ -9,6 +9,7 @@ import { TaskDetailModal } from '@/components/TaskDetailModal';
 import { CreateTodoInput, PersonalTodo, usePersonalTodos } from '@/hooks/usePersonalTodos';
 import { supabase } from '@/lib/supabase';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
+import { TeamTask } from '@/types/database.types';
 import { useAuthContext } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,29 +41,9 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 // TYPES
 // ============================================
 
-interface TeamTask {
-    id: string;
-    title: string;
-    description: string | null;
-    due_date: string | null;
-    status: string;
-    team_id: string;
+interface PlannerTeamTask extends TeamTask {
     team?: { name: string; color: string };
     my_completed?: boolean;
-}
-
-interface UnifiedItem {
-    id: string;
-    type: 'task' | 'todo';
-    title: string;
-    description: string | null;
-    due_date: string | null;
-    is_completed: boolean;
-    priority: 'low' | 'medium' | 'high';
-    team_name?: string;
-    team_color?: string;
-    team_id?: string;
-    original: TeamTask | PersonalTodo | UserEvent;
 }
 
 interface UserEvent {
@@ -75,8 +56,25 @@ interface UserEvent {
     type: string;
 }
 
-type ViewMode = 'personal' | 'teams' | 'all';
+type UnifiedItem = (
+    | { type: 'task'; original: PlannerTeamTask }
+    | { type: 'todo'; original: PersonalTodo }
+    | { type: 'event'; original: UserEvent | any } // any for now to handle the team event spread
+) & {
+    id: string;
+    title: string;
+    description: string | null;
+    due_date: string | null;
+    is_completed: boolean;
+    priority: 'low' | 'medium' | 'high';
+    team_name?: string;
+    team_color?: string;
+    team_id?: string | null;
+};
+
+type ViewMode = 'all' | 'personal' | 'teams';
 type StatusFilter = 'pending' | 'completed';
+type DateFilter = 'today' | 'tomorrow' | 'week' | '3months' | 'all';
 
 // ============================================
 // ANIMATED COMPONENTS
@@ -118,16 +116,26 @@ function PersonalTaskCard({
             onPressIn={() => { scale.value = withSpring(0.98); }}
             onPressOut={() => { scale.value = withSpring(1); }}
         >
-            {/* Checkbox */}
-            <Pressable style={styles.checkbox} onPress={onToggle}>
-                <View style={[
-                    styles.checkboxCircle,
-                    { borderColor: priorityColors[item.priority] },
-                    item.is_completed && { backgroundColor: COLORS.success, borderColor: COLORS.success }
-                ]}>
-                    {item.is_completed && <Ionicons name="checkmark" size={12} color="#FFF" />}
+            {/* Checkbox or Icon */}
+            {item.type === 'event' ? (
+                <View style={styles.eventIconContainer}>
+                    <Ionicons 
+                        name={item.original.type === 'exam' ? 'document-text' : 'calendar'} 
+                        size={18} 
+                        color={item.priority === 'high' ? '#EF4444' : '#6366F1'} 
+                    />
                 </View>
-            </Pressable>
+            ) : (
+                <Pressable style={styles.checkbox} onPress={onToggle}>
+                    <View style={[
+                        styles.checkboxCircle,
+                        { borderColor: priorityColors[item.priority] },
+                        item.is_completed && { backgroundColor: COLORS.success, borderColor: COLORS.success }
+                    ]}>
+                        {item.is_completed && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                    </View>
+                </Pressable>
+            )}
 
             {/* Content */}
             <View style={styles.cardContent}>
@@ -137,11 +145,25 @@ function PersonalTaskCard({
                 <View style={styles.cardMeta}>
                     {item.due_date && (
                         <View style={styles.dueBadge}>
-                            <Ionicons name="time-outline" size={10} color={COLORS.text.tertiary} />
-                            <Text style={styles.dueText}>{formatDueDate(item.due_date)}</Text>
+                            <Ionicons 
+                                name={item.type === 'event' ? "time" : "time-outline"} 
+                                size={12} 
+                                color={item.type === 'event' ? '#6366F1' : COLORS.text.tertiary} 
+                            />
+                            <Text style={[
+                                styles.dueText, 
+                                item.type === 'event' && { color: '#6366F1', fontWeight: '600' }
+                            ]}>
+                                {item.type === 'event' 
+                                    ? new Date(item.due_date).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })
+                                    : formatDueDate(item.due_date)
+                                }
+                            </Text>
                         </View>
                     )}
-                    <View style={[styles.priorityDot, { backgroundColor: priorityColors[item.priority] }]} />
+                    {item.type !== 'event' && (
+                        <View style={[styles.priorityDot, { backgroundColor: priorityColors[item.priority] }]} />
+                    )}
                 </View>
             </View>
         </AnimatedPressable>
@@ -181,42 +203,75 @@ function TeamTaskCard({
                 end={{ x: 0, y: 1 }}
                 style={styles.teamColorBar}
             />
-
             <View style={styles.teamCardContent}>
                 {/* Team Badge */}
                 <View style={[styles.teamBadge, { backgroundColor: `${item.team_color || '#6366F1'}20` }]}>
-                    <Ionicons name="people" size={12} color={item.team_color || '#6366F1'} />
+                    <Ionicons 
+                        name={item.type === 'event' ? 'calendar' : 'people'} 
+                        size={12} 
+                        color={item.team_color || '#6366F1'} 
+                    />
                     <Text style={[styles.teamBadgeText, { color: item.team_color || '#6366F1' }]}>
                         {item.team_name || 'Equipa'}
                     </Text>
                 </View>
 
-                {/* Title */}
-                <Text style={[styles.teamCardTitle, item.is_completed && styles.cardTitleDone]} numberOfLines={2}>
-                    {item.title}
-                </Text>
+                {/* Title & Icon for events */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    {item.type === 'event' && (
+                        <Ionicons 
+                            name={
+                                item.original.type === 'meeting' ? 'people' : 
+                                item.original.type === 'presentation' ? 'easel' :
+                                item.original.type === 'deadline' ? 'time' : 'calendar'
+                            } 
+                            size={16} 
+                            color={item.team_color || '#6366F1'} 
+                        />
+                    )}
+                    <Text style={[styles.teamCardTitle, item.is_completed && styles.cardTitleDone]} numberOfLines={2}>
+                        {item.title}
+                    </Text>
+                </View>
 
                 {/* Footer */}
                 <View style={styles.teamCardFooter}>
                     {item.due_date && (
                         <View style={styles.dueBadge}>
-                            <Ionicons name="calendar-outline" size={12} color={COLORS.text.tertiary} />
-                            <Text style={styles.dueText}>{formatDueDate(item.due_date)}</Text>
+                            <Ionicons 
+                                name={item.type === 'event' ? "time" : "calendar-outline"} 
+                                size={12} 
+                                color={COLORS.text.tertiary} 
+                            />
+                            <Text style={styles.dueText}>
+                                {item.type === 'event'
+                                    ? new Date(item.due_date).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })
+                                    : formatDueDate(item.due_date)
+                                }
+                            </Text>
                         </View>
                     )}
-                    {item.is_completed ? (
-                        <View style={styles.completedTag}>
-                            <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
-                            <Text style={styles.completedTagText}>Entregue</Text>
-                        </View>
+                    {item.type === 'task' ? (
+                        item.is_completed ? (
+                            <View style={styles.completedTag}>
+                                <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                                <Text style={styles.completedTagText}>Entregue</Text>
+                            </View>
+                        ) : (
+                            <View style={styles.pendingTag}>
+                                <Ionicons name="time" size={14} color="#F59E0B" />
+                                <Text style={styles.pendingTagText}>Pendente</Text>
+                            </View>
+                        )
                     ) : (
-                        <View style={styles.pendingTag}>
-                            <Ionicons name="time" size={14} color="#F59E0B" />
-                            <Text style={styles.pendingTagText}>Pendente</Text>
+                        <View style={[styles.pendingTag, { backgroundColor: 'rgba(99, 102, 241, 0.1)' }]}>
+                            <Ionicons name="flash" size={14} color="#6366F1" />
+                            <Text style={[styles.pendingTagText, { color: '#6366F1' }]}>Evento</Text>
                         </View>
                     )}
                 </View>
             </View>
+
 
             <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} style={styles.chevron} />
         </AnimatedPressable>
@@ -235,15 +290,17 @@ export default function PlannerScreen() {
     const { useTutorialAutoStart } = require('@/hooks/useTutorialAutoStart');
     useTutorialAutoStart('planner_view');
 
-    const [tasks, setTasks] = useState<TeamTask[]>([]);
+    const [tasks, setTasks] = useState<PlannerTeamTask[]>([]);
     const [tasksLoading, setTasksLoading] = useState(true);
     const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
+    const [teamEvents, setTeamEvents] = useState<any[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [showTodoModal, setShowTodoModal] = useState(false);
     const [showEventModal, setShowEventModal] = useState(false);
     const [showAddOptions, setShowAddOptions] = useState(false);
-    const [viewMode, setViewMode] = useState<ViewMode>('personal');
+    const [viewMode, setViewMode] = useState<ViewMode>('all');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
+    const [dateFilter, setDateFilter] = useState<DateFilter>('all');
     const [selectedTask, setSelectedTask] = useState<UnifiedItem | null>(null);
 
     // Fetch team tasks
@@ -280,20 +337,38 @@ export default function PlannerScreen() {
 
             const processed = (taskData || []).map(t => ({
                 ...t,
+                user_id: user.id,
+                is_completed: false,
+                type: (t as any).type || 'other',
+                xp_reward: 0,
+                subject_id: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                deleted_at: null,
                 team: Array.isArray(t.team) ? t.team[0] : t.team,
                 my_completed: mySubmissions.get(t.id) === 'submitted' || mySubmissions.get(t.id) === 'graded',
-            }));
+            })) as unknown as PlannerTeamTask[];
 
             setTasks(processed);
 
             // Also fetch personal events
-            const { data: eventsData } = await supabase
+            const { data: eventsData, error: eventsError } = await supabase
                 .from('events')
                 .select('id, title, description, start_time, end_time, location, type')
                 .eq('user_id', user.id)
                 .order('start_time', { ascending: true });
 
+            if (eventsError) console.error('Events Fetch Error:', eventsError);
             setUserEvents(eventsData || []);
+
+            // NEW: Fetch team events
+            const { data: teamEventsData, error: teamEventsError } = await supabase
+                .from('team_events')
+                .select('*, team:team_id(name, color)')
+                .order('start_time', { ascending: true });
+
+            if (teamEventsError) console.error('Team Events Fetch Error:', teamEventsError);
+            setTeamEvents(teamEventsData || []);
         } catch (err) {
             console.error('Error:', err);
         } finally {
@@ -333,18 +408,18 @@ export default function PlannerScreen() {
     const userEventItems = useMemo(() => {
         return userEvents.map(event => ({
             id: event.id,
-            type: 'todo' as const, // Treat as personal for now
+            type: 'event' as const,
             title: event.title,
             description: event.description,
             due_date: event.start_time,
             is_completed: false,
-            priority: (event.type === 'exam' ? 'high' : 'medium') as any,
+            priority: (event.type === 'exam' ? 'high' : 'medium') as 'high' | 'medium',
             original: event,
         }));
     }, [userEvents]);
 
     const teamItems = useMemo(() => {
-        return tasks.map(task => ({
+        const teamTasksMapped = tasks.map(task => ({
             id: task.id,
             type: 'task' as const,
             title: task.title,
@@ -357,27 +432,81 @@ export default function PlannerScreen() {
             team_id: task.team_id,
             original: task,
         }));
-    }, [tasks]);
 
-    // Filter by status
-    const combinedPersonal = useMemo(() => {
-        return [...personalItems, ...userEventItems].sort((a, b) => {
+        const teamEventsMapped = teamEvents.map(event => ({
+            id: event.id,
+            type: 'event' as const, // We use 'event' here for UI logic
+            title: event.title,
+            description: event.description,
+            due_date: event.start_time,
+            is_completed: false,
+            priority: (event.type === 'deadline' ? 'high' : 'medium') as 'high' | 'medium',
+            team_name: event.team?.name,
+            team_color: event.team?.color,
+            team_id: event.team_id,
+            original: { ...event, isTeamEvent: true }, // Add flag to distinguish from personal events
+        }));
+
+        return [...teamTasksMapped, ...teamEventsMapped].sort((a, b) => {
             if (!a.due_date) return 1;
             if (!b.due_date) return -1;
             return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
         });
-    }, [personalItems, userEventItems]);
+    }, [tasks, teamEvents]);
 
-    const filteredPersonal = combinedPersonal.filter(i =>
-        statusFilter === 'pending' ? !i.is_completed : i.is_completed
-    );
-    const filteredTeam = teamItems.filter(i =>
-        statusFilter === 'pending' ? !i.is_completed : i.is_completed
-    );
+    const isWithinDateFilter = useCallback((dateStr: string | null) => {
+        if (dateFilter === 'all') return true;
+        if (!dateStr) return false;
+
+        const date = new Date(dateStr);
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        const itemDate = new Date(date);
+        itemDate.setHours(0, 0, 0, 0);
+
+        const diffTime = itemDate.getTime() - now.getTime();
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+        switch (dateFilter) {
+            case 'today':
+                return diffDays === 0;
+            case 'tomorrow':
+                return diffDays === 1;
+            case 'week':
+                const dayOfWeek = now.getDay();
+                const daysToSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+                return diffDays >= 0 && diffDays <= daysToSunday;
+            case '3months':
+                return diffDays >= 0 && diffDays <= 90;
+            default:
+                return true;
+        }
+    }, [dateFilter]);
+
+    // Filter by status
+    const filteredEvents = useMemo(() => {
+        return userEventItems.filter(i => isWithinDateFilter(i.due_date));
+    }, [userEventItems, isWithinDateFilter]);
+
+    const filteredPersonalTodos = useMemo(() => {
+        return personalItems.filter(i => {
+            const matchesStatus = statusFilter === 'pending' ? !i.is_completed : i.is_completed;
+            return matchesStatus && isWithinDateFilter(i.due_date);
+        });
+    }, [personalItems, statusFilter, isWithinDateFilter]);
+
+    const filteredTeamTasks = useMemo(() => {
+        return teamItems.filter(i => {
+            const matchesStatus = statusFilter === 'pending' ? !i.is_completed : i.is_completed;
+            return matchesStatus && isWithinDateFilter(i.due_date);
+        });
+    }, [teamItems, statusFilter, isWithinDateFilter]);
 
     // Stats
-    const personalPending = combinedPersonal.filter(i => !i.is_completed).length;
+    const personalPending = personalItems.filter(i => !i.is_completed).length;
     const teamPending = teamItems.filter(i => !i.is_completed).length;
+    const eventsCount = filteredEvents.length;
 
     const handleCreateTodo = async (input: CreateTodoInput) => {
         await createTodo(input);
@@ -415,6 +544,16 @@ export default function PlannerScreen() {
                 {/* ========== VIEW MODE TABS ========== */}
                 <View style={styles.viewModeContainer}>
                     <Pressable
+                        style={[styles.viewModeTab, viewMode === 'all' && styles.viewModeTabActive]}
+                        onPress={() => setViewMode('all')}
+                    >
+                        <Ionicons name="apps" size={18} color={viewMode === 'all' ? '#FFF' : COLORS.text.secondary} />
+                        <Text style={[styles.viewModeText, viewMode === 'all' && styles.viewModeTextActive]}>
+                            Tudo
+                        </Text>
+                    </Pressable>
+
+                    <Pressable
                         style={[styles.viewModeTab, viewMode === 'personal' && styles.viewModeTabActive]}
                         onPress={() => setViewMode('personal')}
                     >
@@ -422,11 +561,6 @@ export default function PlannerScreen() {
                         <Text style={[styles.viewModeText, viewMode === 'personal' && styles.viewModeTextActive]}>
                             Pessoal
                         </Text>
-                        {personalPending > 0 && (
-                            <View style={[styles.viewModeBadge, viewMode === 'personal' && styles.viewModeBadgeActive]}>
-                                <Text style={styles.viewModeBadgeText}>{personalPending}</Text>
-                            </View>
-                        )}
                     </Pressable>
 
                     <Pressable
@@ -437,13 +571,34 @@ export default function PlannerScreen() {
                         <Text style={[styles.viewModeText, viewMode === 'teams' && styles.viewModeTextActive]}>
                             Equipas
                         </Text>
-                        {teamPending > 0 && (
-                            <View style={[styles.viewModeBadge, viewMode === 'teams' && styles.viewModeBadgeActive]}>
-                                <Text style={styles.viewModeBadgeText}>{teamPending}</Text>
-                            </View>
-                        )}
                     </Pressable>
                 </View>
+
+                {/* ========== DATE FILTERS ========== */}
+                <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    style={styles.dateFilterScroll}
+                    contentContainerStyle={styles.dateFilterContent}
+                >
+                    {[
+                        { id: 'all', label: 'Sempre' },
+                        { id: 'today', label: 'Hoje' },
+                        { id: 'tomorrow', label: 'Amanhã' },
+                        { id: 'week', label: 'Esta Semana' },
+                        { id: '3months', label: '3 Meses' },
+                    ].map((f) => (
+                        <Pressable
+                            key={f.id}
+                            style={[styles.dateChip, dateFilter === f.id && styles.dateChipActive]}
+                            onPress={() => setDateFilter(f.id as DateFilter)}
+                        >
+                            <Text style={[styles.dateChipText, dateFilter === f.id && styles.dateChipTextActive]}>
+                                {f.label}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </ScrollView>
 
                 {/* ========== STATUS FILTER ========== */}
                 <View style={styles.statusFilter}>
@@ -465,9 +620,52 @@ export default function PlannerScreen() {
 
                 {/* ========== CONTENT ========== */}
                 <View style={styles.content}>
-                    {/* PERSONAL VIEW */}
-                    {viewMode === 'personal' && (
-                        <Animated.View entering={FadeInDown.springify()}>
+                    {/* TOP EVENTS SECTION (Always visible if exists and pending view) */}
+                    {filteredEvents.length > 0 && statusFilter === 'pending' && (
+                        <View style={{ marginBottom: SPACING.xl }}>
+                            <View style={styles.sectionHeader}>
+                                <View style={styles.sectionIconContainer}>
+                                    <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.sectionIcon}>
+                                        <Ionicons name="calendar" size={18} color="#FFF" />
+                                    </LinearGradient>
+                                </View>
+                                <View>
+                                    <Text style={styles.sectionTitle}>Agenda & Eventos</Text>
+                                    <Text style={styles.sectionSubtitle}>O que está marcado ({filteredEvents.length})</Text>
+                                </View>
+                            </View>
+                            
+                            <ScrollView 
+                                horizontal 
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ gap: SPACING.md, paddingBottom: 4 }}
+                            >
+                                {filteredEvents.map((item, index) => (
+                                    <Pressable 
+                                        key={item.id} 
+                                        style={styles.eventHorizontalCard}
+                                        onPress={() => setSelectedTask(item)}
+                                    >
+                                        <View style={styles.eventCardTag}>
+                                            <Ionicons name="school" size={12} color="#6366F1" />
+                                            <Text style={styles.eventCardTagText}>Escolar</Text>
+                                        </View>
+                                        <Text style={styles.eventCardTitle} numberOfLines={2}>{item.title}</Text>
+                                        <View style={styles.eventCardFooter}>
+                                            <Ionicons name="time" size={12} color={COLORS.text.tertiary} />
+                                            <Text style={styles.eventCardTime}>
+                                                {new Date(item.due_date!).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                                            </Text>
+                                        </View>
+                                    </Pressable>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    )}
+
+                    {/* PERSONAL TASKS */}
+                    {(viewMode === 'personal' || viewMode === 'all') && (
+                        <View style={{ marginBottom: SPACING.xl }}>
                             <View style={styles.sectionHeader}>
                                 <View style={styles.sectionIconContainer}>
                                     <LinearGradient colors={['#10B981', '#059669']} style={styles.sectionIcon}>
@@ -475,14 +673,14 @@ export default function PlannerScreen() {
                                     </LinearGradient>
                                 </View>
                                 <View>
-                                    <Text style={styles.sectionTitle}>As Minhas Tarefas</Text>
-                                    <Text style={styles.sectionSubtitle}>Organiza o teu dia-a-dia</Text>
+                                    <Text style={styles.sectionTitle}>Tarefas Pessoais</Text>
+                                    <Text style={styles.sectionSubtitle}>Afazeres individuais</Text>
                                 </View>
                             </View>
 
-                            {filteredPersonal.length > 0 ? (
+                            {filteredPersonalTodos.length > 0 ? (
                                 <View style={styles.personalList}>
-                                    {filteredPersonal.map((item, index) => (
+                                    {filteredPersonalTodos.map((item, index) => (
                                         <PersonalTaskCard
                                             key={item.id}
                                             item={item}
@@ -493,25 +691,16 @@ export default function PlannerScreen() {
                                     ))}
                                 </View>
                             ) : (
-                                <View style={styles.emptyState}>
-                                    <Ionicons name={statusFilter === 'pending' ? 'checkmark-done-circle' : 'list'} size={48} color={COLORS.text.tertiary} />
-                                    <Text style={styles.emptyTitle}>
-                                        {statusFilter === 'pending' ? 'Tudo em dia!' : 'Sem tarefas concluídas'}
-                                    </Text>
-                                    {statusFilter === 'pending' && (
-                                        <Pressable style={styles.emptyButton} onPress={() => setShowTodoModal(true)}>
-                                            <Ionicons name="add" size={18} color="#FFF" />
-                                            <Text style={styles.emptyButtonText}>Nova Tarefa</Text>
-                                        </Pressable>
-                                    )}
+                                <View style={styles.emptySmall}>
+                                    <Text style={styles.emptySubtitle}>Sem tarefas pessoais</Text>
                                 </View>
                             )}
-                        </Animated.View>
+                        </View>
                     )}
 
-                    {/* TEAMS VIEW */}
-                    {viewMode === 'teams' && (
-                        <Animated.View entering={FadeInDown.springify()}>
+                    {/* TEAM TASKS */}
+                    {(viewMode === 'teams' || viewMode === 'all') && (
+                        <View style={{ marginBottom: SPACING.xl }}>
                             <View style={styles.sectionHeader}>
                                 <View style={styles.sectionIconContainer}>
                                     <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.sectionIcon}>
@@ -519,14 +708,14 @@ export default function PlannerScreen() {
                                     </LinearGradient>
                                 </View>
                                 <View>
-                                    <Text style={styles.sectionTitle}>Tarefas das Equipas</Text>
-                                    <Text style={styles.sectionSubtitle}>Colabora com os teus colegas</Text>
+                                    <Text style={styles.sectionTitle}>Trabalhos de Equipa</Text>
+                                    <Text style={styles.sectionSubtitle}>Projectos partilhados</Text>
                                 </View>
                             </View>
 
-                            {filteredTeam.length > 0 ? (
+                            {filteredTeamTasks.length > 0 ? (
                                 <View style={styles.teamList}>
-                                    {filteredTeam.map((item, index) => (
+                                    {filteredTeamTasks.map((item, index) => (
                                         <TeamTaskCard
                                             key={item.id}
                                             item={item}
@@ -536,15 +725,26 @@ export default function PlannerScreen() {
                                     ))}
                                 </View>
                             ) : (
-                                <View style={styles.emptyState}>
-                                    <Ionicons name={statusFilter === 'pending' ? 'rocket' : 'trophy'} size={48} color={COLORS.text.tertiary} />
-                                    <Text style={styles.emptyTitle}>
-                                        {statusFilter === 'pending' ? 'Sem tarefas de equipa pendentes' : 'Nenhuma entrega feita'}
-                                    </Text>
-                                    <Text style={styles.emptySubtitle}>As tarefas dos teus squads aparecem aqui</Text>
+                                <View style={styles.emptySmall}>
+                                    <Text style={styles.emptySubtitle}>Sem tarefas de equipa</Text>
                                 </View>
                             )}
-                        </Animated.View>
+                        </View>
+                    )}
+
+                    {/* GLOBAL EMPTY STATE */}
+                    {filteredEvents.length === 0 && filteredPersonalTodos.length === 0 && filteredTeamTasks.length === 0 && (
+                        <View style={styles.emptyState}>
+                            <Ionicons name={statusFilter === 'pending' ? 'checkmark-done-circle' : 'list'} size={64} color={COLORS.text.tertiary} />
+                            <Text style={styles.emptyTitle}>
+                                {statusFilter === 'pending' ? 'Tudo em dia!' : 'Sem tarefas concluídas'}
+                            </Text>
+                            <Text style={styles.emptySubtitle}>
+                                {statusFilter === 'pending' 
+                                    ? 'Aproveita o teu tempo livre 🚀' 
+                                    : 'As tuas conquistas aparecem aqui'}
+                            </Text>
+                        </View>
                     )}
                 </View>
 
@@ -672,6 +872,22 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
 
+    // Sub Section
+    subSectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    subSectionTitle: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.text.tertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+
     // View Mode Tabs
     viewModeContainer: {
         flexDirection: 'row',
@@ -714,6 +930,35 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: TYPOGRAPHY.weight.bold,
         color: '#FFF',
+    },
+
+    // Date Filters
+    dateFilterScroll: {
+        marginBottom: SPACING.md,
+    },
+    dateFilterContent: {
+        paddingHorizontal: LAYOUT.screenPadding,
+        gap: SPACING.xs,
+    },
+    dateChip: {
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: 8,
+        borderRadius: RADIUS.full,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    dateChipActive: {
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderColor: 'rgba(99, 102, 241, 0.3)',
+    },
+    dateChipText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.text.tertiary,
+    },
+    dateChipTextActive: {
+        color: '#6366F1',
     },
 
     // Status Filter
@@ -789,6 +1034,11 @@ const styles = StyleSheet.create({
     checkbox: {
         padding: 4,
     },
+    eventIconContainer: {
+        width: 30,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     checkboxCircle: {
         width: 22,
         height: 22,
@@ -828,6 +1078,51 @@ const styles = StyleSheet.create({
         width: 6,
         height: 6,
         borderRadius: 3,
+    },
+
+    // Horizontal Events
+    eventHorizontalCard: {
+        width: 200,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        borderWidth: 1,
+        borderColor: 'rgba(99, 102, 241, 0.1)',
+        ...SHADOWS.sm,
+    },
+    eventCardTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
+        alignSelf: 'flex-start',
+        marginBottom: 8,
+    },
+    eventCardTagText: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#6366F1',
+        textTransform: 'uppercase',
+    },
+    eventCardTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.text.primary,
+        marginBottom: 12,
+        height: 40,
+    },
+    eventCardFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    eventCardTime: {
+        fontSize: 11,
+        color: COLORS.text.tertiary,
+        fontWeight: '500',
     },
 
     // Team List
@@ -912,6 +1207,16 @@ const styles = StyleSheet.create({
         fontSize: TYPOGRAPHY.size.sm,
         color: COLORS.text.tertiary,
         textAlign: 'center',
+    },
+    emptySmall: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: SPACING.xl,
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: RADIUS.xl,
+        borderStyle: 'dashed',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     emptyButton: {
         flexDirection: 'row',

@@ -231,6 +231,7 @@ export function ItemDetailsModal({ visible, item, onClose, onUpdate }: ItemDetai
                 return (
                     <>
                         <InfoCard icon="time" label="Horário" value={timeRange} color="#F59E0B" />
+                        {item.team_name && <InfoCard icon="people" label="Equipa" value={item.team_name} color="#6366F1" />}
                         {item.room && <InfoCard icon="location" label="Local" value={item.room} color="#EF4444" />}
                         {item.description && (
                             <View style={styles.descriptionCard}>

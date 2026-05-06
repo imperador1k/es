@@ -9,7 +9,7 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premiu
 import { useAuthContext } from '@/providers/AuthProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 import { useTeam } from '@/providers/TeamsProvider';
-import { Channel } from '@/types/database.types';
+import { Channel, Team, TeamTask } from '@/types/database.types';
 import { canUser } from '@/utils/permissions';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -29,6 +29,29 @@ import {
     Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CreateEventModal } from '@/components/CreateEventModal';
+import { CreateTodoModal } from '@/components/CreateTodoModal';
+
+// ============================================
+// TYPES & INTERFACES
+// ============================================
+
+interface TaskWithSubmission extends TeamTask {
+    my_submission: { status: string; submitted_at: string | null } | null;
+    creator?: { username: string; avatar_url: string | null } | null;
+    team?: { name: string; color: string } | null;
+}
+
+interface TeamEvent {
+    id: string;
+    title: string;
+    description: string | null;
+    start_time: string;
+    end_time: string | null;
+    location: string | null;
+    type: string;
+    color?: string | null;
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ACTION_BUTTON_SIZE = (SCREEN_WIDTH - SPACING.xl * 2 - SPACING.md * 2) / 3;
@@ -36,6 +59,8 @@ const ACTION_BUTTON_SIZE = (SCREEN_WIDTH - SPACING.xl * 2 - SPACING.md * 2) / 3;
 // ============================================
 // MAIN COMPONENT
 // ============================================
+
+type TeamTab = 'general' | 'chat' | 'tasks' | 'events';
 
 export default function TeamDetailsScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -50,15 +75,22 @@ export default function TeamDetailsScreen() {
     const [chatModalVisible, setChatModalVisible] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [memberCount, setMemberCount] = useState(0);
+    const [activeTab, setActiveTab] = useState<TeamTab>('general');
+    const [tasks, setTasks] = useState<TaskWithSubmission[]>([]);
+    const [events, setEvents] = useState<TeamEvent[]>([]);
+    const [tasksLoading, setTasksLoading] = useState(true);
+    const [eventsLoading, setEventsLoading] = useState(true);
+    const [eventModalVisible, setEventModalVisible] = useState(false);
 
     const canCreateTask = canUser(userRole, 'CREATE_TASK');
+    const canCreateEvent = canUser(userRole, 'CREATE_TASK'); // Using same permission for simplicity now
 
     // Load data
     const loadData = useCallback(async () => {
         if (!id || !user?.id) return;
 
         try {
-            const [channelsRes, membersRes] = await Promise.all([
+            const [channelsRes, membersRes, tasksRes, eventsRes, submissionsRes] = await Promise.all([
                 supabase
                     .from('channels')
                     .select('*')
@@ -67,15 +99,48 @@ export default function TeamDetailsScreen() {
                 supabase
                     .from('team_members')
                     .select('*', { count: 'exact', head: true })
+                    .eq('team_id', id),
+                supabase
+                    .from('tasks')
+                    .select(`*, creator:created_by(username, avatar_url)`)
                     .eq('team_id', id)
+                    .is('deleted_at', null)
+                    .order('due_date', { ascending: true, nullsFirst: false }),
+                supabase
+                    .from('team_events')
+                    .select('*')
+                    .eq('team_id', id)
+                    .order('start_time', { ascending: true }),
+                supabase
+                    .from('task_submissions')
+                    .select('task_id, status, submitted_at')
+                    .eq('user_id', user.id)
             ]);
 
             setChannels((channelsRes.data as Channel[]) || []);
             setMemberCount(membersRes.count || 0);
+            
+            // Handle Tasks
+            const submissionsMap = new Map<string, { status: string; submitted_at: string | null }>();
+            (submissionsRes.data || []).forEach((s: any) => {
+                submissionsMap.set(s.task_id, { status: s.status, submitted_at: s.submitted_at });
+            });
+
+            const combinedTasks: TaskWithSubmission[] = (tasksRes.data || []).map((task: any) => ({
+                ...task,
+                my_submission: submissionsMap.get(task.id) || null,
+            }));
+            setTasks(combinedTasks);
+            
+            // Handle Events
+            setEvents((eventsRes.data as TeamEvent[]) || []);
+
         } catch (err) {
             console.error('Error loading data:', err);
         } finally {
             setLoading(false);
+            setTasksLoading(false);
+            setEventsLoading(false);
         }
     }, [id, user?.id]);
 
@@ -146,6 +211,131 @@ export default function TeamDetailsScreen() {
 
     const teamColor = team.color || '#6366F1';
 
+    // ============================================
+    // TAB RENDERING
+    // ============================================
+
+    const renderGeneralTab = () => (
+        <View style={styles.tabSection}>
+            <View style={styles.quickActionsGrid}>
+                <QuickActionItem 
+                    icon="people-outline" 
+                    label="Membros" 
+                    color="#EC4899" 
+                    onPress={() => router.push(`/team/members?teamId=${id}` as any)} 
+                />
+                <QuickActionItem 
+                    icon="folder-outline" 
+                    label="Ficheiros" 
+                    color="#6366F1" 
+                    onPress={() => router.push(`/team/${id}/files` as any)} 
+                />
+                <QuickActionItem 
+                    icon="trophy-outline" 
+                    label="Ranking" 
+                    color="#FFD700" 
+                    onPress={() => router.push(`/team/${id}/leaderboard` as any)} 
+                />
+                <QuickActionItem 
+                    icon="settings-outline" 
+                    label="Opções" 
+                    color={COLORS.text.tertiary} 
+                    onPress={() => router.push(`/team/${id}/settings` as any)} 
+                />
+            </View>
+
+            <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Próximas Tarefas</Text>
+                <Pressable onPress={() => setActiveTab('tasks')}>
+                    <Text style={styles.seeAllText}>Ver todas</Text>
+                </Pressable>
+            </View>
+            {tasks.filter(t => !t.my_submission || t.my_submission.status !== 'graded').slice(0, 3).map(task => (
+                <TaskCard key={task.id} task={task} userId={user?.id || ''} onPress={() => router.push(`/team/${id}/tasks/${task.id}` as any)} />
+            ))}
+            {tasks.filter(t => !t.my_submission || t.my_submission.status !== 'graded').length === 0 && <Text style={styles.emptyTextInline}>Nenhuma tarefa pendente</Text>}
+
+            <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Agenda do Grupo</Text>
+                <Pressable onPress={() => setActiveTab('events')}>
+                    <Text style={styles.seeAllText}>Ver agenda</Text>
+                </Pressable>
+            </View>
+            {events.slice(0, 2).map(event => (
+                <EventCard key={event.id} event={event} />
+            ))}
+            {events.length === 0 && <Text style={styles.emptyTextInline}>Nenhum evento agendado</Text>}
+        </View>
+    );
+
+    const renderChatTab = () => (
+        <View style={styles.tabSection}>
+            <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Canais de Discussão</Text>
+                {(userRole === 'owner' || userRole === 'admin') && (
+                    <Pressable onPress={() => router.push(`/team/${id}/channels` as any)}>
+                        <Ionicons name="add-circle-outline" size={20} color="#6366F1" />
+                    </Pressable>
+                )}
+            </View>
+            {channels.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                    <Ionicons name="chatbubbles-outline" size={40} color={COLORS.text.tertiary} />
+                    <Text style={styles.emptyTitle}>Sem canais</Text>
+                </View>
+            ) : (
+                channels.map((channel) => (
+                    <ChannelCard key={channel.id} channel={channel} teamId={id} />
+                ))
+            )}
+        </View>
+    );
+
+    const renderTasksTab = () => (
+        <View style={styles.tabSection}>
+            <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Todas as Tarefas</Text>
+                {canCreateTask && (
+                    <Pressable onPress={() => router.push(`/team/${id}/tasks/new` as any)}>
+                        <Ionicons name="add-circle-outline" size={20} color="#6366F1" />
+                    </Pressable>
+                )}
+            </View>
+            {tasks.map(task => (
+                <TaskCard key={task.id} task={task} userId={user?.id || ''} onPress={() => router.push(`/team/${id}/tasks/${task.id}` as any)} />
+            ))}
+            {tasks.length === 0 && (
+                <View style={styles.emptyContainer}>
+                    <Ionicons name="checkbox-outline" size={40} color={COLORS.text.tertiary} />
+                    <Text style={styles.emptyTitle}>Sem tarefas</Text>
+                </View>
+            )}
+        </View>
+    );
+
+    const renderEventsTab = () => (
+        <View style={styles.tabSection}>
+            <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Eventos & Reuniões</Text>
+                {canCreateEvent && (
+                    <Pressable onPress={() => setEventModalVisible(true)}>
+                        <Ionicons name="add-circle-outline" size={20} color="#6366F1" />
+                    </Pressable>
+                )}
+            </View>
+            {events.map(event => (
+                <EventCard key={event.id} event={event} />
+            ))}
+            {events.length === 0 && (
+                <View style={styles.emptyContainer}>
+                    <Ionicons name="calendar-outline" size={40} color={COLORS.text.tertiary} />
+                    <Text style={styles.emptyTitle}>Sem eventos marcados</Text>
+                    <Text style={styles.emptySubtitle}>Agenda uma reunião ou sessão de estudo</Text>
+                </View>
+            )}
+        </View>
+    );
+
     return (
         <View style={styles.container}>
             <SafeAreaView style={{ flex: 1 }} edges={['top']}>
@@ -208,136 +398,53 @@ export default function TeamDetailsScreen() {
                         </View>
                     </View>
 
-                    {/* Quick Actions - Horizontal Scroll */}
-                    <Text style={styles.sectionTitle}>Ações Rápidas</Text>
-                    <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.quickActionsScroll}
-                    >
-                        <QuickActionCard
-                            icon="chatbubbles"
-                            label="Chat"
-                            color="#10B981"
-                            onPress={handleChatPress}
+                    {/* HUB TABS */}
+                    <View style={styles.tabBar}>
+                        <TabItem 
+                            active={activeTab === 'general'} 
+                            label="Geral" 
+                            icon="grid-outline" 
+                            onPress={() => setActiveTab('general')} 
                         />
-                        <QuickActionCard
-                            icon="checkbox"
-                            label="Tarefas"
-                            color="#F59E0B"
-                            onPress={() => router.push(`/team/${id}/tasks` as any)}
+                        <TabItem 
+                            active={activeTab === 'chat'} 
+                            label="Chat" 
+                            icon="chatbubbles-outline" 
+                            onPress={() => setActiveTab('chat')} 
                         />
-                        <QuickActionCard
-                            icon="folder"
-                            label="Ficheiros"
-                            color="#6366F1"
-                            onPress={() => router.push(`/team/${id}/files` as any)}
+                        <TabItem 
+                            active={activeTab === 'tasks'} 
+                            label="Tarefas" 
+                            icon="checkbox-outline" 
+                            onPress={() => setActiveTab('tasks')} 
                         />
-                        <QuickActionCard
-                            icon="people"
-                            label="Membros"
-                            color="#EC4899"
-                            onPress={() => router.push(`/team/members?teamId=${id}` as any)}
+                        <TabItem 
+                            active={activeTab === 'events'} 
+                            label="Eventos" 
+                            icon="calendar-outline" 
+                            onPress={() => setActiveTab('events')} 
                         />
-                        <QuickActionCard
-                            icon="trophy"
-                            label="Ranking"
-                            color="#FFD700"
-                            onPress={() => router.push(`/team/${id}/leaderboard` as any)}
-                        />
-                        {canCreateTask && (
-                            <QuickActionCard
-                                icon="add-circle"
-                                label="+ Tarefa"
-                                color="#8B5CF6"
-                                onPress={() => router.push(`/team/${id}/tasks/new` as any)}
-                            />
-                        )}
-                    </ScrollView>
-
-                    {/* Channels Section */}
-                    <View style={styles.sectionHeaderRow}>
-                        <Text style={styles.sectionTitle}>Canais</Text>
-                        <View style={styles.sectionBadge}>
-                            <Text style={styles.sectionBadgeText}>{channels.length}</Text>
-                        </View>
                     </View>
 
-                    {channels.length === 0 ? (
-                        <View style={styles.emptyContainer}>
-                            <View style={styles.emptyIconContainer}>
-                                <Ionicons name="chatbubbles-outline" size={40} color={COLORS.text.tertiary} />
-                            </View>
-                            <Text style={styles.emptyTitle}>Sem canais</Text>
-                            <Text style={styles.emptySubtitle}>Esta squad ainda não tem canais</Text>
-                        </View>
-                    ) : (
-                        channels.map((channel) => (
-                            <ChannelCard key={channel.id} channel={channel} teamId={id} />
-                        ))
-                    )}
+                    {/* TAB CONTENT */}
+                    <View style={styles.tabContent}>
+                        {activeTab === 'general' && renderGeneralTab()}
+                        {activeTab === 'chat' && renderChatTab()}
+                        {activeTab === 'tasks' && renderTasksTab()}
+                        {activeTab === 'events' && renderEventsTab()}
+                    </View>
                 </ScrollView>
 
-                {/* Channels Selection Modal */}
-                <Modal
-                    visible={chatModalVisible}
-                    animationType="slide"
-                    transparent
-                    onRequestClose={() => setChatModalVisible(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <Pressable style={StyleSheet.absoluteFill} onPress={() => setChatModalVisible(false)}>
-                            <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
-                        </Pressable>
-                        
-                        <View style={styles.modalContentFixed}>
-                            <View style={styles.modalHandle} />
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Escolher Canal</Text>
-                                <Pressable style={styles.modalCloseBtn} onPress={() => setChatModalVisible(false)}>
-                                    <Ionicons name="close" size={20} color={COLORS.text.primary} />
-                                </Pressable>
-                            </View>
-
-                            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
-                                {channels.map((channel) => (
-                                    <Pressable
-                                        key={channel.id}
-                                        style={styles.modalChannelItem}
-                                        onPress={() => {
-                                            setChatModalVisible(false);
-                                            router.push(`/team/${id}/channel/${channel.id}` as any);
-                                        }}
-                                    >
-                                        <View style={styles.modalChannelIcon}>
-                                            <Text style={styles.modalChannelHash}>#</Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.modalChannelName}>{channel.name}</Text>
-                                            {channel.description && (
-                                                <Text style={styles.modalChannelDesc} numberOfLines={1}>{channel.description}</Text>
-                                            )}
-                                        </View>
-                                        <Ionicons name="chevron-forward" size={16} color={COLORS.text.tertiary} />
-                                    </Pressable>
-                                ))}
-                            </ScrollView>
-
-                            {(userRole === 'owner' || userRole === 'admin') && (
-                                <Pressable 
-                                    style={styles.modalAddBtn}
-                                    onPress={() => {
-                                        setChatModalVisible(false);
-                                        router.push(`/team/${id}/channels` as any);
-                                    }}
-                                >
-                                    <Ionicons name="add-circle-outline" size={20} color="#6366F1" />
-                                    <Text style={styles.modalAddBtnText}>Gerir Canais</Text>
-                                </Pressable>
-                            )}
-                        </View>
-                    </View>
-                </Modal>
+                {/* MODALS */}
+                <CreateEventModal 
+                    visible={eventModalVisible} 
+                    onClose={() => setEventModalVisible(false)} 
+                    teamId={id}
+                    onSuccess={() => {
+                        setEventModalVisible(false);
+                        handleRefresh();
+                    }}
+                />
             </SafeAreaView>
         </View>
     );
@@ -408,6 +515,110 @@ function ChannelCard({ channel, teamId }: { channel: Channel; teamId: string }) 
             </Animated.View>
         </Pressable>
     );
+}
+
+// ============================================
+// NEW HUB COMPONENTS
+// ============================================
+
+function TabItem({ active, label, icon, onPress }: { active: boolean; label: string; icon: any; onPress: () => void }) {
+    return (
+        <Pressable style={[styles.tabItem, active && styles.tabItemActive]} onPress={onPress}>
+            <Ionicons name={icon} size={20} color={active ? '#6366F1' : COLORS.text.tertiary} />
+            <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+        </Pressable>
+    );
+}
+
+function QuickActionItem({ icon, label, color, onPress }: { icon: any; label: string; color: string; onPress: () => void }) {
+    return (
+        <Pressable style={styles.quickActionItem} onPress={onPress}>
+            <View style={[styles.quickActionIconSmall, { backgroundColor: `${color}15` }]}>
+                <Ionicons name={icon} size={22} color={color} />
+            </View>
+            <Text style={styles.quickActionLabelSmall}>{label}</Text>
+        </Pressable>
+    );
+}
+
+function TaskCard({ task, userId, onPress }: { task: TaskWithSubmission; userId: string; onPress: () => void }) {
+    const isCompleted = task.my_submission?.status === 'graded';
+    const { text: dueText, color: dueColor } = formatDueDate(task.due_date);
+
+    return (
+        <Pressable style={styles.taskCard} onPress={onPress}>
+            <View style={[styles.taskIcon, { backgroundColor: isCompleted ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.1)' }]}>
+                <Ionicons name={isCompleted ? 'checkmark-circle' : 'document-text-outline'} size={24} color={isCompleted ? '#22C55E' : '#6366F1'} />
+            </View>
+            <View style={styles.taskInfo}>
+                <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
+                <Text style={[styles.taskDue, { color: dueColor }]}>{dueText}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.text.tertiary} />
+        </Pressable>
+    );
+}
+
+function EventCard({ event }: { event: TeamEvent }) {
+    const startTime = new Date(event.start_time);
+    const timeStr = startTime.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = startTime.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+
+    // Determinar ícone e cor com base no tipo
+    const getEventStyles = (type: string) => {
+        switch (type) {
+            case 'meeting': return { icon: 'people', color: '#6366F1' };
+            case 'presentation': return { icon: 'easel', color: '#8B5CF6' };
+            case 'deadline': return { icon: 'time', color: '#EF4444' };
+            case 'study_session': return { icon: 'book', color: '#F59E0B' };
+            case 'social': return { icon: 'beer', color: '#EC4899' };
+            default: return { icon: 'calendar', color: '#10B981' };
+        }
+    };
+
+    const { icon, color } = getEventStyles(event.type);
+
+    return (
+        <View style={styles.eventCard}>
+            <View style={[styles.eventColorBar, { backgroundColor: color }]} />
+            <View style={styles.eventContent}>
+                <View style={styles.eventHeader}>
+                    <View style={styles.eventTitleRow}>
+                        <Ionicons name={icon as any} size={16} color={color} style={{ marginRight: 6 }} />
+                        <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                    </View>
+                    <View style={styles.eventTimeBadge}>
+                        <Text style={[styles.eventTimeText, { color }]}>{timeStr}</Text>
+                    </View>
+                </View>
+                <View style={styles.eventFooter}>
+                    <Text style={styles.eventDate}>{dateStr}</Text>
+                    {event.location && (
+                        <View style={styles.eventLocation}>
+                            <Ionicons name="location-outline" size={12} color={COLORS.text.tertiary} />
+                            <Text style={styles.eventLocationText} numberOfLines={1}>{event.location}</Text>
+                        </View>
+                    )}
+                </View>
+            </View>
+        </View>
+    );
+}
+
+function formatDueDate(dueDate: string | null) {
+    if (!dueDate) return { text: 'Sem prazo', color: COLORS.text.tertiary };
+    const date = new Date(dueDate);
+    const now = new Date();
+    now.setHours(0,0,0,0);
+    const itemDate = new Date(date);
+    itemDate.setHours(0,0,0,0);
+    
+    const diff = Math.round((itemDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diff < 0) return { text: 'Atrasado', color: '#EF4444' };
+    if (diff === 0) return { text: 'Hoje', color: '#F59E0B' };
+    if (diff === 1) return { text: 'Amanhã', color: '#F59E0B' };
+    return { text: date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' }), color: COLORS.text.tertiary };
 }
 
 // ============================================
@@ -782,4 +993,176 @@ const styles = StyleSheet.create({
         color: COLORS.text.tertiary,
         marginTop: 2,
     },
+
+    // ========== NEW HUB STYLES ==========
+    tabBar: {
+        flexDirection: 'row',
+        paddingHorizontal: SPACING.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+        marginBottom: SPACING.lg,
+    },
+    tabItem: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: SPACING.md,
+        gap: 4,
+        borderBottomWidth: 2,
+        borderBottomColor: 'transparent',
+    },
+    tabItemActive: {
+        borderBottomColor: '#6366F1',
+    },
+    tabLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: COLORS.text.tertiary,
+    },
+    tabLabelActive: {
+        color: '#6366F1',
+    },
+    tabContent: {
+        flex: 1,
+    },
+    tabSection: {
+        paddingBottom: 40,
+    },
+    quickActionsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        paddingHorizontal: SPACING.lg,
+        gap: SPACING.md,
+        marginBottom: SPACING.xl,
+    },
+    quickActionItem: {
+        width: (SCREEN_WIDTH - SPACING.lg * 2 - SPACING.md * 3) / 4,
+        alignItems: 'center',
+        gap: SPACING.xs,
+    },
+    quickActionIconSmall: {
+        width: 50,
+        height: 50,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+    },
+    quickActionLabelSmall: {
+        fontSize: 10,
+        fontWeight: '500',
+        color: COLORS.text.secondary,
+        textAlign: 'center',
+    },
+    seeAllText: {
+        fontSize: 12,
+        color: '#6366F1',
+        fontWeight: '600',
+    },
+    emptyTextInline: {
+        fontSize: 13,
+        color: COLORS.text.tertiary,
+        textAlign: 'center',
+        marginVertical: SPACING.lg,
+        fontStyle: 'italic',
+    },
+    
+    // Cards
+    taskCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceElevated,
+        marginHorizontal: SPACING.lg,
+        marginBottom: SPACING.sm,
+        padding: SPACING.md,
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.03)',
+    },
+    taskIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: SPACING.md,
+    },
+    taskInfo: {
+        flex: 1,
+    },
+    taskTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.text.primary,
+    },
+    taskDue: {
+        fontSize: 11,
+        marginTop: 2,
+    },
+
+    eventCard: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.surfaceElevated,
+        marginHorizontal: SPACING.lg,
+        marginBottom: SPACING.sm,
+        borderRadius: RADIUS.xl,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.03)',
+    },
+    eventColorBar: {
+        width: 4,
+    },
+    eventContent: {
+        flex: 1,
+        padding: SPACING.md,
+    },
+    eventHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+    },
+    eventTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+        marginRight: SPACING.sm,
+    },
+    eventTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: COLORS.text.primary,
+    },
+    eventTimeBadge: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    eventTimeText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#6366F1',
+    },
+    eventFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        gap: SPACING.md,
+    },
+    eventDate: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: COLORS.text.secondary,
+    },
+    eventLocation: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        flex: 1,
+    },
+    eventLocationText: {
+        fontSize: 11,
+        color: COLORS.text.tertiary,
+    },
 });
+// No content here, just removing the duplicate

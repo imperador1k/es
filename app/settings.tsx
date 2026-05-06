@@ -20,7 +20,8 @@ import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { EducationLevel, getUserEducation, saveUserEducation, useEducationData } from '@/hooks/useEducation';
 import {
     ActivityIndicator,
     Image,
@@ -139,6 +140,31 @@ export default function SettingsScreen() {
     const [supportMessage, setSupportMessage] = useState('');
     const [sendingSupport, setSendingSupport] = useState(false);
 
+    // Education States
+    const [educationData, setEducationData] = useState<any>(null);
+    const [educationModalVisible, setEducationModalVisible] = useState(false);
+    const [loadingEducation, setLoadingEducation] = useState(false);
+    const { 
+        getYearsForLevel, 
+        secondaryAreas, 
+        searchSchools, 
+        searchUniversities, 
+        searchDegrees 
+    } = useEducationData();
+
+    // New Education Edit States
+    const [editEduLevel, setEditEduLevel] = useState<EducationLevel>('secondary');
+    const [editEduSchoolId, setEditEduSchoolId] = useState('');
+    const [editEduSchoolName, setEditEduSchoolName] = useState('');
+    const [editEduYear, setEditEduYear] = useState(10);
+    const [editEduUniId, setEditEduUniId] = useState('');
+    const [editEduUniName, setEditEduUniName] = useState('');
+    const [editEduDegreeId, setEditEduDegreeId] = useState('');
+    const [editEduDegreeName, setEditEduDegreeName] = useState('');
+    const [editEduArea, setEditEduArea] = useState('');
+    const [eduSearchResults, setEduSearchResults] = useState<any[]>([]);
+    const [eduSearchLoading, setEduSearchLoading] = useState(false);
+
     // Toast
     const [toastVisible, setToastVisible] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
@@ -172,6 +198,43 @@ export default function SettingsScreen() {
             showToast('error', 'Não foi possível selecionar a imagem.');
         }
     };
+
+    const loadEducation = useCallback(async () => {
+        if (!user?.id) return;
+        try {
+            setLoadingEducation(true);
+            const data = await getUserEducation(user.id);
+            if (data) {
+                setEducationData(data);
+                // Sync edit states
+                const level = data.level as EducationLevel;
+                setEditEduLevel(level);
+                
+                // Set default year based on level if not present
+                let defaultYear = 10;
+                if (level === 'basic_2') defaultYear = 5;
+                else if (level === 'basic_3') defaultYear = 7;
+                else if (level === 'university') defaultYear = 1;
+
+                setEditEduYear(data.year || data.uni_year || defaultYear);
+                setEditEduSchoolId(data.school_id || '');
+                setEditEduSchoolName(data.school?.name || '');
+                setEditEduUniId(data.university_id || '');
+                setEditEduUniName(data.university?.name || '');
+                setEditEduDegreeId(data.degree_id || '');
+                setEditEduDegreeName(data.degree?.name || '');
+                setEditEduArea(data.secondary_course_area || '');
+            }
+        } catch (error) {
+            console.error('Erro ao carregar educação:', error);
+        } finally {
+            setLoadingEducation(false);
+        }
+    }, [user?.id]);
+
+    useEffect(() => {
+        loadEducation();
+    }, [loadEducation]);
 
     const saveAvatarFromUri = async (uri: string, mimeType: string) => {
         if (!user?.id) return;
@@ -277,6 +340,67 @@ export default function SettingsScreen() {
         await Share.share({ message: `Junta-te a mim no Escola+! 🎓\n@${profile?.username}\nhttps://escola.plus` });
     };
 
+    const getLevelLabel = (level: string) => {
+        switch (level) {
+            case 'basic_2': return '2º Ciclo (5º-6º)';
+            case 'basic_3': return '3º Ciclo (7º-9º)';
+            case 'secondary': return 'Secundário';
+            case 'university': return 'Ensino Superior';
+            default: return level;
+        }
+    };
+
+    const handleSearchEducation = async (query: string, type: 'school' | 'uni' | 'degree') => {
+        if (query.length < 2) {
+            setEduSearchResults([]);
+            return;
+        }
+        try {
+            setEduSearchLoading(true);
+            let results: { id: string; label: string; sublabel?: string }[] = [];
+            if (type === 'school') {
+                const cycle = editEduLevel === 'basic_2' ? '2º Ciclo' : editEduLevel === 'basic_3' ? '3º Ciclo' : 'Secundário';
+                results = await searchSchools(query, cycle);
+            } else if (type === 'uni') {
+                results = await searchUniversities(query);
+            } else if (type === 'degree') {
+                results = await searchDegrees(query, editEduUniId);
+            }
+            setEduSearchResults(results);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setEduSearchLoading(false);
+        }
+    };
+
+    const handleSaveEducation = async () => {
+        if (!user?.id) return;
+        try {
+            setSaving(true);
+            const result = await saveUserEducation(user.id, {
+                level: editEduLevel,
+                schoolId: editEduSchoolId || undefined,
+                year: editEduYear,
+                secondaryCourseArea: editEduLevel === 'secondary' ? editEduArea : undefined,
+                universityId: editEduUniId || undefined,
+                degreeId: editEduDegreeId || undefined,
+                uniYear: editEduLevel === 'university' ? editEduYear : undefined,
+            });
+            if (result.success) {
+                await loadEducation();
+                setEducationModalVisible(false);
+                showToast('success', 'Percurso escolar atualizado!');
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (error: any) {
+            showToast('error', error.message || 'Erro ao guardar.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const currentStatus = STATUS_OPTIONS.find(s => s.value === preferredStatus) || STATUS_OPTIONS[0];
     const appVersion = Application.nativeApplicationVersion || '2.0.0';
     const getFieldLabel = () => editField === 'name' ? 'Nome Completo' : editField === 'username' ? 'Username' : 'Email';
@@ -360,6 +484,38 @@ export default function SettingsScreen() {
                         label="Email"
                         value={user?.email || ''}
                         rightElement={<Ionicons name="checkmark-circle" size={16} color="#10B981" />}
+                        isLast
+                    />
+                </SettingsGroup>
+
+                {/* EDUCATION SECTION */}
+                <SettingsGroup title="PERFIL ESCOLAR" delay={350}>
+                    <SettingsRow
+                        icon="school"
+                        iconColor="#10B981"
+                        label="Nível de Ensino"
+                        value={educationData ? getLevelLabel(educationData.level) : 'Definir'}
+                        onPress={() => setEducationModalVisible(true)}
+                    />
+                    <SettingsRow
+                        icon="business"
+                        iconColor="#6366F1"
+                        label={educationData?.level === 'university' ? 'Universidade' : 'Escola'}
+                        value={educationData?.university?.name || educationData?.school?.name || 'Não definida'}
+                        onPress={() => setEducationModalVisible(true)}
+                    />
+                    <SettingsRow
+                        icon="ribbon"
+                        iconColor="#F59E0B"
+                        label={educationData?.level === 'university' ? 'Curso' : 'Ano'}
+                        value={
+                            educationData?.level === 'university' 
+                                ? educationData?.degree?.name 
+                                : educationData?.year 
+                                    ? `${educationData.year}º Ano`
+                                    : 'Não definido'
+                        }
+                        onPress={() => setEducationModalVisible(true)}
                         isLast
                     />
                 </SettingsGroup>
@@ -563,6 +719,162 @@ export default function SettingsScreen() {
 
             <SupportModal visible={supportModalVisible} onClose={() => setSupportModalVisible(false)} />
 
+            {/* EDUCATION MODAL */}
+            <Modal visible={educationModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEducationModalVisible(false)}>
+                <View style={styles.modalBg}>
+                    <View style={styles.modalHeader}>
+                        <Pressable onPress={() => setEducationModalVisible(false)}><Text style={styles.modalCancel}>Fechar</Text></Pressable>
+                        <Text style={styles.modalTitle}>Percurso Escolar</Text>
+                        <Pressable onPress={handleSaveEducation} disabled={saving}>
+                            {saving ? <ActivityIndicator color="#6366F1" /> : <Text style={styles.modalSave}>Guardar</Text>}
+                        </Pressable>
+                    </View>
+                    <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                        {/* NÍVEL */}
+                        <Text style={styles.inputLabel}>Nível de Ensino</Text>
+                        <View style={styles.levelRow}>
+                            {[
+                                { id: 'basic_2', label: '2º Ciclo', icon: 'book' },
+                                { id: 'basic_3', label: '3º Ciclo', icon: 'library' },
+                                { id: 'secondary', label: 'Secundário', icon: 'school' },
+                                { id: 'university', label: 'Superior', icon: 'ribbon' }
+                            ].map((l) => (
+                                <Pressable
+                                    key={l.id}
+                                    style={[styles.levelChip, editEduLevel === l.id && styles.levelChipActive]}
+                                    onPress={() => {
+                                        setEditEduLevel(l.id as any);
+                                        // Reset year to default for new level
+                                        if (l.id === 'basic_2') setEditEduYear(5);
+                                        else if (l.id === 'basic_3') setEditEduYear(7);
+                                        else if (l.id === 'secondary') setEditEduYear(10);
+                                        else if (l.id === 'university') setEditEduYear(1);
+                                    }}
+                                >
+                                    <Ionicons 
+                                        name={l.icon as any} 
+                                        size={14} 
+                                        color={editEduLevel === l.id ? '#FFF' : 'rgba(255,255,255,0.4)'} 
+                                        style={{ marginRight: 6 }}
+                                    />
+                                    <Text style={[styles.levelChipText, editEduLevel === l.id && styles.levelChipTextActive]}>
+                                        {l.label}
+                                    </Text>
+                                </Pressable>
+                            ))}
+                        </View>
+
+                        {/* ESCOLA / UNI SEARCH */}
+                        <Text style={[styles.inputLabel, { marginTop: 20 }]}>{editEduLevel === 'university' ? 'Universidade' : 'Escola'}</Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            placeholder={editEduLevel === 'university' ? 'Pesquisar universidade...' : 'Pesquisar escola...'}
+                            placeholderTextColor="rgba(255,255,255,0.3)"
+                            value={editEduLevel === 'university' ? editEduUniName : editEduSchoolName}
+                            onChangeText={(val) => {
+                                if (editEduLevel === 'university') setEditEduUniName(val);
+                                else setEditEduSchoolName(val);
+                                handleSearchEducation(val, editEduLevel === 'university' ? 'uni' : 'school');
+                            }}
+                        />
+
+                        {eduSearchResults.length > 0 && (
+                            <View style={styles.searchResults}>
+                                {eduSearchResults.map((res) => (
+                                    <Pressable
+                                        key={res.id}
+                                        style={styles.searchResultItem}
+                                        onPress={() => {
+                                            if (editEduLevel === 'university') {
+                                                setEditEduUniId(res.id);
+                                                setEditEduUniName(res.label);
+                                            } else {
+                                                setEditEduSchoolId(res.id);
+                                                setEditEduSchoolName(res.label);
+                                            }
+                                            setEduSearchResults([]);
+                                        }}
+                                    >
+                                        <Text style={styles.searchResultLabel}>{res.label}</Text>
+                                        <Text style={styles.searchResultSublabel}>{res.sublabel}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        )}
+
+                        {/* ANO SELECTION */}
+                        <Text style={[styles.inputLabel, { marginTop: 20 }]}>Ano Letivo</Text>
+                        <View style={styles.levelRow}>
+                            {getYearsForLevel(editEduLevel).map((y) => (
+                                <Pressable
+                                    key={y}
+                                    style={[styles.levelChip, editEduYear === y && styles.levelChipActive]}
+                                    onPress={() => setEditEduYear(y)}
+                                >
+                                    <Text style={[styles.levelChipText, editEduYear === y && styles.levelChipTextActive]}>{y}º</Text>
+                                </Pressable>
+                            ))}
+                        </View>
+
+                        {/* ÁREA (Se for Secundário) */}
+                        {editEduLevel === 'secondary' && (
+                            <>
+                                <Text style={[styles.inputLabel, { marginTop: 20 }]}>Área de Estudo</Text>
+                                <View style={styles.levelRow}>
+                                    {secondaryAreas.map((area) => (
+                                        <Pressable
+                                            key={area.id}
+                                            style={[styles.levelChip, editEduArea === area.id && styles.levelChipActive]}
+                                            onPress={() => setEditEduArea(area.id)}
+                                        >
+                                            <Text style={[styles.levelChipText, editEduArea === area.id && styles.levelChipTextActive]}>
+                                                {area.label}
+                                            </Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </>
+                        )}
+
+                        {/* CURSO (Se for Uni) */}
+                        {editEduLevel === 'university' && (
+                            <>
+                                <Text style={[styles.inputLabel, { marginTop: 20 }]}>Curso / Licenciatura</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    placeholder="Pesquisar curso..."
+                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    value={editEduDegreeName}
+                                    onChangeText={(val) => {
+                                        setEditEduDegreeName(val);
+                                        handleSearchEducation(val, 'degree');
+                                    }}
+                                />
+                                {eduSearchResults.length > 0 && (
+                                    <View style={styles.searchResults}>
+                                        {eduSearchResults.map((res) => (
+                                            <Pressable
+                                                key={res.id}
+                                                style={styles.searchResultItem}
+                                                onPress={() => {
+                                                    setEditEduDegreeId(res.id);
+                                                    setEditEduDegreeName(res.label);
+                                                    setEduSearchResults([]);
+                                                }}
+                                            >
+                                                <Text style={styles.searchResultLabel}>{res.label}</Text>
+                                                <Text style={styles.searchResultSublabel}>{res.sublabel}</Text>
+                                            </Pressable>
+                                        ))}
+                                    </View>
+                                )}
+                            </>
+                        )}
+
+                        <View style={{ height: 100 }} />
+                    </ScrollView>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -682,6 +994,17 @@ const styles = StyleSheet.create({
     faqQuestion: { color: '#FFF', fontWeight: '600', marginBottom: 4, fontSize: 14 },
     faqAnswer: { color: 'rgba(255,255,255,0.6)', lineHeight: 20, fontSize: 13 },
     closeFloatBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+
+    // Education Edit Styles
+    levelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    levelChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+    levelChipActive: { backgroundColor: '#6366F1', borderColor: '#6366F1' },
+    levelChipText: { color: 'rgba(255,255,255,0.6)', fontWeight: '600', fontSize: 13 },
+    levelChipTextActive: { color: '#FFF' },
+    searchResults: { backgroundColor: '#1A1A1F', borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', maxHeight: 200, overflow: 'hidden' },
+    searchResultItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+    searchResultLabel: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+    searchResultSublabel: { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 2 },
 });
 
 const mdStyles = {

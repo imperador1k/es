@@ -35,6 +35,7 @@ interface CreateEventModalProps {
     onClose: () => void;
     onSuccess?: () => void;
     initialDate?: Date;
+    teamId?: string | null;
 }
 
 type MainCategory = 'escola' | 'pessoal';
@@ -51,6 +52,15 @@ const SCHOOL_CATEGORIES: { id: SchoolSubCategory; label: string; icon: string; c
 const PERSONAL_CATEGORIES: { id: PersonalSubCategory; label: string; icon: string; color: string; gradient: [string, string] }[] = [
     { id: 'lembrete', label: 'Lembrete', icon: 'alarm', color: '#EC4899', gradient: ['#EC4899', '#DB2777'] },
     { id: 'tarefa', label: 'Tarefa', icon: 'checkbox', color: '#10B981', gradient: ['#10B981', '#059669'] },
+];
+
+const TEAM_CATEGORIES: { id: any; label: string; icon: string; color: string; gradient: [string, string] }[] = [
+    { id: 'meeting', label: 'Reunião', icon: 'people', color: '#6366F1', gradient: ['#6366F1', '#4F46E5'] },
+    { id: 'presentation', label: 'Apresentação', icon: 'easel', color: '#8B5CF6', gradient: ['#8B5CF6', '#7C3AED'] },
+    { id: 'deadline', label: 'Prazo', icon: 'time', color: '#EF4444', gradient: ['#EF4444', '#DC2626'] },
+    { id: 'study_session', label: 'Estudo', icon: 'book', color: '#F59E0B', gradient: ['#F59E0B', '#D97706'] },
+    { id: 'social', label: 'Social', icon: 'beer', color: '#EC4899', gradient: ['#EC4899', '#DB2777'] },
+    { id: 'other', label: 'Outro', icon: 'ellipsis-horizontal', color: '#10B981', gradient: ['#10B981', '#059669'] },
 ];
 
 // ============================================
@@ -110,6 +120,7 @@ export function CreateEventModal({
     onClose,
     onSuccess,
     initialDate = new Date(),
+    teamId = null,
 }: CreateEventModalProps) {
     const { user } = useAuthContext();
     const queryClient = useQueryClient();
@@ -123,6 +134,7 @@ export function CreateEventModal({
     const [mainCategory, setMainCategory] = useState<MainCategory>('escola');
     const [schoolCategory, setSchoolCategory] = useState<SchoolSubCategory>('exame');
     const [personalCategory, setPersonalCategory] = useState<PersonalSubCategory>('lembrete');
+    const [teamCategory, setTeamCategory] = useState<any>('meeting');
     const [startDate, setStartDate] = useState<Date | null>(null);
     const [startTime, setStartTime] = useState<Date | null>(null);
     const [saving, setSaving] = useState(false);
@@ -159,7 +171,19 @@ export function CreateEventModal({
             const combinedDate = new Date(startDate!);
             combinedDate.setHours(startTime!.getHours(), startTime!.getMinutes(), 0, 0);
 
-            if (mainCategory === 'escola') {
+            if (teamId) {
+                const { error } = await supabase.from('team_events').insert({
+                    team_id: teamId,
+                    created_by: user.id,
+                    title: title.trim(),
+                    description: description.trim() || null,
+                    start_time: combinedDate.toISOString(),
+                    end_time: new Date(combinedDate.getTime() + 60 * 60 * 1000).toISOString(),
+                    location: location.trim() || null,
+                    type: teamCategory,
+                });
+                if (error) throw error;
+            } else if (mainCategory === 'escola') {
                 const { error } = await supabase.from('events').insert({
                     user_id: user.id,
                     title: title.trim(),
@@ -171,7 +195,6 @@ export function CreateEventModal({
                 });
                 if (error) throw error;
 
-                // 🔔 Agendar notificações se for um Exame/Teste
                 if (schoolCategory === 'exame' || schoolCategory === 'teste') {
                     NotificationService.scheduleExamCountdown(title.trim(), combinedDate).catch((err: any) =>
                         console.error('Falha ao agendar notificações:', err)
@@ -202,9 +225,11 @@ export function CreateEventModal({
         }
     };
 
-    const currentCat = mainCategory === 'escola'
-        ? SCHOOL_CATEGORIES.find(c => c.id === schoolCategory)
-        : PERSONAL_CATEGORIES.find(c => c.id === personalCategory);
+    const currentCat = teamId
+        ? TEAM_CATEGORIES.find(c => c.id === teamCategory)
+        : mainCategory === 'escola'
+            ? SCHOOL_CATEGORIES.find(c => c.id === schoolCategory)
+            : PERSONAL_CATEGORIES.find(c => c.id === personalCategory);
 
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -219,8 +244,8 @@ export function CreateEventModal({
                     </Pressable>
 
                     <View style={styles.headerCenter}>
-                        <Text style={styles.headerEmoji}>📅</Text>
-                        <Text style={styles.headerTitle}>Novo Evento</Text>
+                        <Text style={styles.headerEmoji}>{teamId ? '🤝' : '📅'}</Text>
+                        <Text style={styles.headerTitle}>{teamId ? 'Evento de Equipa' : 'Novo Evento'}</Text>
                     </View>
 
                     <Pressable
@@ -256,52 +281,61 @@ export function CreateEventModal({
                         )}
                     </View>
 
-                    {/* Main Category Toggle - Pills */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Tipo</Text>
-                        <View style={styles.togglePills}>
-                            <Pressable
-                                style={[styles.togglePill, mainCategory === 'escola' && styles.togglePillActive]}
-                                onPress={() => setMainCategory('escola')}
-                            >
-                                <Ionicons name="school" size={18} color={mainCategory === 'escola' ? '#FFF' : COLORS.text.secondary} />
-                                <Text style={[styles.togglePillText, mainCategory === 'escola' && styles.togglePillTextActive]}>
-                                    Escola
-                                </Text>
-                            </Pressable>
-                            <Pressable
-                                style={[styles.togglePill, mainCategory === 'pessoal' && styles.togglePillActivePersonal]}
-                                onPress={() => setMainCategory('pessoal')}
-                            >
-                                <Ionicons name="person" size={18} color={mainCategory === 'pessoal' ? '#FFF' : COLORS.text.secondary} />
-                                <Text style={[styles.togglePillText, mainCategory === 'pessoal' && styles.togglePillTextActive]}>
-                                    Pessoal
-                                </Text>
-                            </Pressable>
+                    {!teamId && (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Tipo</Text>
+                            <View style={styles.togglePills}>
+                                <Pressable
+                                    style={[styles.togglePill, mainCategory === 'escola' && styles.togglePillActive]}
+                                    onPress={() => setMainCategory('escola')}
+                                >
+                                    <Ionicons name="school" size={18} color={mainCategory === 'escola' ? '#FFF' : COLORS.text.secondary} />
+                                    <Text style={[styles.togglePillText, mainCategory === 'escola' && styles.togglePillTextActive]}>
+                                        Escola
+                                    </Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[styles.togglePill, mainCategory === 'pessoal' && styles.togglePillActivePersonal]}
+                                    onPress={() => setMainCategory('pessoal')}
+                                >
+                                    <Ionicons name="person" size={18} color={mainCategory === 'pessoal' ? '#FFF' : COLORS.text.secondary} />
+                                    <Text style={[styles.togglePillText, mainCategory === 'pessoal' && styles.togglePillTextActive]}>
+                                        Pessoal
+                                    </Text>
+                                </Pressable>
+                            </View>
                         </View>
-                    </View>
+                    )}
 
-                    {/* Sub Categories - Grid Cards */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Categoria</Text>
                         <View style={styles.categoryGrid}>
-                            {mainCategory === 'escola'
-                                ? SCHOOL_CATEGORIES.map(cat => (
+                            {teamId 
+                                ? TEAM_CATEGORIES.map(cat => (
                                     <CategoryCard
                                         key={cat.id}
                                         cat={cat}
-                                        isSelected={schoolCategory === cat.id}
-                                        onPress={() => setSchoolCategory(cat.id)}
+                                        isSelected={teamCategory === cat.id}
+                                        onPress={() => setTeamCategory(cat.id)}
                                     />
                                 ))
-                                : PERSONAL_CATEGORIES.map(cat => (
-                                    <CategoryCard
-                                        key={cat.id}
-                                        cat={cat}
-                                        isSelected={personalCategory === cat.id}
-                                        onPress={() => setPersonalCategory(cat.id)}
-                                    />
-                                ))}
+                                : mainCategory === 'escola'
+                                    ? SCHOOL_CATEGORIES.map(cat => (
+                                        <CategoryCard
+                                            key={cat.id}
+                                            cat={cat}
+                                            isSelected={schoolCategory === cat.id}
+                                            onPress={() => setSchoolCategory(cat.id)}
+                                        />
+                                    ))
+                                    : PERSONAL_CATEGORIES.map(cat => (
+                                        <CategoryCard
+                                            key={cat.id}
+                                            cat={cat}
+                                            isSelected={personalCategory === cat.id}
+                                            onPress={() => setPersonalCategory(cat.id)}
+                                        />
+                                    ))}
                         </View>
                     </View>
 
@@ -323,8 +357,8 @@ export function CreateEventModal({
                         </View>
                     </View>
 
-                    {/* Location (only for school) */}
-                    {mainCategory === 'escola' && (
+                    {/* Location */}
+                    {(mainCategory === 'escola' || teamId) && (
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Localização</Text>
                             <View style={styles.inputCard}>

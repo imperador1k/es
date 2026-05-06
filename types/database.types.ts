@@ -200,7 +200,8 @@ export interface MessageWithAuthor extends Message {
 // TASKS & PRODUTIVIDADE ✅
 // ============================================
 
-export type TaskType = 'study' | 'exam' | 'assignment';
+export type TaskType = 'study' | 'exam' | 'assignment' | 'project' | 'other';
+export type TeamEventType = 'meeting' | 'presentation' | 'deadline' | 'study_session' | 'social' | 'other';
 
 export interface Task {
     id: string;
@@ -409,6 +410,7 @@ export type NotificationType =
     | 'direct_message' // "Gabriel enviou-te mensagem"
     | 'new_task'       // "Matemática A criou uma tarefa"
     | 'team_invite'    // "Foste adicionado à equipa X"
+    | 'team_event'     // "Nova reunião agendada..."
     | 'task_submitted';// "Aluno entregou tarefa"
 
 export type NotificationResourceType = 'task' | 'message' | 'channel' | 'profile';
@@ -456,6 +458,7 @@ export interface TeamTask {
     title: string;
     description: string | null;
     due_date: string | null;     // timestamp with time zone
+    status: string;              // Status da tarefa (draft, published, etc)
     is_completed: boolean;       // Para tarefas pessoais
     type: TaskType;
     xp_reward: number;
@@ -503,4 +506,50 @@ export interface TeamTaskWithCreator extends TeamTask {
     my_completion?: TeamTaskCompletion | null;  // Se eu já completei
     completion_count?: number;                   // Quantas pessoas completaram
     total_members?: number;                      // Total de membros da equipa
+}
+// ============================================
+// TEAM EVENTS (Eventos de Equipa) 📅
+// ============================================
+
+export interface TeamEvent {
+    id: string;
+    team_id: string;
+    created_by: string;
+    title: string;
+    description: string | null;
+    start_time: string;
+    end_time: string;
+    location: string | null;
+    type: TeamEventType;
+    target_members: string[] | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface TeamEventInsert {
+    team_id: string;
+    created_by: string;
+    title: string;
+    description?: string | null;
+    start_time: string;
+    end_time: string;
+    location?: string | null;
+    type?: TeamEventType;
+    target_members?: string[] | null;
+}
+
+export interface TeamEventUpdate {
+    title?: string;
+    description?: string | null;
+    start_time?: string;
+    end_time?: string;
+    location?: string | null;
+    type?: TeamEventType;
+    target_members?: string[] | null;
+}
+
+// Tipo auxiliar: Evento com dados da equipa e criador
+export interface TeamEventWithDetails extends TeamEvent {
+    creator?: Profile | null;
+    team?: Team | null;
 }
