@@ -333,10 +333,16 @@ export default function RegisterScreen() {
                                     onPress={handleRegister}
                                     disabled={!isValid || isLoading}
                                 >
+                                    <LinearGradient
+                                        colors={isValid ? ['#4F46E5', '#7C3AED'] : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={StyleSheet.absoluteFill}
+                                    />
                                     {isLoading ? (
-                                        <ActivityIndicator color="#000" size="small" />
+                                        <ActivityIndicator color="#FFF" size="small" />
                                     ) : (
-                                        <Text style={styles.loginButtonText}>Criar conta</Text>
+                                        <Text style={[styles.loginButtonText, !isValid && { color: COLORS.text.muted }]}>Criar conta</Text>
                                     )}
                                 </Pressable>
 
@@ -510,19 +516,21 @@ const styles = StyleSheet.create({
     },
 
     loginButton: {
-        backgroundColor: '#FFF',
         height: 56,
         borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     loginButtonDisabled: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     loginButtonText: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#000',
+        color: '#FFF',
     },
 
     divider: {
