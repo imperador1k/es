@@ -16,6 +16,8 @@ export interface RadioStation {
     emoji: string;
     streamUrl: string;
     description: string;
+    loop?: boolean;
+    isCustom?: boolean;
 }
 
 export const RADIO_STATIONS: RadioStation[] = [
@@ -27,11 +29,44 @@ export const RADIO_STATIONS: RadioStation[] = [
         description: 'Relaxing beats to study',
     },
     {
-        id: 'chillhop',
-        name: 'Chillhop',
+        id: 'whitenoise',
+        name: 'Ruído Branco',
+        emoji: '🌫️',
+        streamUrl: 'https://archive.org/download/white-noise-ambience/Ambience.mp3',
+        description: 'Som branco para foco total',
+        loop: true,
+    },
+    {
+        id: 'rain',
+        name: 'Sons de Chuva',
+        emoji: '🌧️',
+        streamUrl: 'https://archive.org/download/rainforest-ambient/Rainforest%20Ambient.mp3',
+        description: 'Chuva calma para estudar',
+        loop: true,
+    },
+    {
+        id: 'cafe',
+        name: 'Café Ambiente',
         emoji: '☕',
-        streamUrl: 'https://streams.fluxfm.de/Chillhop/mp3-128/streams.fluxfm.de/',
-        description: 'Chill instrumental hip-hop',
+        streamUrl: 'https://archive.org/download/cafe-ambience/cafe-ambience.mp3',
+        description: 'Ambiente de café',
+        loop: true,
+    },
+    {
+        id: 'nature',
+        name: 'Natureza',
+        emoji: '🌿',
+        streamUrl: 'https://archive.org/download/forest-sounds/forest-birds.mp3',
+        description: 'Floresta e pássaros',
+        loop: true,
+    },
+    {
+        id: 'piano',
+        name: 'Piano Calmo',
+        emoji: '🎹',
+        streamUrl: 'https://archive.org/download/peaceful-piano/peaceful-piano.mp3',
+        description: 'Piano para concentração',
+        loop: true,
     },
     {
         id: 'jazz',
@@ -39,13 +74,6 @@ export const RADIO_STATIONS: RadioStation[] = [
         emoji: '🎷',
         streamUrl: 'https://streaming.radio.co/s774887f7b/listen',
         description: 'Smooth jazz for focus',
-    },
-    {
-        id: 'nature',
-        name: 'Nature Sounds',
-        emoji: '🌿',
-        streamUrl: 'https://rainymood.com/audio1112/0.m4a',
-        description: 'Rain and nature ambience',
     },
     {
         id: 'classical',
@@ -132,7 +160,7 @@ export function useAudioPlayer() {
                 { 
                     shouldPlay: true, 
                     volume: state.volume,
-                    isLooping: false, // Streams loop naturally
+                    isLooping: !!station.loop,
                 },
                 onPlaybackStatusUpdate
             );

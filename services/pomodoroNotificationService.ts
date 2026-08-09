@@ -40,8 +40,9 @@ export async function createPomodoroChannel() {
     description: 'Notificações do timer Pomodoro',
     importance: AndroidImportance.HIGH,
     visibility: AndroidVisibility.PUBLIC,
-    vibration: false,
-    sound: undefined,
+    vibration: true,
+    vibrationPattern: [0, 500, 200, 500],
+    sound: 'default',
   });
 }
 
@@ -200,6 +201,9 @@ export async function showCompletionNotification(
       channelId: POMODORO_CHANNEL_ID,
       importance: AndroidImportance.HIGH,
       smallIcon: 'ic_launcher',
+      sound: 'default',
+      category: AndroidCategory.ALARM,
+      vibrationPattern: [0, 500, 200, 500],
       pressAction: {
         id: 'default',
         launchActivity: 'default',

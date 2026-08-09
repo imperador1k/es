@@ -8,6 +8,7 @@ import { FloatingReactions } from '@/components/FloatingReactions';
 import { LiveKitRoom } from '@/components/StudyRoom/LiveKitRoom';
 import { StudyRoomChat } from '@/components/StudyRoomChat';
 import { useStartConversation } from '@/hooks/useDMs';
+import { useCustomTracks } from '@/hooks/useCustomTracks';
 import { useStudyRoomAudio } from '@/hooks/useStudyRoomAudio';
 import { supabase } from '@/lib/supabase';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
@@ -16,6 +17,7 @@ import { useAuthContext } from '@/providers/AuthProvider';
 import { getLiveKitToken, getRoomName } from '@/services/livekitService';
 import { SoundService } from '@/utils/SoundService';
 import { Ionicons } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -264,9 +266,11 @@ export default function StudyRoomScreen() {
         currentTrackName,
         isPlaying: isRoomPlaying,
         isLoading: audioLoading,
+        volume: roomVolume,
         stations: vibeStations,
         changeStation,
         togglePlayPause: toggleRoomMusic,
+        setVolume: setRoomVolume,
         stopAndCleanup
     } = useStudyRoomAudio({
         roomId: currentRoom?.id || null,
@@ -287,6 +291,15 @@ export default function StudyRoomScreen() {
     const [newRoomPrivate, setNewRoomPrivate] = useState(false);
     const [newRoomPassword, setNewRoomPassword] = useState('');
     const [creating, setCreating] = useState(false);
+
+    // Custom tracks (música própria do utilizador)
+    const {
+        tracks: customTracks,
+        loading: tracksLoading,
+        pickAndUpload: uploadCustomTrack,
+        deleteTrack: deleteCustomTrack,
+    } = useCustomTracks(user?.id);
+    const [uploadingTrack, setUploadingTrack] = useState(false);
 
     // V4: LiveKit Video Call
     const [isCallActive, setIsCallActive] = useState(false);
@@ -747,6 +760,22 @@ export default function StudyRoomScreen() {
                                     </Pressable>
                                 </View>
                             )}
+                            {isDJ && currentTrackName !== 'Nenhuma' && (
+                                <View style={styles.roomVolumeRow}>
+                                    <Ionicons name="volume-low" size={14} color="rgba(255,255,255,0.7)" />
+                                    <Slider
+                                        style={styles.roomVolumeSlider}
+                                        minimumValue={0}
+                                        maximumValue={1}
+                                        value={roomVolume}
+                                        onValueChange={setRoomVolume}
+                                        minimumTrackTintColor="#10B981"
+                                        maximumTrackTintColor="rgba(255,255,255,0.2)"
+                                        thumbTintColor="#10B981"
+                                    />
+                                    <Ionicons name="volume-high" size={14} color="rgba(255,255,255,0.7)" />
+                                </View>
+                            )}
                         </LinearGradient>
                     </View>
 
@@ -842,6 +871,64 @@ export default function StudyRoomScreen() {
                                         {currentTrackName === station.name && <Ionicons name="checkmark-circle" size={22} color="#10B981" />}
                                     </Pressable>
                                 ))}
+
+                                <View style={styles.stationSectionDivider}>
+                                    <Text style={styles.stationSectionTitle}>🎵 As tuas músicas</Text>
+                                </View>
+
+                                {customTracks.map((track) => {
+                                    const isCurrent = currentTrackName === track.name;
+                                    return (
+                                        <View key={track.id} style={styles.customTrackRow}>
+                                            <Pressable
+                                                style={[styles.stationItem, styles.customTrackItem, isCurrent && styles.stationItemActive]}
+                                                onPress={async () => {
+                                                    await changeStation({
+                                                        id: `custom-${track.id}`,
+                                                        name: track.name,
+                                                        emoji: '🎵',
+                                                        url: track.url,
+                                                    });
+                                                    setShowStationPicker(false);
+                                                }}
+                                            >
+                                                <Text style={styles.stationEmoji}>🎵</Text>
+                                                <Text style={styles.stationName} numberOfLines={1}>{track.name}</Text>
+                                                {isCurrent && <Ionicons name="checkmark-circle" size={22} color="#10B981" />}
+                                            </Pressable>
+                                            <Pressable
+                                                style={styles.customTrackDelete}
+                                                hitSlop={8}
+                                                onPress={() => deleteCustomTrack(track)}
+                                            >
+                                                <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.6)" />
+                                            </Pressable>
+                                        </View>
+                                    );
+                                })}
+
+                                {customTracks.length === 0 && !tracksLoading && (
+                                    <Text style={styles.stationEmptyText}>Ainda não tens músicas carregadas</Text>
+                                )}
+
+                                <Pressable
+                                    style={[styles.uploadTrackBtn, uploadingTrack && { opacity: 0.6 }]}
+                                    disabled={uploadingTrack}
+                                    onPress={async () => {
+                                        setUploadingTrack(true);
+                                        await uploadCustomTrack();
+                                        setUploadingTrack(false);
+                                    }}
+                                >
+                                    {uploadingTrack ? (
+                                        <ActivityIndicator size="small" color="#FFF" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="cloud-upload-outline" size={16} color="#FFF" />
+                                            <Text style={styles.uploadTrackText}>Carregar música (MP3, WAV, M4A...)</Text>
+                                        </>
+                                    )}
+                                </Pressable>
                             </ScrollView>
                         </BlurView>
                     </View>
@@ -1168,6 +1255,8 @@ const styles = StyleSheet.create({
     musicControls: { flexDirection: 'row', gap: SPACING.xs },
     musicControlBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
     musicPickerBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366F1', alignItems: 'center', justifyContent: 'center' },
+    roomVolumeRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.sm, paddingHorizontal: SPACING.xs },
+    roomVolumeSlider: { flex: 1, height: 28 },
 
     // Participants Section
     participantsSection: { marginTop: SPACING.xl, paddingHorizontal: SPACING.md },
@@ -1218,6 +1307,14 @@ const styles = StyleSheet.create({
     stationItemActive: { backgroundColor: 'rgba(16, 185, 129, 0.2)' },
     stationEmoji: { fontSize: 28 },
     stationName: { flex: 1, fontSize: TYPOGRAPHY.size.base, color: '#FFF', fontWeight: TYPOGRAPHY.weight.medium },
+    stationSectionDivider: { marginTop: SPACING.md, marginBottom: SPACING.sm, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: SPACING.md },
+    stationSectionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: 'rgba(255,255,255,0.7)' },
+    customTrackRow: { flexDirection: 'row', alignItems: 'center' },
+    customTrackItem: { flex: 1 },
+    customTrackDelete: { marginLeft: SPACING.xs, padding: 6 },
+    stationEmptyText: { fontSize: TYPOGRAPHY.size.sm, color: 'rgba(255,255,255,0.5)', textAlign: 'center', paddingVertical: SPACING.md },
+    uploadTrackBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: '#6366F1', borderRadius: RADIUS.lg, padding: SPACING.md, marginTop: SPACING.md },
+    uploadTrackText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: '#FFF' },
 
     createModal: { borderTopLeftRadius: RADIUS['2xl'], borderTopRightRadius: RADIUS['2xl'], padding: SPACING.lg, paddingBottom: 40, maxHeight: '85%' },
     inputLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: 'rgba(255,255,255,0.7)', marginBottom: SPACING.xs, marginTop: SPACING.md },

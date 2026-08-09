@@ -112,47 +112,76 @@ async function sendPushNotification(
 
 /**
  * Busca push tokens e settings de todos os membros de uma equipa (exceto o autor)
- * Filtra por tipo de notificação
+ * Filtra por tipo de notificação.
+ * NOTA: os tokens vivem na tabela user_push_tokens (não em profiles.push_token).
  */
 async function getTeamMemberTokensWithPreferences(
     teamId: string,
     excludeUserId: string,
     notificationType: NotificationType
 ): Promise<{ token: string; soundEnabled: boolean }[]> {
-    const { data, error } = await supabase
+    // 1. Membros da equipa (exceto autor)
+    const { data: members, error: membersError } = await supabase
         .from('team_members')
-        .select(`
-            user_id,
-            profiles!user_id (
-                push_token,
-                push_enabled,
-                dm_notifications,
-                team_notifications,
-                task_notifications,
-                friend_notifications,
-                mention_notifications,
-                marketing_notifications,
-                sound_enabled,
-                vibration_enabled
-            )
-        `)
+        .select('user_id')
         .eq('team_id', teamId)
         .neq('user_id', excludeUserId);
 
-    if (error || !data) {
-        console.error('Erro ao buscar tokens:', error);
+    if (membersError || !members || members.length === 0) {
+        console.error('Erro ao buscar membros:', membersError);
         return [];
     }
 
+    const memberIds = members.map((m) => m.user_id);
+
+    // 2. Preferências de notificação (profiles)
+    const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select(`
+            id,
+            push_enabled,
+            dm_notifications,
+            team_notifications,
+            task_notifications,
+            friend_notifications,
+            mention_notifications,
+            marketing_notifications,
+            sound_enabled,
+            vibration_enabled
+        `)
+        .in('id', memberIds);
+
+    if (profilesError || !profiles) {
+        console.error('Erro ao buscar preferências:', profilesError);
+        return [];
+    }
+
+    // 3. Push tokens (user_push_tokens — pode haver vários por utilizador)
+    const { data: tokenRows, error: tokensError } = await supabase
+        .from('user_push_tokens')
+        .select('user_id, token')
+        .in('user_id', memberIds);
+
+    if (tokensError) {
+        console.error('Erro ao buscar tokens:', tokensError);
+        return [];
+    }
+
+    const tokensByUser = new Map<string, string[]>();
+    tokenRows?.forEach((row: any) => {
+        if (!row.token) return;
+        const list = tokensByUser.get(row.user_id) || [];
+        list.push(row.token);
+        tokensByUser.set(row.user_id, list);
+    });
+
     // Extrair tokens válidos COM verificação de preferências
     const validMembers: { token: string; soundEnabled: boolean }[] = [];
-    
-    data.forEach((member: any) => {
-        const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
-        
-        if (!profile?.push_token) return;
-        
-        // Construir objeto de settings
+
+    profiles.forEach((profile: any) => {
+        const tokens = tokensByUser.get(profile.id) || [];
+        if (tokens.length === 0) return;
+
         const settings: Partial<NotificationSettings> = {
             push_enabled: profile.push_enabled ?? true,
             team_notifications: profile.team_notifications ?? true,
@@ -163,31 +192,32 @@ async function getTeamMemberTokensWithPreferences(
             marketing_notifications: profile.marketing_notifications ?? false,
             sound_enabled: profile.sound_enabled ?? true,
         };
-        
+
         // Verificar se este tipo de notificação está ativado para este utilizador
         if (isNotificationEnabled(settings, notificationType)) {
-            validMembers.push({
-                token: profile.push_token,
-                soundEnabled: settings.sound_enabled !== false,
+            tokens.forEach((token) => {
+                validMembers.push({
+                    token,
+                    soundEnabled: settings.sound_enabled !== false,
+                });
             });
         }
     });
 
-    console.log(`🔔 ${validMembers.length}/${data.length} membros têm notificações '${notificationType}' ativadas`);
+    console.log(`🔔 ${validMembers.length} tokens de membros com notificações '${notificationType}' ativadas`);
     return validMembers;
 }
 
 /**
- * Buscar preferências de um utilizador específico
+ * Buscar preferências e tokens de um utilizador específico
  */
 async function getUserNotificationPreferences(userId: string): Promise<{
-    token: string | null;
+    tokens: string[];
     settings: Partial<NotificationSettings>;
 } | null> {
     const { data: profile, error } = await supabase
         .from('profiles')
         .select(`
-            push_token,
             push_enabled,
             dm_notifications,
             team_notifications,
@@ -206,8 +236,22 @@ async function getUserNotificationPreferences(userId: string): Promise<{
         return null;
     }
 
+    const { data: tokenRows, error: tokensError } = await supabase
+        .from('user_push_tokens')
+        .select('token')
+        .eq('user_id', userId);
+
+    if (tokensError) {
+        console.error('Erro ao buscar tokens:', tokensError);
+        return null;
+    }
+
+    const tokens = (tokenRows || [])
+        .map((row: any) => row.token)
+        .filter((t: string | null): t is string => Boolean(t));
+
     return {
-        token: profile.push_token || null,
+        tokens,
         settings: {
             push_enabled: profile.push_enabled ?? true,
             team_notifications: profile.team_notifications ?? true,
@@ -421,7 +465,7 @@ export async function notifyUser({
 }): Promise<void> {
     const userPrefs = await getUserNotificationPreferences(userId);
     
-    if (!userPrefs || !userPrefs.token) {
+    if (!userPrefs || userPrefs.tokens.length === 0) {
         console.warn('Token não encontrado para user:', userId);
         return;
     }
@@ -432,12 +476,12 @@ export async function notifyUser({
         return;
     }
 
-    await sendPushNotification(
-        userPrefs.token, 
+    await Promise.all(userPrefs.tokens.map((token) => sendPushNotification(
+        token, 
         { title, body, data },
         userPrefs.settings.sound_enabled !== false
-    );
-    console.log(`📤 Notificação enviada para user ${userId}`);
+    )));
+    console.log(`📤 Notificação enviada para user ${userId} (${userPrefs.tokens.length} tokens)`);
 }
 
 /**
@@ -456,7 +500,7 @@ export async function notifyNewDM({
 }): Promise<void> {
     const userPrefs = await getUserNotificationPreferences(recipientId);
     
-    if (!userPrefs || !userPrefs.token) {
+    if (!userPrefs || userPrefs.tokens.length === 0) {
         console.warn('Token não encontrado para user:', recipientId);
         return;
     }
@@ -471,8 +515,8 @@ export async function notifyNewDM({
         ? messagePreview.substring(0, 50) + '...' 
         : messagePreview;
 
-    await sendPushNotification(
-        userPrefs.token,
+    await Promise.all(userPrefs.tokens.map((token) => sendPushNotification(
+        token,
         {
             title: `💬 ${senderName}`,
             body: preview,
@@ -482,7 +526,7 @@ export async function notifyNewDM({
             },
         },
         userPrefs.settings.sound_enabled !== false
-    );
+    )));
     console.log(`📤 DM notification enviada para user ${recipientId}`);
 }
 
@@ -500,7 +544,7 @@ export async function notifyFriendRequest({
 }): Promise<void> {
     const userPrefs = await getUserNotificationPreferences(recipientId);
     
-    if (!userPrefs || !userPrefs.token) {
+    if (!userPrefs || userPrefs.tokens.length === 0) {
         console.warn('Token não encontrado para user:', recipientId);
         return;
     }
@@ -511,8 +555,8 @@ export async function notifyFriendRequest({
         return;
     }
 
-    await sendPushNotification(
-        userPrefs.token,
+    await Promise.all(userPrefs.tokens.map((token) => sendPushNotification(
+        token,
         {
             title: `👥 Pedido de Amizade`,
             body: `${senderName} quer ser teu amigo!`,
@@ -522,6 +566,6 @@ export async function notifyFriendRequest({
             },
         },
         userPrefs.settings.sound_enabled !== false
-    );
+    )));
     console.log(`📤 Friend request notification enviada para user ${recipientId}`);
 }

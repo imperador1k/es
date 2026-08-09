@@ -183,6 +183,42 @@ export function CreateEventModal({
                     type: teamCategory,
                 });
                 if (error) throw error;
+
+                // Notificar membros da equipa (feed in-app + push)
+                try {
+                    const { data: memberRows } = await supabase
+                        .from('team_members')
+                        .select('user_id')
+                        .eq('team_id', teamId)
+                        .neq('user_id', user.id);
+
+                    const memberIds = (memberRows || []).map((m: any) => m.user_id);
+
+                    if (memberIds.length > 0) {
+                        const { createBulkNotifications } = await import('@/hooks/useNotifications');
+                        await createBulkNotifications(memberIds.map((uid: string) => ({
+                            user_id: uid,
+                            actor_id: user.id,
+                            type: 'team_event' as const,
+                            title: `📅 Novo Evento • ${title.trim()}`,
+                            content: `${combinedDate.toLocaleDateString('pt-PT')} às ${combinedDate.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}`,
+                            resource_id: null,
+                            resource_type: null,
+                        })));
+                    }
+
+                    const { notifyUser } = await import('@/services/teamNotifications');
+                    memberIds.forEach((uid: string) => {
+                        notifyUser({
+                            userId: uid,
+                            title: `📅 Novo Evento • ${title.trim()}`,
+                            body: `Novo evento da equipa: ${combinedDate.toLocaleDateString('pt-PT')}`,
+                            type: 'team',
+                        }).catch((err) => console.error('Erro ao notificar evento:', err));
+                    });
+                } catch (err) {
+                    console.error('Erro ao notificar evento:', err);
+                }
             } else if (mainCategory === 'escola') {
                 const { error } = await supabase.from('events').insert({
                     user_id: user.id,

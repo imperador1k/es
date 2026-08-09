@@ -15,9 +15,10 @@ import {
     updatePomodoroProgress,
 } from '@/services/pomodoroNotificationService';
 import { updateStreakOnSession } from '@/services/streakService';
+import { playAlarmSound, prepareAlarmSound, stopAlarmSound } from '@/services/alarmService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform, Vibration } from 'react-native';
 
 // ============================================
@@ -50,6 +51,7 @@ export interface PomodoroConfig {
 // ============================================
 
 const STORAGE_KEY = '@pomodoro_state';
+const CONFIG_STORAGE_KEY = '@pomodoro_config';
 const PENDING_ACTION_KEY = '@pomodoro_pending_action';
 
 const DEFAULT_CONFIG: PomodoroConfig = {
@@ -61,11 +63,17 @@ const DEFAULT_CONFIG: PomodoroConfig = {
   xpFocusBonus: 20,
 };
 
-const MODE_DURATIONS: Record<PomodoroMode, number> = {
-  focus: DEFAULT_CONFIG.focusDuration * 60,
-  shortBreak: DEFAULT_CONFIG.shortBreakDuration * 60,
-  longBreak: DEFAULT_CONFIG.longBreakDuration * 60,
-};
+function buildDurations(config: PomodoroConfig): Record<PomodoroMode, number> {
+  return {
+    focus: config.focusDuration * 60,
+    shortBreak: config.shortBreakDuration * 60,
+    longBreak: config.longBreakDuration * 60,
+  };
+}
+
+function toDurationKey(mode: PomodoroMode): 'focusDuration' | 'shortBreakDuration' | 'longBreakDuration' {
+  return mode === 'focus' ? 'focusDuration' : mode === 'shortBreak' ? 'shortBreakDuration' : 'longBreakDuration';
+}
 
 // ============================================
 // HOOK
@@ -76,12 +84,15 @@ export function usePomodoro(userId: string | undefined) {
   const [mode, setMode] = useState<PomodoroMode>('focus');
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(MODE_DURATIONS.focus);
+  const [timeRemaining, setTimeRemaining] = useState(DEFAULT_CONFIG.focusDuration * 60);
   const [endTime, setEndTime] = useState<number | null>(null);
   const [focusTotalEnabled, setFocusTotalEnabled] = useState(false);
   const [sessionsCompleted, setSessionsCompleted] = useState(0);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [lastSessionXP, setLastSessionXP] = useState(0);
+  const [config, setConfig] = useState<PomodoroConfig>(DEFAULT_CONFIG);
+
+  const durations = useMemo(() => buildDurations(config), [config]);
 
   // Refs
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -94,6 +105,7 @@ export function usePomodoro(userId: string | undefined) {
     isRunning,
     isPaused,
     timeRemaining,
+    endTime: null as number | null,
     focusTotalEnabled,
     sessionsCompleted,
   });
@@ -105,10 +117,11 @@ export function usePomodoro(userId: string | undefined) {
       isRunning,
       isPaused,
       timeRemaining,
+      endTime,
       focusTotalEnabled,
       sessionsCompleted,
     };
-  }, [mode, isRunning, isPaused, timeRemaining, focusTotalEnabled, sessionsCompleted]);
+  }, [mode, isRunning, isPaused, timeRemaining, endTime, focusTotalEnabled, sessionsCompleted]);
 
   // ============================================
   // PERSISTENCE
@@ -202,24 +215,24 @@ export function usePomodoro(userId: string | undefined) {
       await displayPomodoroNotification({
         mode: stateRef.current.mode,
         timeRemaining: stateRef.current.timeRemaining,
-        totalDuration: MODE_DURATIONS[stateRef.current.mode],
+        totalDuration: durations[stateRef.current.mode],
         isPaused: stateRef.current.isPaused,
         focusTotalEnabled: stateRef.current.focusTotalEnabled,
       });
     }
-  }, []);
+  }, [durations]);
 
   const startForegroundService = useCallback(async () => {
     if (Platform.OS === 'android') {
       await displayPomodoroNotification({
         mode,
         timeRemaining,
-        totalDuration: MODE_DURATIONS[mode],
+        totalDuration: durations[mode],
         isPaused: false,
         focusTotalEnabled,
       });
     }
-  }, [mode, timeRemaining, focusTotalEnabled]);
+  }, [mode, timeRemaining, focusTotalEnabled, durations]);
 
   // ============================================
   // TIMER LOGIC
@@ -235,42 +248,49 @@ export function usePomodoro(userId: string | undefined) {
     // Vibrate
     Vibration.vibrate([0, 500, 200, 500]);
 
+    // Alarm sound (despertador)
+    playAlarmSound().catch((err) => console.error('Erro ao tocar alarme:', err));
+
     if (stateRef.current.mode === 'focus') {
       const xp = stateRef.current.focusTotalEnabled
-        ? DEFAULT_CONFIG.xpBase + DEFAULT_CONFIG.xpFocusBonus
-        : DEFAULT_CONFIG.xpBase;
+        ? config.xpBase + config.xpFocusBonus
+        : config.xpBase;
 
       setLastSessionXP(xp);
       setSessionsCompleted((prev) => prev + 1);
       
-      await saveSessionToDatabase(DEFAULT_CONFIG.focusDuration, xp);
+      await saveSessionToDatabase(config.focusDuration, xp);
       await showCompletionNotification('focus', xp);
       
       setShowCompletionModal(true);
     } else {
       await showCompletionNotification(stateRef.current.mode);
       setMode('focus');
-      setTimeRemaining(MODE_DURATIONS.focus);
+      setTimeRemaining(durations.focus);
     }
-  }, [clearState, saveSessionToDatabase]);
+  }, [clearState, saveSessionToDatabase, config, durations]);
 
   const tick = useCallback(() => {
-    setTimeRemaining((prev) => {
-      const newTime = prev - 1;
-      
-      if (newTime <= 0) {
-        handleTimerComplete();
-        return 0;
-      }
+    const end = stateRef.current.endTime;
+    if (!end) return;
 
-      // Update notification every second
-      if (Platform.OS === 'android' && newTime % 1 === 0) {
-        updatePomodoroProgress(newTime, MODE_DURATIONS[stateRef.current.mode], stateRef.current.mode);
-      }
+    // Calcular a partir do endTime (auto-correção: se a aba esteve em 2º plano
+    // e o browser atrasou o intervalo, o tempo acerta-se no próximo tick)
+    const newTime = Math.max(0, Math.floor((end - Date.now()) / 1000));
 
-      return newTime;
-    });
-  }, [handleTimerComplete]);
+    if (newTime <= 0) {
+      setTimeRemaining(0);
+      handleTimerComplete();
+      return;
+    }
+
+    setTimeRemaining(newTime);
+
+    // Update notification every second
+    if (Platform.OS === 'android') {
+      updatePomodoroProgress(newTime, durations[stateRef.current.mode], stateRef.current.mode);
+    }
+  }, [handleTimerComplete, durations]);
 
   const startTimer = useCallback(async () => {
     const now = Date.now();
@@ -291,6 +311,9 @@ export function usePomodoro(userId: string | undefined) {
     });
 
     await startForegroundService();
+
+    // Pré-carrega o alarme (gesto do utilizador → desbloqueia áudio no web)
+    await prepareAlarmSound().catch((err) => console.error('Erro ao preparar alarme:', err));
   }, [timeRemaining, mode, focusTotalEnabled, sessionsCompleted, saveState, startForegroundService]);
 
   const pauseTimer = useCallback(async () => {
@@ -318,12 +341,12 @@ export function usePomodoro(userId: string | undefined) {
       await displayPomodoroNotification({
         mode,
         timeRemaining,
-        totalDuration: MODE_DURATIONS[mode],
+        totalDuration: durations[mode],
         isPaused: true,
         focusTotalEnabled,
       });
     }
-  }, [mode, timeRemaining, focusTotalEnabled, sessionsCompleted, saveState]);
+  }, [mode, timeRemaining, focusTotalEnabled, sessionsCompleted, saveState, durations]);
 
   const resumeTimer = useCallback(async () => {
     const now = Date.now();
@@ -348,18 +371,21 @@ export function usePomodoro(userId: string | undefined) {
       await displayPomodoroNotification({
         mode,
         timeRemaining,
-        totalDuration: MODE_DURATIONS[mode],
+        totalDuration: durations[mode],
         isPaused: false,
         focusTotalEnabled,
       });
     }
-  }, [mode, timeRemaining, focusTotalEnabled, sessionsCompleted, saveState]);
+
+    // Pré-carrega o alarme (gesto do utilizador → desbloqueia áudio no web)
+    await prepareAlarmSound().catch((err) => console.error('Erro ao preparar alarme:', err));
+  }, [mode, timeRemaining, focusTotalEnabled, sessionsCompleted, saveState, durations]);
 
   const stopTimer = useCallback(async () => {
     setIsRunning(false);
     setIsPaused(false);
     setEndTime(null);
-    setTimeRemaining(MODE_DURATIONS[mode]);
+    setTimeRemaining(durations[mode]);
 
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -368,32 +394,33 @@ export function usePomodoro(userId: string | undefined) {
 
     await clearState();
     await stopPomodoroService();
-  }, [mode, clearState]);
+    await stopAlarmSound();
+  }, [mode, clearState, durations]);
 
   const resetTimer = useCallback(async () => {
     await stopTimer();
-    setTimeRemaining(MODE_DURATIONS[mode]);
-  }, [mode, stopTimer]);
+    setTimeRemaining(durations[mode]);
+  }, [mode, stopTimer, durations]);
 
   const skipToNext = useCallback(async () => {
     await stopTimer();
 
     if (mode === 'focus') {
-      const shouldLongBreak = (sessionsCompleted + 1) % DEFAULT_CONFIG.sessionsBeforeLongBreak === 0;
+      const shouldLongBreak = (sessionsCompleted + 1) % config.sessionsBeforeLongBreak === 0;
       const nextMode = shouldLongBreak ? 'longBreak' : 'shortBreak';
       setMode(nextMode);
-      setTimeRemaining(MODE_DURATIONS[nextMode]);
+      setTimeRemaining(durations[nextMode]);
     } else {
       setMode('focus');
-      setTimeRemaining(MODE_DURATIONS.focus);
+      setTimeRemaining(durations.focus);
     }
-  }, [mode, sessionsCompleted, stopTimer]);
+  }, [mode, sessionsCompleted, stopTimer, config.sessionsBeforeLongBreak, durations]);
 
   const changeMode = useCallback((newMode: PomodoroMode) => {
     if (isRunning || isPaused) return;
     setMode(newMode);
-    setTimeRemaining(MODE_DURATIONS[newMode]);
-  }, [isRunning, isPaused]);
+    setTimeRemaining(durations[newMode]);
+  }, [isRunning, isPaused, durations]);
 
   const toggleFocusTotal = useCallback(() => {
     setFocusTotalEnabled((prev) => !prev);
@@ -401,11 +428,27 @@ export function usePomodoro(userId: string | undefined) {
 
   const dismissCompletionModal = useCallback(() => {
     setShowCompletionModal(false);
-    const shouldLongBreak = sessionsCompleted % DEFAULT_CONFIG.sessionsBeforeLongBreak === 0;
+    stopAlarmSound().catch((err) => console.error('Erro ao parar alarme:', err));
+    const shouldLongBreak = sessionsCompleted % config.sessionsBeforeLongBreak === 0;
     const nextMode = shouldLongBreak ? 'longBreak' : 'shortBreak';
     setMode(nextMode);
-    setTimeRemaining(MODE_DURATIONS[nextMode]);
-  }, [sessionsCompleted]);
+    setTimeRemaining(durations[nextMode]);
+  }, [sessionsCompleted, config.sessionsBeforeLongBreak, durations]);
+
+  // ============================================
+  // CONFIG UPDATE
+  // ============================================
+
+  const updateConfig = useCallback(async (partial: Partial<PomodoroConfig>) => {
+    const nextConfig = { ...config, ...partial };
+    setConfig(nextConfig);
+    await AsyncStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(nextConfig));
+
+    // If timer is idle, update the displayed duration for the current mode
+    if (!isRunning && !isPaused) {
+      setTimeRemaining(buildDurations(nextConfig)[mode]);
+    }
+  }, [config, isRunning, isPaused, mode]);
 
   // ============================================
   // NOTIFICATION ACTION HANDLER
@@ -476,6 +519,19 @@ export function usePomodoro(userId: string | undefined) {
     isInitializedRef.current = true;
 
     const recoverState = async () => {
+      // Load saved config first so durations are correct
+      let effectiveDurations = durations;
+      try {
+        const storedConfig = await AsyncStorage.getItem(CONFIG_STORAGE_KEY);
+        if (storedConfig) {
+          const parsed = { ...DEFAULT_CONFIG, ...JSON.parse(storedConfig) } as PomodoroConfig;
+          setConfig(parsed);
+          effectiveDurations = buildDurations(parsed);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar configuração Pomodoro:', err);
+      }
+
       const stored = await loadState();
       if (!stored) return;
 
@@ -491,7 +547,7 @@ export function usePomodoro(userId: string | undefined) {
           await displayPomodoroNotification({
             mode: stored.mode,
             timeRemaining: stored.timeRemaining,
-            totalDuration: MODE_DURATIONS[stored.mode],
+            totalDuration: effectiveDurations[stored.mode],
             isPaused: true,
             focusTotalEnabled: stored.focusTotalEnabled,
           });
@@ -509,7 +565,7 @@ export function usePomodoro(userId: string | undefined) {
             await displayPomodoroNotification({
               mode: stored.mode,
               timeRemaining: remaining,
-              totalDuration: MODE_DURATIONS[stored.mode],
+              totalDuration: effectiveDurations[stored.mode],
               isPaused: false,
               focusTotalEnabled: stored.focusTotalEnabled,
             });
@@ -518,12 +574,12 @@ export function usePomodoro(userId: string | undefined) {
           handleTimerComplete();
         }
       } else {
-        setTimeRemaining(stored.timeRemaining || MODE_DURATIONS[stored.mode]);
+        setTimeRemaining(stored.timeRemaining || effectiveDurations[stored.mode]);
       }
     };
 
     recoverState();
-  }, [loadState, handleTimerComplete]);
+  }, [loadState, handleTimerComplete, durations]);
 
   // Handle app state changes
   useEffect(() => {
@@ -555,6 +611,30 @@ export function usePomodoro(userId: string | undefined) {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
   }, [endTime, isRunning, isPaused, handleTimerComplete, handleNotificationAction]);
+
+  // Web: re-sincronizar o timer quando a aba volta a estar visível
+  // (browser atrasa/congela timers em abas em 2º plano)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) return;
+
+      if (endTime && isRunning && !isPaused) {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+
+        if (remaining > 0) {
+          setTimeRemaining(remaining);
+        } else {
+          handleTimerComplete();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [endTime, isRunning, isPaused, handleTimerComplete]);
 
   // Request notification permissions
   useEffect(() => {
@@ -594,8 +674,9 @@ export function usePomodoro(userId: string | undefined) {
     dismissCompletionModal,
 
     // Config
-    config: DEFAULT_CONFIG,
-    modeDurations: MODE_DURATIONS,
+    config,
+    updateConfig,
+    modeDurations: durations,
   };
 }
 

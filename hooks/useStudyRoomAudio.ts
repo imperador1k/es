@@ -29,6 +29,13 @@ export const VIBE_STATIONS: RadioStation[] = [
         url: '',
     },
     {
+        id: 'whitenoise',
+        name: 'Ruído Branco',
+        emoji: '🌫️',
+        // Ficheiro MP3 de Archive.org - white noise (1min, faz loop)
+        url: 'https://archive.org/download/white-noise-ambience/Ambience.mp3',
+    },
+    {
         id: 'lofi',
         name: 'Lofi Beats',
         emoji: '🎧',
@@ -75,6 +82,7 @@ interface RoomAudioState {
     isPlaying: boolean;
     isLoading: boolean;
     error: string | null;
+    volume: number;
 }
 
 interface UseStudyRoomAudioProps {
@@ -93,6 +101,7 @@ export function useStudyRoomAudio({ roomId, isOwner }: UseStudyRoomAudioProps) {
         isPlaying: false,
         isLoading: false,
         error: null,
+        volume: 0.7,
     });
 
     const soundRef = useRef<Audio.Sound | null>(null);
@@ -153,7 +162,7 @@ export function useStudyRoomAudio({ roomId, isOwner }: UseStudyRoomAudioProps) {
         try {
             const { sound } = await Audio.Sound.createAsync(
                 { uri: url },
-                { shouldPlay, isLooping: true, volume: 0.7 },
+                { shouldPlay, isLooping: true, volume: state.volume },
                 onPlaybackStatusUpdate
             );
 
@@ -173,7 +182,7 @@ export function useStudyRoomAudio({ roomId, isOwner }: UseStudyRoomAudioProps) {
                 error: 'Erro ao carregar áudio',
             }));
         }
-    }, []);
+    }, [state.volume]);
 
     // ============================================
     // PLAYBACK STATUS CALLBACK
@@ -336,6 +345,23 @@ export function useStudyRoomAudio({ roomId, isOwner }: UseStudyRoomAudioProps) {
     }, [roomId]);
 
     // ============================================
+    // SET VOLUME (local only)
+    // ============================================
+
+    const setVolume = useCallback(async (volume: number) => {
+        const clampedVolume = Math.max(0, Math.min(1, volume));
+        setState(prev => ({ ...prev, volume: clampedVolume }));
+
+        if (soundRef.current) {
+            try {
+                await soundRef.current.setVolumeAsync(clampedVolume);
+            } catch (err) {
+                console.error('Error setting volume:', err);
+            }
+        }
+    }, []);
+
+    // ============================================
     // CLEANUP
     // ============================================
 
@@ -351,8 +377,9 @@ export function useStudyRoomAudio({ roomId, isOwner }: UseStudyRoomAudioProps) {
             isPlaying: false,
             isLoading: false,
             error: null,
+            volume: state.volume,
         });
-    }, []);
+    }, [state.volume]);
 
     return {
         // State
@@ -360,6 +387,7 @@ export function useStudyRoomAudio({ roomId, isOwner }: UseStudyRoomAudioProps) {
         isPlaying: state.isPlaying,
         isLoading: state.isLoading,
         error: state.error,
+        volume: state.volume,
         
         // Available stations
         stations: VIBE_STATIONS,
@@ -367,6 +395,7 @@ export function useStudyRoomAudio({ roomId, isOwner }: UseStudyRoomAudioProps) {
         // DJ Actions (only work for owners)
         changeStation,
         togglePlayPause,
+        setVolume,
         
         // Cleanup
         stopAndCleanup,

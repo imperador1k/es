@@ -34,6 +34,7 @@ export function MiniPlayer() {
     } = useAudioPlayerContext();
 
     const [showStationPicker, setShowStationPicker] = useState(false);
+    const [collapsed, setCollapsed] = useState(false);
 
     // Don't render if no station is playing and not loading
     if (!currentStation && !isLoading) {
@@ -42,8 +43,41 @@ export function MiniPlayer() {
 
     return (
         <>
-            {/* Mini Player Bar */}
-            <View style={styles.container}>
+            {collapsed ? (
+                /* Collapsed Mini Bar */
+                <View style={styles.containerCollapsed}>
+                    <Pressable
+                        style={styles.playBtn}
+                        onPress={togglePlayPause}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <Ionicons
+                                name={isPlaying ? 'pause' : 'play'}
+                                size={20}
+                                color="#FFF"
+                            />
+                        )}
+                    </Pressable>
+                    <Pressable
+                        style={styles.collapsedInfo}
+                        onPress={() => setCollapsed(false)}
+                    >
+                        <Text style={styles.stationEmojiMini}>
+                            {currentStation?.emoji || '🎵'}
+                        </Text>
+                        <Text style={styles.collapsedName} numberOfLines={1}>
+                            {currentStation?.name || 'Música'}
+                        </Text>
+                    </Pressable>
+                    <Pressable style={styles.controlBtn} onPress={() => setCollapsed(false)}>
+                        <Ionicons name="chevron-up" size={20} color={colors.text.secondary} />
+                    </Pressable>
+                </View>
+            ) : (
+                <View style={styles.container}>
                 {/* Station Info - Tap to open picker */}
                 <Pressable
                     style={styles.stationInfo}
@@ -95,8 +129,14 @@ export function MiniPlayer() {
                     <Pressable style={styles.controlBtn} onPress={stop}>
                         <Ionicons name="close" size={20} color={colors.text.tertiary} />
                     </Pressable>
+
+                    {/* Collapse */}
+                    <Pressable style={styles.controlBtn} onPress={() => setCollapsed(true)}>
+                        <Ionicons name="chevron-down" size={20} color={colors.text.tertiary} />
+                    </Pressable>
                 </View>
             </View>
+            )}
 
             {/* Station Picker Modal */}
             <Modal
@@ -195,6 +235,39 @@ const styles = StyleSheet.create({
         ...shadows.md,
         borderWidth: 1,
         borderColor: colors.divider,
+    },
+
+    containerCollapsed: {
+        position: 'absolute',
+        bottom: 90, // Above tab bar
+        left: spacing.md,
+        right: spacing.md,
+        height: 48,
+        backgroundColor: colors.surface,
+        borderRadius: borderRadius.full,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        paddingHorizontal: spacing.xs,
+        ...shadows.md,
+        borderWidth: 1,
+        borderColor: colors.divider,
+    },
+    collapsedInfo: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+        paddingHorizontal: spacing.xs,
+    },
+    stationEmojiMini: {
+        fontSize: 20,
+    },
+    collapsedName: {
+        flex: 1,
+        fontSize: typography.size.base,
+        fontWeight: typography.weight.semibold,
+        color: colors.text.primary,
     },
 
     // Station Info

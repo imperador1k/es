@@ -251,6 +251,49 @@ export default function CreateTaskScreen() {
                 if (groupsError) console.error('Groups RPC Error:', groupsError);
             }
 
+            // 4. Notificar membros da equipa (feed in-app + push)
+            try {
+                const [{ data: teamData }, { data: creatorProfile }] = await Promise.all([
+                    supabase.from('teams').select('name').eq('id', teamId).single(),
+                    supabase.from('profiles').select('full_name, username').eq('id', user.id).single(),
+                ]);
+                const teamName = teamData?.name || 'Equipa';
+                const creatorName = creatorProfile?.full_name || creatorProfile?.username || 'Alguém';
+
+                const { data: memberRows } = await supabase
+                    .from('team_members')
+                    .select('user_id')
+                    .eq('team_id', teamId)
+                    .neq('user_id', user.id);
+
+                const memberIds = (memberRows || []).map((m: any) => m.user_id);
+                if (memberIds.length > 0) {
+                    const { createBulkNotifications } = await import('@/hooks/useNotifications');
+                    await createBulkNotifications(memberIds.map((uid: string) => ({
+                        user_id: uid,
+                        actor_id: user.id,
+                        type: 'new_task' as const,
+                        title: `📋 Nova Tarefa • ${title.trim()}`,
+                        content: description.trim().slice(0, 120) || 'Nova tarefa publicada na equipa',
+                        resource_id: task.id,
+                        resource_type: 'task' as const,
+                    })));
+                }
+
+                const { notifyNewTask } = await import('@/services/teamNotifications');
+                notifyNewTask({
+                    taskId: task.id,
+                    taskTitle: title.trim(),
+                    teamId,
+                    teamName,
+                    creatorName,
+                    creatorId: user.id,
+                    dueDate: dueDate?.toISOString(),
+                }).catch((err) => console.error('Erro ao notificar tarefa:', err));
+            } catch (err) {
+                console.error('Erro ao notificar membros:', err);
+            }
+
             showAlert({
                 title: '🚀 Tarefa Publicada!',
                 message: 'A tarefa foi criada com sucesso.',

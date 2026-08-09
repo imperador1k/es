@@ -26,15 +26,18 @@ if (Platform.OS !== 'web') {
 import { DataSyncProvider } from '@/components/DataSyncProvider';
 import { MiniPlayer } from '@/components/MiniPlayer';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { PomodoroMiniPlayer } from '@/components/PomodoroMiniPlayer';
 import { TeamInviteHandler } from '@/components/TeamInviteHandler';
 import { ToastProvider } from '@/components/ui/Toast';
 import { UpdateChecker } from '@/components/UpdateChecker';
 import { useColorScheme } from '@/components/useColorScheme';
 import { CallProvider } from '@/context/CallContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { WebNotificationBridge } from '@/components/WebNotificationBridge';
 import { AlertProvider } from '@/providers/AlertProvider';
 import { AudioPlayerProvider } from '@/providers/AudioPlayerProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { PomodoroProvider } from '@/providers/PomodoroProvider';
 import { PresenceProvider } from '@/providers/PresenceProvider';
 import { ProfileProvider } from '@/providers/ProfileProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
@@ -362,27 +365,31 @@ function RootLayoutNav() {
                     <TeamsProvider>
                       <PresenceProvider>
                         <AudioPlayerProvider>
-                          <TeamInviteHandler>
-                            <PushNotificationsInitializer>
-                              <StreakInitializer>
-                                <UpdatesHelper>
-                                  <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                                    <View style={{ flex: 1 }}>
-                                      {/* 🔄 Desktop Update Checker - Only shows on web/Electron */}
-                                      <UpdateChecker />
-                                      <OfflineBanner />
-                                      <Stack screenOptions={{ headerShown: false }}>
-                                        <Stack.Screen name="(auth)" />
-                                        <Stack.Screen name="(tabs)" />
-                                        <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
-                                      </Stack>
-                                      <MiniPlayer />
-                                    </View>
-                                  </ThemeProvider>
-                                </UpdatesHelper>
-                              </StreakInitializer>
-                            </PushNotificationsInitializer>
-                          </TeamInviteHandler>
+                          <PomodoroProvider>
+                            <TeamInviteHandler>
+                              <PushNotificationsInitializer>
+                                <StreakInitializer>
+                                  <UpdatesHelper>
+                                    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                                      <View style={{ flex: 1 }}>
+                                        {/* 🔄 Desktop Update Checker - Only shows on web/Electron */}
+                                        <UpdateChecker />
+                                        <OfflineBanner />
+                                        <WebNotificationBridge />
+                                        <Stack screenOptions={{ headerShown: false }}>
+                                          <Stack.Screen name="(auth)" />
+                                          <Stack.Screen name="(tabs)" />
+                                          <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true }} />
+                                        </Stack>
+                                        <PomodoroMiniPlayer />
+                                        <MiniPlayer />
+                                      </View>
+                                    </ThemeProvider>
+                                  </UpdatesHelper>
+                                </StreakInitializer>
+                              </PushNotificationsInitializer>
+                            </TeamInviteHandler>
+                          </PomodoroProvider>
                         </AudioPlayerProvider>
                       </PresenceProvider>
                     </TeamsProvider>
