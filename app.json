@@ -71,7 +71,14 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "A Escolaa precisa de aceder ao teu calendário para sincronizar as tuas aulas e eventos pessoais."
+          "calendarPermission": "A Escolaa precisa de aceder ao teu calendǭrio para sincronizar as tuas aulas e eventos pessoais."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#6366F1"
         }
       ],
       "@react-native-community/datetimepicker",

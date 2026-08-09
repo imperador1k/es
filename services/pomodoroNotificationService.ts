@@ -114,7 +114,7 @@ export async function displayPomodoroNotification(options: PomodoroNotificationO
       asForegroundService: true,
       ongoing: true,
       onlyAlertOnce: true,
-      smallIcon: 'ic_launcher', // Default Expo icon
+      smallIcon: 'notification_icon', // Ícone definido no plugin expo-notifications
       color: config.color,
       category: AndroidCategory.PROGRESS,
       progress: {
@@ -153,7 +153,7 @@ export async function updatePomodoroProgress(
       asForegroundService: true,
       ongoing: true,
       onlyAlertOnce: true,
-      smallIcon: 'ic_launcher',
+      smallIcon: 'notification_icon',
       color: config.color,
       progress: {
         max: totalDuration,
@@ -200,7 +200,7 @@ export async function showCompletionNotification(
     android: {
       channelId: POMODORO_CHANNEL_ID,
       importance: AndroidImportance.HIGH,
-      smallIcon: 'ic_launcher',
+      smallIcon: 'notification_icon',
       sound: 'default',
       category: AndroidCategory.ALARM,
       vibrationPattern: [0, 500, 200, 500],
