@@ -4856,3 +4856,189 @@ Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░
 ✅ [COPILOT MOCK] Web mock loaded successfully
 Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
 Web Bundled 3184ms node_modules\expo-router\entry.js (1 module)
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 119ms node_modules\expo-router\node\render.js (1 module)
+✅ [REANIMATED MOCK] Web mock loaded successfully
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+λ  WARN  Route "./profile/edit.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+λ  WARN  Route "./profile/privacy.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+✅ [COPILOT MOCK] Web mock loaded successfully
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 3112ms node_modules\expo-router\entry.js (1 module)
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 97ms node_modules\expo-router\node\render.js (1 module)
+✅ [REANIMATED MOCK] Web mock loaded successfully
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+λ  WARN  Route "./profile/edit.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+λ  WARN  Route "./profile/privacy.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+✅ [COPILOT MOCK] Web mock loaded successfully
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 3035ms node_modules\expo-router\entry.js (1 module)
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 122ms node_modules\expo-router\node\render.js (1 module)
+✅ [REANIMATED MOCK] Web mock loaded successfully
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+λ  WARN  Route "./profile/edit.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+λ  WARN  Route "./profile/privacy.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+✅ [COPILOT MOCK] Web mock loaded successfully
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 3185ms node_modules\expo-router\entry.js (1 module)
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 105ms node_modules\expo-router\node\render.js (1 module)
+✅ [REANIMATED MOCK] Web mock loaded successfully
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+λ  WARN  Route "./profile/edit.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+λ  WARN  Route "./profile/privacy.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+✅ [COPILOT MOCK] Web mock loaded successfully
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 3118ms node_modules\expo-router\entry.js (1 module)
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 112ms node_modules\expo-router\node\render.js (1 module)
+✅ [REANIMATED MOCK] Web mock loaded successfully
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+λ  WARN  Route "./profile/edit.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+λ  WARN  Route "./profile/privacy.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+✅ [COPILOT MOCK] Web mock loaded successfully
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 3133ms node_modules\expo-router\entry.js (1 module)
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 154ms node_modules\expo-router\node\render.js (1 module)
+✅ [REANIMATED MOCK] Web mock loaded successfully
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+λ  WARN  Route "./profile/edit.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+λ  WARN  Route "./profile/privacy.tsx" is missing the required default export. Ensure a React component is exported as default. 
+  console.warn (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  getDirectoryTree (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:311:29)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutesCore.js:23:27)
+  getRoutes (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\getRoutes.js:20:41)
+  useStore (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\global-state\router-store.js:141:48)
+  Component (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\expo-router\build\ExpoRoot.js:128:46)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5134:23)
+  retryNode (C:\Users\User\Documents\PRECIOSO\coding\GitHub\escolaa\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+✅ [COPILOT MOCK] Web mock loaded successfully
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 3097ms node_modules\expo-router\entry.js (1 module)
