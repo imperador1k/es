@@ -395,25 +395,23 @@ export default function TeamSettingsScreen() {
                                     style: 'destructive',
                                     onPress: async () => {
                                         try {
-                                            // Apagar membros primeiro
-                                            await supabase
-                                                .from('team_members')
-                                                .delete()
-                                                .eq('team_id', teamId);
+                                            // Try secure RPC first
+                                            let deleteError: any = null;
+                                            const { error: rpcError } = await supabase.rpc('delete_team', {
+                                                p_team_id: teamId,
+                                            });
 
-                                            // Apagar canais
-                                            await supabase
-                                                .from('channels')
-                                                .delete()
-                                                .eq('team_id', teamId);
+                                            if (rpcError) {
+                                                console.warn('RPC delete_team failed, fallback to direct delete:', rpcError);
+                                                // Fallback to direct delete (database cascades automatically)
+                                                const { error: directError } = await supabase
+                                                    .from('teams')
+                                                    .delete()
+                                                    .eq('id', teamId);
+                                                deleteError = directError;
+                                            }
 
-                                            // Apagar equipa
-                                            const { error } = await supabase
-                                                .from('teams')
-                                                .delete()
-                                                .eq('id', teamId);
-
-                                            if (error) throw error;
+                                            if (deleteError) throw deleteError;
 
                                             showAlert({
                                                 title: '🗑️ Apagado',

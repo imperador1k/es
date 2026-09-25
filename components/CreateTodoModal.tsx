@@ -4,6 +4,7 @@
  */
 
 import { CreateTodoInput } from '@/hooks/usePersonalTodos';
+import { useSubjects } from '@/hooks/useSubjects';
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,8 +38,10 @@ const PRIORITY_OPTIONS = [
 
 export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalProps) {
     const insets = useSafeAreaInsets();
+    const { subjects } = useSubjects();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
+    const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
     const [dueDate, setDueDate] = useState<Date | null>(null);
     const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
     const [steps, setSteps] = useState<string[]>([]);
@@ -48,6 +51,7 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
     const resetForm = () => {
         setTitle('');
         setDescription('');
+        setSelectedSubjectId(null);
         setDueDate(null);
         setPriority('medium');
         setSteps([]);
@@ -63,6 +67,7 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                 description: description.trim() || undefined,
                 due_date: dueDate?.toISOString(),
                 priority,
+                subject_id: selectedSubjectId || undefined,
                 steps: steps.filter(s => s.trim()),
             });
             resetForm();
@@ -140,6 +145,80 @@ export function CreateTodoModal({ visible, onClose, onSubmit }: CreateTodoModalP
                                 multiline
                                 numberOfLines={3}
                             />
+                        </View>
+
+                        {/* Subject Selection (Optional) */}
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeaderRow}>
+                                <Text style={styles.sectionTitle}>Disciplina (Opcional)</Text>
+                                {selectedSubjectId && (
+                                    <Pressable onPress={() => setSelectedSubjectId(null)} hitSlop={8}>
+                                        <Text style={styles.clearSubjectText}>Remover</Text>
+                                    </Pressable>
+                                )}
+                            </View>
+
+                            {subjects.length === 0 ? (
+                                <Text style={styles.noSubjectsText}>
+                                    Nenhuma disciplina criada ainda. Podes criar no separador Disciplinas.
+                                </Text>
+                            ) : (
+                                <ScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    contentContainerStyle={styles.subjectList}
+                                >
+                                    <Pressable
+                                        style={[
+                                            styles.subjectChip,
+                                            !selectedSubjectId && styles.subjectChipActiveNone,
+                                        ]}
+                                        onPress={() => setSelectedSubjectId(null)}
+                                    >
+                                        <Ionicons
+                                            name="close-circle-outline"
+                                            size={16}
+                                            color={!selectedSubjectId ? COLORS.text.primary : COLORS.text.tertiary}
+                                        />
+                                        <Text
+                                            style={[
+                                                styles.subjectChipText,
+                                                !selectedSubjectId && styles.subjectChipTextActive,
+                                            ]}
+                                        >
+                                            Geral
+                                        </Text>
+                                    </Pressable>
+
+                                    {subjects.map((subj) => {
+                                        const isSelected = selectedSubjectId === subj.id;
+                                        return (
+                                            <Pressable
+                                                key={subj.id}
+                                                style={[
+                                                    styles.subjectChip,
+                                                    isSelected && {
+                                                        backgroundColor: `${subj.color}25`,
+                                                        borderColor: subj.color,
+                                                        borderWidth: 1.5,
+                                                    },
+                                                ]}
+                                                onPress={() => setSelectedSubjectId(subj.id)}
+                                            >
+                                                <View style={[styles.subjectDot, { backgroundColor: subj.color }]} />
+                                                <Text
+                                                    style={[
+                                                        styles.subjectChipText,
+                                                        isSelected && { color: subj.color, fontWeight: TYPOGRAPHY.weight.bold },
+                                                    ]}
+                                                >
+                                                    {subj.name}
+                                                </Text>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </ScrollView>
+                            )}
                         </View>
 
                         {/* Priority Cards */}
@@ -273,6 +352,15 @@ const styles = StyleSheet.create({
     // Section
     section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
     sectionTitle: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: COLORS.text.tertiary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md },
+    sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
+    clearSubjectText: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, fontWeight: TYPOGRAPHY.weight.medium },
+    noSubjectsText: { fontSize: TYPOGRAPHY.size.xs, color: COLORS.text.tertiary, fontStyle: 'italic' },
+    subjectList: { flexDirection: 'row', gap: SPACING.sm, paddingVertical: SPACING.xs },
+    subjectChip: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, backgroundColor: COLORS.surfaceElevated, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: 'transparent' },
+    subjectChipActiveNone: { backgroundColor: COLORS.surfaceMuted, borderColor: COLORS.text.tertiary },
+    subjectChipText: { fontSize: TYPOGRAPHY.size.sm, color: COLORS.text.secondary, fontWeight: TYPOGRAPHY.weight.medium },
+    subjectChipTextActive: { color: COLORS.text.primary, fontWeight: TYPOGRAPHY.weight.bold },
+    subjectDot: { width: 8, height: 8, borderRadius: 4 },
 
     // Priority
     priorityRow: { flexDirection: 'row', gap: SPACING.sm },

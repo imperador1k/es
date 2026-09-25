@@ -48,6 +48,8 @@ interface TaskDetailModalProps {
         team_name?: string;
         team_color?: string;
         team_id?: string | null;
+        subject_name?: string;
+        subject_color?: string;
         config?: any;
     } | null;
 }
@@ -197,11 +199,14 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
         }
     };
 
+    const isEvent = task.type === 'event';
+    const isTodo = task.type === 'todo';
+    const taskCreator = (task as any).created_by || (task as any).original?.created_by || (task as any).user_id || (task as any).original?.user_id;
+    const canDelete = isEvent || isTodo || !isTeamTask || (taskCreator === user?.id);
+
     const handleDelete = async () => {
         if (!user?.id || !task) return;
         
-        const isTeamTask = task.type === 'task';
-        const isEvent = task.type === 'event';
         const title = isEvent ? 'Apagar Evento' : isTeamTask ? 'Apagar Tarefa de Equipa' : 'Apagar Tarefa';
         const table = isEvent ? 'events' : isTeamTask ? 'tasks' : 'personal_todos';
 
@@ -216,13 +221,24 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                     onPress: async () => {
                         setLoading(true);
                         try {
-                            const { error } = await supabase.from(table).delete().eq('id', task.id);
-                            if (error) throw error;
+                            if (isTeamTask) {
+                                // Try atomic delete_task RPC first
+                                const { error: rpcError } = await supabase.rpc('delete_task', { p_task_id: task.id });
+                                if (rpcError) {
+                                    console.warn('RPC delete_task failed, falling back to direct delete:', rpcError);
+                                    const { error: directError } = await supabase.from('tasks').delete().eq('id', task.id);
+                                    if (directError) throw directError;
+                                }
+                            } else {
+                                const { error } = await supabase.from(table).delete().eq('id', task.id);
+                                if (error) throw error;
+                            }
                             
                             // Invalidate caches to keep app in sync
                             queryClient.invalidateQueries({ queryKey: ['calendar'] });
                             if (isTeamTask) {
                                 queryClient.invalidateQueries({ queryKey: ['team-tasks'] });
+                                queryClient.invalidateQueries({ queryKey: ['tasks'] });
                             }
 
                             showAlert({ title: '✅ Apagada', message: 'Tarefa removida com sucesso.' });
@@ -230,7 +246,7 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                             onClose();
                         } catch (err: any) {
                             console.error('Error deleting task:', err);
-                            showAlert({ title: 'Erro', message: 'Não foi possível apagar a tarefa.' });
+                            showAlert({ title: 'Erro', message: err.message || 'Não foi possível apagar a tarefa.' });
                         } finally {
                             setLoading(false);
                         }
@@ -270,7 +286,7 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                             </View>
 
                             <View style={styles.headerActions}>
-                                {!task.is_completed && (
+                                {canDelete && !task.is_completed && (
                                     <Pressable onPress={handleDelete} style={[styles.headerIconButton, { marginRight: 8 }]}>
                                         <Ionicons name="trash-outline" size={20} color="#EF4444" />
                                     </Pressable>
@@ -311,12 +327,37 @@ export function TaskDetailModal({ visible, onClose, onUpdate, task }: TaskDetail
                                     </Text>
                                 </View>
                             )}
+
+                            {/* Subject Badge */}
+                            {task.subject_name && (
+                                <View style={[styles.priorityBadge, { backgroundColor: (task.subject_color || '#6366F1') + '20' }]}>
+                                    <Ionicons name="book-outline" size={12} color={task.subject_color || '#6366F1'} />
+                                    <Text style={[styles.priorityText, { color: task.subject_color || '#6366F1' }]}>
+                                        {task.subject_name}
+                                    </Text>
+                                </View>
+                            )}
                         </View>
                     </View>
 
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                         {/* Info Cards */}
                         <View style={styles.infoCards}>
+                            {/* Subject */}
+                            {task.subject_name && (
+                                <View style={styles.infoCard}>
+                                    <View style={[styles.infoCardIcon, { backgroundColor: (task.subject_color || '#6366F1') + '20' }]}>
+                                        <Ionicons name="book" size={18} color={task.subject_color || '#6366F1'} />
+                                    </View>
+                                    <View>
+                                        <Text style={styles.infoCardLabel}>Disciplina</Text>
+                                        <Text style={[styles.infoCardValue, { color: task.subject_color || '#6366F1' }]}>
+                                            {task.subject_name}
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+
                             {/* Team */}
                             {task.team_name && (
                                 <View style={styles.infoCard}>

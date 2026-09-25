@@ -16,6 +16,8 @@ const TASK_XP: Record<TaskType, number> = {
   study: 30,
   assignment: 50,
   exam: 100,
+  project: 150,
+  other: 30,
 };
 
 /**
@@ -172,12 +174,17 @@ export function useDeleteTask() {
 
   return useMutation({
     mutationFn: async (taskId: string) => {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', taskId);
+      // Try secure RPC first
+      const { error: rpcError } = await supabase.rpc('delete_task', { p_task_id: taskId });
+      if (rpcError) {
+        console.warn('RPC delete_task failed, falling back to direct delete:', rpcError);
+        const { error: directError } = await supabase
+          .from('tasks')
+          .delete()
+          .eq('id', taskId);
 
-      if (error) throw error;
+        if (directError) throw directError;
+      }
       return taskId;
     },
 

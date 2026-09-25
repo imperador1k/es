@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, usePathname } from 'expo-router';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -164,13 +164,12 @@ export function DesktopSidebar({ collapsed, onToggle }: { collapsed: boolean; on
             <BlurView intensity={80} tint="dark" style={styles.sidebar}>
                 {/* Logo/Brand */}
                 <View style={[styles.header, collapsed && styles.headerCollapsed]}>
-                    <Pressable onPress={onToggle}>
-                        <LinearGradient
-                            colors={['#6366F1', '#8B5CF6']}
-                            style={styles.logoGradient}
-                        >
-                            <Text style={styles.logoText}>E+</Text>
-                        </LinearGradient>
+                    <Pressable onPress={onToggle} style={styles.logoButton}>
+                        <Image
+                            source={require('@/assets/images/icon.png')}
+                            style={styles.logoImage}
+                            resizeMode="cover"
+                        />
                     </Pressable>
                     {!collapsed && <Text style={styles.brandText}>Escola+</Text>}
                 </View>
@@ -266,18 +265,19 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingHorizontal: 0,
     },
-    logoGradient: {
+    logoButton: {
         width: 40,
         height: 40,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
         ...SHADOWS.glow,
     },
-    logoText: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#FFF',
+    logoImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
     },
     brandText: {
         fontSize: 18,

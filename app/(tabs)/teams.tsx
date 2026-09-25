@@ -124,7 +124,7 @@ export default function TeamsScreen() {
             await supabase.from('channels').insert({
                 team_id: teamData.id,
                 name: 'geral',
-                type: 'text',
+                type: 'chat',
             });
 
             await refreshTeams();

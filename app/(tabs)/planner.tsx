@@ -7,6 +7,7 @@ import { CreateTodoModal } from '@/components/CreateTodoModal';
 import CreateEventModal from '@/components/CreateEventModal';
 import { TaskDetailModal } from '@/components/TaskDetailModal';
 import { CreateTodoInput, PersonalTodo, usePersonalTodos } from '@/hooks/usePersonalTodos';
+import { useSubjects } from '@/hooks/useSubjects';
 import { supabase } from '@/lib/supabase';
 import { COLORS, LAYOUT, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '@/lib/theme.premium';
 import { TeamTask } from '@/types/database.types';
@@ -70,6 +71,9 @@ type UnifiedItem = (
     team_name?: string;
     team_color?: string;
     team_id?: string | null;
+    subject_id?: string | null;
+    subject_name?: string;
+    subject_color?: string;
 };
 
 type ViewMode = 'all' | 'personal' | 'teams';
@@ -143,6 +147,14 @@ function PersonalTaskCard({
                     {item.title}
                 </Text>
                 <View style={styles.cardMeta}>
+                    {item.subject_name && (
+                        <View style={[styles.subjectTag, { backgroundColor: `${item.subject_color || '#6366F1'}18`, borderColor: `${item.subject_color || '#6366F1'}40` }]}>
+                            <View style={[styles.subjectTagDot, { backgroundColor: item.subject_color || '#6366F1' }]} />
+                            <Text style={[styles.subjectTagText, { color: item.subject_color || '#6366F1' }]} numberOfLines={1}>
+                                {item.subject_name}
+                            </Text>
+                        </View>
+                    )}
                     {item.due_date && (
                         <View style={styles.dueBadge}>
                             <Ionicons 
@@ -285,6 +297,7 @@ function TeamTaskCard({
 export default function PlannerScreen() {
     const { user } = useAuthContext();
     const { todos, loading: todosLoading, toggleTodo, createTodo, refresh: refreshTodos } = usePersonalTodos();
+    const { subjects } = useSubjects();
 
     // Tutorial auto-start when navigating from tutorial
     const { useTutorialAutoStart } = require('@/hooks/useTutorialAutoStart');
@@ -300,6 +313,7 @@ export default function PlannerScreen() {
     const [showAddOptions, setShowAddOptions] = useState(false);
     const [viewMode, setViewMode] = useState<ViewMode>('all');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
+    const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string | null>(null);
     const [dateFilter, setDateFilter] = useState<DateFilter>('all');
     const [selectedTask, setSelectedTask] = useState<UnifiedItem | null>(null);
 
@@ -401,6 +415,9 @@ export default function PlannerScreen() {
             due_date: todo.due_date,
             is_completed: todo.is_completed,
             priority: todo.priority,
+            subject_id: todo.subject_id,
+            subject_name: todo.subject?.name,
+            subject_color: todo.subject?.color,
             original: todo,
         }));
     }, [todos]);
@@ -492,9 +509,11 @@ export default function PlannerScreen() {
     const filteredPersonalTodos = useMemo(() => {
         return personalItems.filter(i => {
             const matchesStatus = statusFilter === 'pending' ? !i.is_completed : i.is_completed;
-            return matchesStatus && isWithinDateFilter(i.due_date);
+            const matchesDate = isWithinDateFilter(i.due_date);
+            const matchesSubject = !selectedSubjectFilter || i.subject_id === selectedSubjectFilter;
+            return matchesStatus && matchesDate && matchesSubject;
         });
-    }, [personalItems, statusFilter, isWithinDateFilter]);
+    }, [personalItems, statusFilter, isWithinDateFilter, selectedSubjectFilter]);
 
     const filteredTeamTasks = useMemo(() => {
         return teamItems.filter(i => {
@@ -617,6 +636,45 @@ export default function PlannerScreen() {
                         <Text style={[styles.statusChipText, statusFilter === 'completed' && styles.statusChipTextActive]}>Concluídas</Text>
                     </Pressable>
                 </View>
+
+                {/* ========== SUBJECT FILTER ========== */}
+                {subjects.length > 0 && viewMode !== 'teams' && (
+                    <ScrollView 
+                        horizontal 
+                        showsHorizontalScrollIndicator={false} 
+                        style={styles.subjectFilterScroll}
+                        contentContainerStyle={styles.subjectFilterContent}
+                    >
+                        <Pressable
+                            style={[styles.subjectFilterChip, !selectedSubjectFilter && styles.subjectFilterChipActive]}
+                            onPress={() => setSelectedSubjectFilter(null)}
+                        >
+                            <Ionicons name="layers-outline" size={13} color={!selectedSubjectFilter ? '#FFF' : COLORS.text.tertiary} />
+                            <Text style={[styles.subjectFilterChipText, !selectedSubjectFilter && styles.subjectFilterChipTextActive]}>
+                                Todas
+                            </Text>
+                        </Pressable>
+
+                        {subjects.map((sub) => {
+                            const isSelected = selectedSubjectFilter === sub.id;
+                            return (
+                                <Pressable
+                                    key={sub.id}
+                                    style={[
+                                        styles.subjectFilterChip,
+                                        isSelected && { backgroundColor: `${sub.color}25`, borderColor: sub.color }
+                                    ]}
+                                    onPress={() => setSelectedSubjectFilter(isSelected ? null : sub.id)}
+                                >
+                                    <View style={[styles.subjectFilterDot, { backgroundColor: sub.color }]} />
+                                    <Text style={[styles.subjectFilterChipText, isSelected && { color: sub.color, fontWeight: '700' }]}>
+                                        {sub.name}
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                    </ScrollView>
+                )}
 
                 {/* ========== CONTENT ========== */}
                 <View style={styles.content}>
@@ -966,7 +1024,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: SPACING.sm,
         paddingHorizontal: LAYOUT.screenPadding,
-        marginBottom: SPACING.xl,
+        marginBottom: SPACING.md,
     },
     statusChip: {
         flexDirection: 'row',
@@ -986,6 +1044,43 @@ const styles = StyleSheet.create({
     },
     statusChipTextActive: {
         color: '#6366F1',
+    },
+
+    // Subject Filter
+    subjectFilterScroll: {
+        marginBottom: SPACING.xl,
+    },
+    subjectFilterContent: {
+        paddingHorizontal: LAYOUT.screenPadding,
+        gap: SPACING.xs,
+    },
+    subjectFilterChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: 7,
+        borderRadius: RADIUS.full,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    subjectFilterChipActive: {
+        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+        borderColor: 'rgba(99, 102, 241, 0.4)',
+    },
+    subjectFilterChipText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.text.tertiary,
+    },
+    subjectFilterChipTextActive: {
+        color: '#FFF',
+    },
+    subjectFilterDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
     },
 
     // Content
@@ -1064,6 +1159,25 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: SPACING.sm,
+        flexWrap: 'wrap',
+    },
+    subjectTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        borderRadius: RADIUS.full,
+        borderWidth: 1,
+    },
+    subjectTagDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    subjectTagText: {
+        fontSize: 10,
+        fontWeight: '700',
     },
     dueBadge: {
         flexDirection: 'row',

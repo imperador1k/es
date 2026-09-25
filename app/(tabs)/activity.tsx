@@ -47,6 +47,7 @@ const NOTIFICATION_CONFIG: Record<NotificationType, {
     new_task: { icon: 'document-text', gradient: ['#8B5CF6', '#7C3AED'], emoji: '📝' },
     team_invite: { icon: 'people', gradient: ['#10B981', '#059669'], emoji: '👥' },
     task_submitted: { icon: 'cloud-upload', gradient: ['#F97316', '#EA580C'], emoji: '🚀' },
+    team_event: { icon: 'calendar', gradient: ['#EC4899', '#DB2777'], emoji: '📅' },
 };
 
 // ============================================
